@@ -141,6 +141,13 @@ function stripPrefix(string $s, string $p): string {
                 'difficulty' => 2,
                 'topic' => 'php.strings',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делают str_contains(), str_starts_with() и str_ends_with()?',
+                'answer' => 'Это добавленные в PHP 8.0 функции, которые проверяют вхождение, префикс и суффикс подстроки и возвращают bool. Они заменяют громоздкие конструкции на strpos() === false и работают корректно для пустой иглы, не требуя ручной обработки граничных случаев.',
+                'difficulty' => 2,
+                'topic' => 'php.strings',
+            ],
         ];
     }
 }

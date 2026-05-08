@@ -144,6 +144,13 @@ set_error_handler(function ($severity, $msg, $file, $line) {
                 'difficulty' => 4,
                 'topic' => 'php.exceptions',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое Fatal Error Backtraces в PHP 8.5?',
+                'answer' => 'С PHP 8.5 фатальные ошибки, включая превышение max_execution_time и out-of-memory, печатают полную трассировку стека с именами функций и файлами. Раньше такие ошибки давали лишь точку остановки, и причину долгих циклов или утечек приходилось искать вслепую.',
+                'difficulty' => 4,
+                'topic' => 'php.exceptions',
+            ],
         ];
     }
 }

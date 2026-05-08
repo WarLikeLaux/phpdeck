@@ -2,6 +2,7 @@
 
 namespace Database\Seeders\Data\Categories;
 
+use Database\Seeders\Data\Categories\Php\Algorithms;
 use Database\Seeders\Data\Categories\Php\Arrays;
 use Database\Seeders\Data\Categories\Php\Assemble;
 use Database\Seeders\Data\Categories\Php\BasicQa;
@@ -15,10 +16,14 @@ use Database\Seeders\Data\Categories\Php\MagicMethods;
 use Database\Seeders\Data\Categories\Php\Oop;
 use Database\Seeders\Data\Categories\Php\Operators;
 use Database\Seeders\Data\Categories\Php\Php8Features;
+use Database\Seeders\Data\Categories\Php\Psr;
 use Database\Seeders\Data\Categories\Php\Regex;
+use Database\Seeders\Data\Categories\Php\Sessions;
 use Database\Seeders\Data\Categories\Php\Strings;
-use Database\Seeders\Data\Categories\Php\Types;
+use Database\Seeders\Data\Categories\Php\Symfony;
+use Database\Seeders\Data\Categories\Php\Testing;
 use Database\Seeders\Data\Categories\Php\TypeIn;
+use Database\Seeders\Data\Categories\Php\Types;
 
 class PhpQuestions
 {
@@ -41,6 +46,11 @@ class PhpQuestions
             Types::all(),
             Php8Features::all(),
             ComposerAutoload::all(),
+            Sessions::all(),
+            Psr::all(),
+            Symfony::all(),
+            Testing::all(),
+            Algorithms::all(),
             BasicQa::all(),
             Cloze::all(),
             TypeIn::all(),
