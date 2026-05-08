@@ -84,6 +84,20 @@ public function run(): void {
                 'difficulty' => 2,
                 'topic' => 'laravel.migrations_seeders',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как в фабрике создать модель с дочерними записями и пивотом, не вызывая save вручную?',
+                'answer' => 'Используйте методы has/for/hasAttached фабрики: User::factory()->has(Post::factory()->count(3))->create() создаст юзера с тремя постами, а ->hasAttached(Role::factory()->count(2), ["assigned_at" => now()]) добавит связи через pivot c дополнительными колонками. Метод for описывает обратную сторону belongsTo. Так фабрика сама разруливает foreign keys и pivot-таблицу.',
+                'difficulty' => 3,
+                'topic' => 'laravel.migrations_seeders',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Чем команда artisan migrate:status отличается от migrate:rollback и зачем нужен squash?',
+                'answer' => 'migrate:status показывает таблицу пройденных и непройденных миграций со столбцом batch, ничего не меняя в БД. migrate:rollback откатывает последний batch (или N batches при --step). schema:dump --prune (squash) сворачивает все старые миграции в один SQL-снапшот в database/schema, чтобы свежая install-миграция не прогоняла сотни файлов и стартовала из дампа.',
+                'difficulty' => 3,
+                'topic' => 'laravel.migrations_seeders',
+            ],
         ];
     }
 }

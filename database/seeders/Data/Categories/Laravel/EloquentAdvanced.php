@@ -633,6 +633,20 @@ foreach (User::query()->where(...)->toBase()->cursor() as $row) {
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_advanced',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что делает withTrashed, onlyTrashed и restore при использовании SoftDeletes?',
+                'answer' => 'По умолчанию глобальный scope SoftDeletingScope скрывает записи с непустым deleted_at. withTrashed() включает их в выборку, onlyTrashed() возвращает только удалённые. restore() обнуляет deleted_at, а forceDelete() удаляет физически, минуя soft delete и вызывая событие forceDeleted.',
+                'difficulty' => 2,
+                'topic' => 'laravel.eloquent_advanced',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что нужно учитывать при выборе движка Scout: database, MeiliSearch, Algolia, Typesense?',
+                'answer' => 'database-драйвер хорош для прототипа и небольших коллекций — это просто LIKE по индексам, без релевантности. MeiliSearch и Typesense — self-hosted поисковые движки с морфологией и быстрым индексированием. Algolia — SaaS с очень хорошим ранжированием, но платный и оффшорный (PII). Выбор зависит от объёма данных, требований к релевантности, бюджета и compliance-ограничений на хранение данных у внешнего вендора.',
+                'difficulty' => 4,
+                'topic' => 'laravel.eloquent_advanced',
+            ],
         ];
     }
 }

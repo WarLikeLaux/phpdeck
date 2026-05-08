@@ -250,6 +250,41 @@ class TokenTest extends TestCase
                 'difficulty' => 3,
                 'topic' => 'laravel.testing',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как замокать фасад в тесте и почему это вообще возможно?',
+                'answer' => 'Фасад — это прокси к биндингу в контейнере, и у его базового класса есть метод swap/shouldReceive, подменяющий реальный объект Mockery-моком. Cache::shouldReceive("get")->andReturn(...) ставит мок в контейнер на ключе фасада, и любой код, дергающий Cache::get внутри запроса, попадёт в мок. После теста фасады очищаются автоматически в TestCase.',
+                'difficulty' => 3,
+                'topic' => 'laravel.testing',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Laravel Dusk и для чего он используется?',
+                'answer' => 'Dusk — пакет для end-to-end (browser) тестирования Laravel-приложений. Использует ChromeDriver и реальный браузер для эмуляции пользовательских действий: клики, ввод, ожидание элементов, проверки видимости. В отличие от HTTP-тестов, Dusk умеет тестировать JavaScript-интерфейсы (Livewire, Vue, React) и не требует самостоятельной установки Selenium/JDK.',
+                'difficulty' => 2,
+                'topic' => 'laravel.testing',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Сравните Laravel Telescope и Laravel Pulse.',
+                'answer' => 'Telescope — детальный отладочный инструмент для dev/staging: показывает каждый отдельный запрос, исключение, SQL, job, mail, cache-операцию, почти как трассировка. Pulse — лёгкий мониторинг для продакшена в реальном времени: агрегаты по медленным маршрутам, медленным запросам, нагрузке серверов, активным пользователям. Telescope на проде дорог по записи и месту, Pulse наоборот спроектирован для prod.',
+                'difficulty' => 3,
+                'topic' => 'laravel.testing',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Почему Laravel Telescope не рекомендуется держать включённым на продакшене?',
+                'answer' => 'Telescope пишет каждое событие (запрос, query, job, exception, mail) в отдельную таблицу telescope_entries — на нагруженном проде это быстро раздувает БД и тормозит запросы. Также записи содержат payload запросов и могут стать утечкой PII. На проде включают только при необходимости, ограничивают через TelescopeServiceProvider::filter и регулярно запускают telescope:prune; для постоянного мониторинга используют Pulse.',
+                'difficulty' => 4,
+                'topic' => 'laravel.testing',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Laravel Debugbar и стоит ли использовать его в продакшене?',
+                'answer' => 'Debugbar (barryvdh/laravel-debugbar) — community-пакет, выводящий панель внизу страницы со временем запросов, SQL, route-инфой, view-данными, событиями. Используется в локальной разработке: его подключают через app.debug=true и APP_ENV=local. На продакшене включать нельзя — он замедляет приложение, раскрывает структуру и может выдать SQL и переменные окружения наружу.',
+                'difficulty' => 2,
+                'topic' => 'laravel.testing',
+            ],
         ];
     }
 }

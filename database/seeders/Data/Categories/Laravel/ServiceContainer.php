@@ -125,6 +125,13 @@ $this->app->when(AdminController::class)
                 'difficulty' => 4,
                 'topic' => 'laravel.service_container',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'В чём разница между app(Foo::class), resolve(Foo::class) и App::make(Foo::class)?',
+                'answer' => 'Все три в итоге зовут Container::make и эквивалентны по результату — возвращают разрешённый из контейнера экземпляр. resolve() — это просто хелпер-обёртка над app(), а App — фасад того же контейнера. Разница чисто стилистическая; для передачи параметров в конструктор используется второй аргумент: app(Foo::class, ["id" => 5]).',
+                'difficulty' => 2,
+                'topic' => 'laravel.service_container',
+            ],
         ];
     }
 }

@@ -181,6 +181,13 @@ class WelcomeNotification extends Notification {
                 'difficulty' => 3,
                 'topic' => 'laravel.routing',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что произойдёт, если вложенная route-группа задаёт middleware и prefix, которые уже есть у внешней?',
+                'answer' => 'Атрибуты не перезаписываются, а мерджатся: prefix конкатенируется ("api" + "v1" -> "api/v1"), middleware и where-ограничения объединяются в массив, name-prefix также склеивается через точку. Поэтому admin внутри api/v1 даст префикс api/v1/admin и сумму всех middleware. Это поведение задаётся в RouteGroup::merge.',
+                'difficulty' => 3,
+                'topic' => 'laravel.routing',
+            ],
         ];
     }
 }

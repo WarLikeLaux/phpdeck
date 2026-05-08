@@ -103,6 +103,20 @@ defineProps({ users: Array })
                 'difficulty' => 3,
                 'topic' => 'laravel.inertia_frontend',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что делают директивы @once и @verbatim в Blade?',
+                'answer' => '@once гарантирует, что блок отрендерится только при первом включении этого фрагмента в рамках одного ответа — удобно для пушей JS/CSS из @push внутри компонента, который повторяется. @verbatim отключает интерпретацию {{ }} и @-директив внутри блока, что нужно для Vue/Alpine, использующих такой же синтаксис, без эскейпа каждой фигурной скобки.',
+                'difficulty' => 2,
+                'topic' => 'laravel.inertia_frontend',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Laravel Volt и как он связан с Livewire?',
+                'answer' => 'Volt — single-file API для Livewire-компонентов: класс компонента и Blade-шаблон описываются в одном .blade.php-файле через функции state(), computed(), mount(). Это синтаксический сахар поверх обычного Livewire — рендерится тот же компонент. Удобен для небольших страниц и связки с Folio, для крупных компонентов часто оставляют классический class-based подход.',
+                'difficulty' => 3,
+                'topic' => 'laravel.inertia_frontend',
+            ],
         ];
     }
 }

@@ -25,6 +25,20 @@ php artisan storage:link',
                 'difficulty' => 2,
                 'topic' => 'laravel.storage_files',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Spatie Media Library и какие её возможности?',
+                'answer' => 'Spatie Media Library — пакет для прикрепления файлов и изображений к Eloquent-моделям. Модель использует трейт InteractsWithMedia, файлы заливаются через addMedia()->toMediaCollection(), хранятся на любом filesystem disk. Поддерживает media collections, конверсии (thumbnails, resize) через image-driver и ответственный URL-генератор. Снимает с разработчика ручную работу с file-storage и таблицами медиа.',
+                'difficulty' => 3,
+                'topic' => 'laravel.storage_files',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Spatie Laravel-Backup и для чего он применяется?',
+                'answer' => 'Spatie Laravel-Backup — пакет для регулярного бэкапа приложения: дампит указанные базы (mysqldump/pg_dump), архивирует выбранные директории, заливает на любой filesystem disk (S3, Dropbox, локально). Поддерживает шифрование, ротацию по возрасту/размеру и health-check уведомления в почту/Slack. Запускается артизан-командой backup:run и обычно ставится в schedule.',
+                'difficulty' => 3,
+                'topic' => 'laravel.storage_files',
+            ],
         ];
     }
 }

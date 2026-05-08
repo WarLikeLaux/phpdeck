@@ -128,6 +128,55 @@ axios.defaults.headers.common[\'X-CSRF-TOKEN\'] =
                 'difficulty' => 3,
                 'topic' => 'laravel.auth_authorization',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'В чём практическая разница между auth middleware и Authentication Guard?',
+                'answer' => 'Guard — это стратегия идентификации пользователя (session, token, sanctum) и определяется в config/auth.php; он отвечает за вопрос "кто этот пользователь". Middleware auth:web проверяет, что guard "web" вернул пользователя, и иначе бросает AuthenticationException, редиректя на login. Guard можно использовать без middleware (Auth::guard("api")->user()), а middleware всегда работает поверх какого-то guard.',
+                'difficulty' => 3,
+                'topic' => 'laravel.auth_authorization',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Laravel Breeze и для чего он нужен?',
+                'answer' => 'Breeze — минимальный стартовый набор, который ставит готовую аутентификацию: вход, регистрацию, сброс пароля, подтверждение email и пароля. Поставляется в вариантах Blade, Livewire, Inertia+Vue, Inertia+React и API-only. В отличие от Jetstream, Breeze осознанно простой и подходит как стартовая точка для проектов без 2FA и команд.',
+                'difficulty' => 2,
+                'topic' => 'laravel.auth_authorization',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Laravel Jetstream и чем он отличается от Breeze?',
+                'answer' => 'Jetstream — продвинутый стартовый набор поверх Sanctum с двухфакторной аутентификацией, управлением сессиями браузера, профилем пользователя, API-токенами и опциональными командами (teams). Bыбирается стек Livewire или Inertia. Breeze значительно проще и не тянет 2FA/команды — Jetstream берут, когда нужны фичи из коробки, иначе Breeze.',
+                'difficulty' => 2,
+                'topic' => 'laravel.auth_authorization',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Laravel Socialite и через каких провайдеров он умеет логинить?',
+                'answer' => 'Socialite — официальный пакет для OAuth-аутентификации через сторонних провайдеров. Из коробки поддерживает Facebook, Twitter/X, Google, LinkedIn, GitHub, GitLab, Bitbucket и Slack. Дополнительные провайдеры подключаются через Socialite Providers (community-репозиторий). Скрывает детали OAuth2-flow за выразительным фасадом Socialite::driver()->redirect()/user().',
+                'difficulty' => 2,
+                'topic' => 'laravel.auth_authorization',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Spatie Laravel-Permission и какую задачу он решает?',
+                'answer' => 'Spatie Laravel-Permission — самый популярный community-пакет для ролей и разрешений в Laravel. Добавляет трейты HasRoles и HasPermissions модели User, таблицы roles, permissions, model_has_roles, кэширует разрешения и интегрируется с Gate/Policy через canAny, hasRole, hasPermissionTo. Поддерживает множественные guards и teams для мультиарендных приложений.',
+                'difficulty' => 3,
+                'topic' => 'laravel.auth_authorization',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Laravel Passport и когда его выбирают вместо Sanctum?',
+                'answer' => 'Passport — официальный пакет для полноценного OAuth2-сервера на Laravel: authorization code, password grant (deprecated), client credentials, personal access tokens, refresh tokens. Тяжелее Sanctum, требует таблицы клиентов и хранимых ключей. Берут, когда нужно стать OAuth2-провайдером для сторонних приложений; для собственных SPA и мобильных клиентов хватает Sanctum.',
+                'difficulty' => 3,
+                'topic' => 'laravel.auth_authorization',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Laravel Fortify и как он связан с Breeze и Jetstream?',
+                'answer' => 'Fortify — backend-агностик аутентификации без UI: реализует роуты и контроллеры для логина, регистрации, сброса пароля, 2FA, подтверждения email. Jetstream использует Fortify под капотом, добавляя сверху Livewire/Inertia-вьюхи. Breeze, наоборот, не использует Fortify и идёт со своим набором контроллеров. Fortify выбирают, когда нужна готовая логика аутентификации, но UI пишется самостоятельно (например, для headless API).',
+                'difficulty' => 3,
+                'topic' => 'laravel.auth_authorization',
+            ],
         ];
     }
 }

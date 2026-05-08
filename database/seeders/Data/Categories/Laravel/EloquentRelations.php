@@ -105,6 +105,13 @@ $user->teams->first()->pivot->isOwner();',
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_relations',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как withPivot и using помогают работать с дополнительными колонками belongsToMany?',
+                'answer' => 'По умолчанию pivot достаёт только ключи, и добавочные колонки вроде assigned_at не попадают в $user->roles[0]->pivot. withPivot("assigned_at","role_type") включает их в выборку, а using(RoleUser::class) подменяет дефолтный Pivot на свою модель — это даёт касты, события и кастомные методы на pivot-записи. Без using касты и accessors игнорируются.',
+                'difficulty' => 3,
+                'topic' => 'laravel.eloquent_relations',
+            ],
         ];
     }
 }
