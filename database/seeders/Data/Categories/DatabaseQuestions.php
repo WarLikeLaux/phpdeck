@@ -7,6 +7,7 @@ use Database\Seeders\Data\Categories\Database\BasicConcepts;
 use Database\Seeders\Data\Categories\Database\BasicQa;
 use Database\Seeders\Data\Categories\Database\Cloze;
 use Database\Seeders\Data\Categories\Database\Distributed;
+use Database\Seeders\Data\Categories\Database\Elasticsearch;
 use Database\Seeders\Data\Categories\Database\Indexes;
 use Database\Seeders\Data\Categories\Database\InfrastructureBackup;
 use Database\Seeders\Data\Categories\Database\Mysql;
@@ -36,6 +37,7 @@ class DatabaseQuestions
             Postgresql::all(),
             Mysql::all(),
             Nosql::all(),
+            Elasticsearch::all(),
             Distributed::all(),
             InfrastructureBackup::all(),
             Partitioning::all(),
