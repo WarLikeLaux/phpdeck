@@ -7,6 +7,7 @@ use Database\Seeders\Data\Categories\Oop\AnemicVsRich;
 use Database\Seeders\Data\Categories\Oop\Assemble;
 use Database\Seeders\Data\Categories\Oop\BasicConcepts;
 use Database\Seeders\Data\Categories\Oop\BasicQa;
+use Database\Seeders\Data\Categories\Oop\CleanCode;
 use Database\Seeders\Data\Categories\Oop\Cloze;
 use Database\Seeders\Data\Categories\Oop\CompositionVsInheritance;
 use Database\Seeders\Data\Categories\Oop\ConstructorDestructor;
@@ -50,6 +51,7 @@ class OopQuestions
             AnemicVsRich::all(),
             CouplingCohesion::all(),
             Misc::all(),
+            CleanCode::all(),
             BasicQa::all(),
             Cloze::all(),
             Assemble::all(),
