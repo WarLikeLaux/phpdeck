@@ -4,9 +4,6 @@ namespace Database\Seeders\Data\Categories\SystemDesign;
 
 class Caching
 {
-    /**
-     * @return array<int, array{category: string, question: string, answer: string, code_example: ?string, code_language: ?string, difficulty: int, topic: string}>
-     */
     public static function all(): array
     {
         return [
@@ -26,8 +23,6 @@ $user = Cache::remember("user:$id", 3600, function () use ($id) {
                 'category' => 'Архитектура систем',
                 'question' => 'Какие уровни кэширования бывают в веб-приложении?',
                 'answer' => 'Слои кэша от клиента к БД: 1) Browser cache (Cache-Control в headers), 2) CDN (статика близко к пользователю), 3) Reverse proxy cache (Nginx, Varnish), 4) Application cache (Redis, Memcached), 5) ORM/query cache (внутри ORM), 6) Database buffer pool (внутри БД). Принцип: чем ближе к пользователю, тем быстрее, но меньше данных можно хранить.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.caching',
             ],
@@ -52,8 +47,6 @@ function getUser(int $id): User {
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое write-through стратегия кэша?',
                 'answer' => 'Write-through - на запись приложение/кэш-прослойка пишет одновременно (синхронно) и в кэш, и в БД; ответ возвращается только после успешной записи в оба слоя. Это про путь ЗАПИСИ. Путь ЧТЕНИЯ - отдельный паттерн (read-through или cache-aside): они часто комбинируются, но это разные стратегии. Плюсы write-through: кэш не отстаёт от БД на штатном пути записи, не нужно ловить инвалидацию. Минусы: запись медленнее (два последовательных I/O); кэш заполняется только тем, что записывали (cold reads пойдут в БД, если read-through не настроен). Stale-данные всё ещё возможны при сбоях между шагами (запись в кэш прошла, в БД упала и наоборот), при асинхронной репликации БД, при гонках с другими записями - "нет stale data" - слишком сильное заявление, гарантия "штатно консистентен", не "никогда не отстаёт". Подходит когда чтение во много раз чаще записи и важна свежесть кэша по штатному пути.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.caching',
             ],
@@ -61,8 +54,6 @@ function getUser(int $id): User {
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое read-through стратегия кэша?',
                 'answer' => 'Read-through - кэш сам читает из БД при промахе, приложение всегда обращается только к кэшу. В отличие от cache-aside, где промахом управляет код приложения, здесь логика загрузки спрятана внутрь кэш-провайдера/библиотеки. Плюсы: код приложения проще, единая точка работы с данными. Минусы: первый запрос всегда медленный (cache miss), нужна готовая интеграция кэша с источником. Часто комбинируется с write-through. Пример: Hibernate 2nd-level cache, Ehcache CacheLoader, AWS DAX перед DynamoDB.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.caching',
             ],
@@ -70,8 +61,6 @@ function getUser(int $id): User {
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое write-behind (write-back) стратегия кэша?',
                 'answer' => 'Write-behind - запись только в кэш, в БД асинхронно через некоторое время или батчем. Простыми словами: записал в блокнот, в большую тетрадь перепишу позже. Самая быстрая запись. Минусы: в наивной реализации (in-memory only) при падении кэша теряются ещё не сброшенные данные; production-решения (Caffeine + RDBMS, Hazelcast WriteBehind) добавляют WAL/persistence. Сложнее реализовать. Подходит для счётчиков, метрик, логов - где небольшая потеря не катастрофа.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'system_design.caching',
             ],
@@ -79,8 +68,6 @@ function getUser(int $id): User {
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое write-around стратегия кэша?',
                 'answer' => 'Write-around - запись идёт сразу в БД минуя кэш, кэш заполняется только при чтении. Плюсы: не засоряем кэш редко читаемыми данными, простая запись. Минусы: первое чтение после записи всегда медленное (cache miss). Хорошо когда записи много, а читается малая часть данных (логи событий, аудит).',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.caching',
             ],
@@ -116,8 +103,6 @@ if ($value === null) {
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое CDN простыми словами?',
                 'answer' => 'CDN (Content Delivery Network) - сеть серверов по всему миру, которые хранят копии твоих статичных файлов (картинки, JS, CSS) близко к пользователям. Простыми словами: твой сайт в Москве, а пользователь в Токио - вместо запроса через полпланеты, ему отдают файл с сервера CDN в Токио. Уменьшает latency, разгружает origin, защищает от DDoS. Примеры: Cloudflare, Fastly, AWS CloudFront, Akamai.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 2,
                 'topic' => 'system_design.caching',
             ],
@@ -125,8 +110,6 @@ if ($value === null) {
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между Redis и Memcached?',
                 'answer' => 'Memcached - чистый in-memory key/value кэш: только строки/блобы, multi-threaded, очень простой и предсказуемый, slab-аллокатор, нет персистентности и репликации (в open-source). Redis - data structure server: строки, hashes, lists, sets, sorted sets, streams, bitmap, HyperLogLog, geo; есть Lua-скрипты, pub/sub, транзакции, persistence (RDB/AOF), репликация и Cluster, single-threaded I/O loop (Redis 6+ имеет multi-threaded I/O). Когда что: Memcached - когда нужен только LRU-кэш и шардирование клиентом; Redis - когда нужны структуры (rate limit на sorted set, очереди, leaderboards), persistence или replication.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.caching',
             ],
@@ -134,8 +117,6 @@ if ($value === null) {
                 'category' => 'Архитектура систем',
                 'question' => 'Почему cache invalidation - это сложно?',
                 'answer' => 'Знаменитая цитата: "There are only two hard things in CS: cache invalidation and naming things". Сложно потому что: 1) трудно понять когда именно данные устарели, 2) одно изменение в БД может затронуть много ключей кэша, 3) в распределённой системе инвалидация сама требует консистентности, 4) баланс между актуальностью и производительностью. Решения: TTL, версионирование ключей (etag), tag-based invalidation, событийная инвалидация.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.caching',
             ],

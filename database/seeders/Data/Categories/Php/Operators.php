@@ -94,6 +94,43 @@ $config["timeout"] ??= 30; // если не задано, поставить 30'
                 'difficulty' => 2,
                 'topic' => 'php.operators',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Чем отличается isset, empty и is_null?',
+                'answer' => 'isset($x) - true если переменная существует и не null; не выдаёт Warning, даже если переменной нет. empty($x) - true если переменной нет или её значение falsy ("", 0, "0", null, [], false); тоже не выдаёт Warning. is_null($x) и сравнение $x === null - проверяют именно равенство null, но ОБА выдадут Warning: Undefined variable, если переменная не объявлена (PHP 8+). То есть для безопасной проверки "существует ли вообще" - только isset/empty; is_null и === null применяй когда уверен, что переменная объявлена. Для массивов: isset($arr["key"]) даёт false если значение null - чтобы отличить "нет ключа" от "ключ есть, но null", используй array_key_exists.',
+                'code_example' => '<?php
+$a = null;
+$b = "";
+$c = 0;
+$d = "0";
+$e = "hello";
+
+var_dump(isset($a)); // false (null)
+var_dump(isset($b)); // true ("")
+
+var_dump(empty($a)); // true
+var_dump(empty($b)); // true ("")
+var_dump(empty($c)); // true (0)
+var_dump(empty($d)); // true ("0" - тоже falsy!)
+var_dump(empty($e)); // false
+
+var_dump(is_null($a)); // true
+
+// Массив с null
+$arr = ["key" => null];
+var_dump(isset($arr["key"]));            // false
+var_dump(array_key_exists("key", $arr)); // true',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'php.operators',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Чем отличается == от === и какие сюрпризы бывают на нестрогом сравнении в PHP 8+?',
+                'answer' => '=== сравнивает тип и значение, == выполняет приведение типов. В PHP 8 поведение string vs number стало строже: "abc" == 0 теперь false (раньше true). "1abc" == 1 теперь тоже false (нечисловая строка). Но "10" == "1e1" по-прежнему true (обе — числовые строки). Для null-safety и иммутабельности используйте ===, а для чисел - int-cast или явное приведение. Сравнение объектов по == проверяет класс и поля, а === - идентичность ссылки.',
+                'difficulty' => 3,
+                'topic' => 'php.operators',
+            ],
         ];
     }
 }

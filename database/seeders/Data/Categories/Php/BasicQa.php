@@ -9,6 +9,41 @@ class BasicQa
         return [
             [
                 'category' => 'PHP',
+                'question' => 'Чем отличается print_r от var_dump и var_export?',
+                'answer' => 'var_dump показывает тип и значение, удобен для отладки сложных вложенных структур. print_r выводит в "читаемом" виде, без типов. var_export выводит в виде ВАЛИДНОГО PHP-кода (подходит для генерации файлов конфигурации). Все три могут вернуть строку вместо вывода (вторым параметром true). На проде используй логирование, не вывод в браузер.',
+                'code_example' => '<?php
+$data = ["name" => "Иван", "age" => 30, "admin" => true];
+
+var_dump($data);
+// array(3) {
+//   ["name"]=> string(4) "Иван"
+//   ["age"]=> int(30)
+//   ["admin"]=> bool(true)
+// }
+
+print_r($data);
+// Array (
+//     [name] => Иван
+//     [age] => 30
+//     [admin] => 1
+// )
+
+var_export($data);
+// array (
+//   "name" => "Иван",
+//   "age" => 30,
+//   "admin" => true,
+// )
+
+// Получить как строку
+$str = print_r($data, true);
+$str = var_export($data, true);',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'php.basic_qa',
+            ],
+            [
+                'category' => 'PHP',
                 'question' => 'В чём разница между == и === в PHP?',
                 'answer' => '== сравнивает значения с приведением типов, === сравнивает значения и типы строго без приведения.',
                 'difficulty' => 2,

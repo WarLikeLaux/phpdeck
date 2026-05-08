@@ -123,7 +123,7 @@ class FileLogger implements Logger, Formatter {
         $this->log("[ERROR] $message");
     }
     public function format(string $message): string {
-        return "[" . date("Y-m-d") . "] $message\n";
+        return "[" . date("Y-m-d") . "] $message\\n";
     }
 }
 
@@ -185,7 +185,7 @@ trait Timestampable {
 
 trait Loggable {
     public function log(string $msg): void {
-        echo "[" . static::class . "] $msg\n";
+        echo "[" . static::class . "] $msg\\n";
     }
 }
 
@@ -321,6 +321,337 @@ echo $user->email; // i@i.ru',
                 'question' => 'Что даёт модификатор final у promoted-свойств в PHP 8.5?',
                 'answer' => 'В 8.5 свойство, объявленное через constructor property promotion, можно пометить как final, например public final string $id. Это запрещает наследникам переопределять данное свойство (в сочетании с property hooks, которые в 8.4 ввели понятие переопределяемого свойства). Семантически близко к readonly, но фиксирует именно «не переопределяй в подклассе», а не «не пиши после инициализации».',
                 'difficulty' => 4,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое Reflection в PHP?',
+                'answer' => 'Reflection - API для интроспекции кода в рантайме: получить информацию о классах, методах, свойствах, параметрах. Простыми словами: код, который анализирует другой код. Используется фреймворками для DI-контейнеров, ORM, сериализаторов, тестов. Основные классы: ReflectionClass, ReflectionMethod, ReflectionProperty, ReflectionParameter, ReflectionAttribute (PHP 8). С PHP 8.1 setAccessible() стал deprecated/no-op — Reflection даёт доступ к private/protected свойствам и методам по умолчанию. Минус - медленнее прямых вызовов.',
+                'code_example' => '<?php
+class User {
+    public function __construct(
+        public string $name,
+        private int $age,
+    ) {}
+    public function greet(): string { return "Hi, $this->name"; }
+}
+
+$ref = new ReflectionClass(User::class);
+echo $ref->getName(); // "User"
+
+foreach ($ref->getProperties() as $prop) {
+    echo $prop->getName() . "\\n";
+}
+
+$ctor = $ref->getConstructor();
+foreach ($ctor->getParameters() as $p) {
+    echo $p->getName() . ": " . $p->getType() . "\\n";
+}
+
+// Создать через рефлексию
+$user = $ref->newInstance("Иван", 30);
+
+// Доступ к private
+$ageProp = $ref->getProperty("age");
+echo $ageProp->getValue($user);',
+                'code_language' => 'php',
+                'difficulty' => 4,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое late static binding и зачем нужен static вместо self?',
+                'answer' => 'Late static binding (LSB) - механизм, когда static:: ссылается на класс, в котором был ВЫЗВАН метод, а не на тот, где он объявлен. self:: всегда ссылается на класс объявления. Простыми словами: static подстраивается под наследников, self - нет. Критично для фабричных методов в родительских классах: с static новые подклассы автоматически получают правильное поведение.',
+                'code_example' => '<?php
+class Model {
+    public static function create(): self {
+        return new self();   // всегда Model
+    }
+    public static function createStatic(): static {
+        return new static(); // тот класс, что вызвал
+    }
+}
+
+class User extends Model {}
+
+$a = User::create();        // Model!
+$b = User::createStatic();  // User
+
+var_dump($a instanceof User); // false
+var_dump($b instanceof User); // true',
+                'code_language' => 'php',
+                'difficulty' => 4,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое Dependency Injection в PHP?',
+                'answer' => 'DI (внедрение зависимостей) - паттерн, когда зависимости класса передаются ему ИЗВНЕ (через конструктор/сеттер), а не создаются внутри. Простыми словами: класс не сам делает new Logger(), а получает готовый Logger через параметр. Плюсы: легче тестировать (подменить мок), легче менять реализации, явные зависимости. DI-контейнер автоматизирует создание объектов с зависимостями.',
+                'code_example' => '<?php
+// ПЛОХО - hard-coded зависимость
+class UserService {
+    private Logger $logger;
+    public function __construct() {
+        $this->logger = new FileLogger(); // нельзя подменить!
+    }
+}
+
+// ХОРОШО - DI через конструктор
+class UserService {
+    public function __construct(
+        private LoggerInterface $logger,
+        private UserRepository $repo,
+    ) {}
+
+    public function create(string $name): User {
+        $user = $this->repo->create($name);
+        $this->logger->log("created $name");
+        return $user;
+    }
+}
+
+// В тестах легко подменить
+$service = new UserService($mockLogger, $mockRepo);',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Расскажи о принципах SOLID в PHP-контексте.',
+                'answer' => 'S - Single Responsibility: один класс - одна причина для изменения. O - Open/Closed: класс открыт для расширения (через композицию, наследование, стратегию), закрыт для модификации. L - Liskov: подклассы должны быть взаимозаменяемы с родителем. I - Interface Segregation: лучше много мелких интерфейсов, чем один "толстый". D - Dependency Inversion: завись от абстракций (интерфейсов), не от конкретных классов. Все принципы про управление сложностью и переиспользование.',
+                'code_example' => '<?php
+// SRP - класс User не должен сам себя в БД сохранять
+class User { /* данные */ }
+class UserRepository {
+    public function save(User $user): void {}
+}
+
+// OCP - расширяем через стратегию, не правим класс
+interface Discount {
+    public function calc(float $price): float;
+}
+class NewYearDiscount implements Discount {}
+class BlackFridayDiscount implements Discount {}
+
+// DIP - зависим от интерфейса
+class Order {
+    public function __construct(
+        private PaymentGateway $gateway, // интерфейс!
+    ) {}
+}',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое Iterator и IteratorAggregate?',
+                'answer' => 'Iterator - интерфейс, который надо реализовать чтобы объект работал в foreach. Методы: rewind, valid, current, key, next. IteratorAggregate проще - нужно только реализовать getIterator(), возвращающий любой Iterator (часто - ArrayIterator). Plus Generator: метод getIterator() может быть генератором (yield). Это делает обход коллекций ленивым и кастомным.',
+                'code_example' => '<?php
+// Через IteratorAggregate + Generator
+class Collection implements IteratorAggregate {
+    public function __construct(private array $items) {}
+
+    public function getIterator(): Generator {
+        foreach ($this->items as $key => $value) {
+            yield $key => $value;
+        }
+    }
+}
+
+$c = new Collection(["a", "b", "c"]);
+foreach ($c as $item) {
+    echo $item;
+}
+
+// Полный Iterator
+class Range implements Iterator {
+    private int $current;
+    public function __construct(private int $start, private int $end) {
+        $this->current = $start;
+    }
+    public function rewind(): void { $this->current = $this->start; }
+    public function valid(): bool { return $this->current <= $this->end; }
+    public function current(): int { return $this->current; }
+    public function key(): int { return $this->current - $this->start; }
+    public function next(): void { $this->current++; }
+}',
+                'code_language' => 'php',
+                'difficulty' => 4,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое ArrayAccess и Countable?',
+                'answer' => 'ArrayAccess - интерфейс позволяющий обращаться с объектом как с массивом через []. Методы: offsetExists, offsetGet, offsetSet, offsetUnset. Countable - чтобы count($obj) работал, реализуй метод count(). Вместе с Iterator/IteratorAggregate позволяют создать класс-коллекцию, неотличимый от массива в использовании. Laravel Collection - яркий пример.',
+                'code_example' => '<?php
+class Bag implements ArrayAccess, Countable, IteratorAggregate {
+    public function __construct(private array $items = []) {}
+
+    public function offsetExists(mixed $offset): bool {
+        return isset($this->items[$offset]);
+    }
+    public function offsetGet(mixed $offset): mixed {
+        return $this->items[$offset] ?? null;
+    }
+    public function offsetSet(mixed $offset, mixed $value): void {
+        if ($offset === null) $this->items[] = $value;
+        else $this->items[$offset] = $value;
+    }
+    public function offsetUnset(mixed $offset): void {
+        unset($this->items[$offset]);
+    }
+    public function count(): int {
+        return count($this->items);
+    }
+    public function getIterator(): ArrayIterator {
+        return new ArrayIterator($this->items);
+    }
+}
+
+$bag = new Bag(["a", "b"]);
+$bag[] = "c";
+echo count($bag);   // 3
+echo $bag[0];       // "a"',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое stdClass в PHP?',
+                'answer' => 'stdClass - встроенный пустой класс PHP. Используется как контейнер для произвольных свойств. Когда json_decode без второго параметра возвращает объект - это stdClass. Также получается при касте массива в (object). Полей и методов своих нет, можно динамически добавлять любые свойства. Не путать с (object) или ArrayObject.',
+                'code_example' => '<?php
+// Создание
+$obj = new stdClass();
+$obj->name = "Иван";
+$obj->age = 30;
+
+// Из массива
+$obj = (object) ["name" => "Иван", "age" => 30];
+echo $obj->name;
+
+// Из JSON
+$obj = json_decode("{\\"name\\":\\"Иван\\"}");
+echo $obj->name;
+
+// Обратно в массив
+$arr = (array) $obj;
+print_r($arr); // ["name" => "Иван"]',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как сравнивать объекты в PHP?',
+                'answer' => 'Оператор == (нестрогое): объекты равны если они одного класса и все свойства равны (рекурсивно). Оператор === (строгое): должны быть тот же экземпляр (один объект, не разные с одинаковыми свойствами). Для кастомного сравнения - реализуй метод equals() в классе. Не путать с clone - там создаётся новый объект.',
+                'code_example' => '<?php
+class Point {
+    public function __construct(
+        public int $x,
+        public int $y,
+    ) {}
+
+    public function equals(Point $other): bool {
+        return $this->x === $other->x && $this->y === $other->y;
+    }
+}
+
+$a = new Point(1, 2);
+$b = new Point(1, 2);
+$c = $a;
+
+var_dump($a == $b);   // true (поля равны)
+var_dump($a === $b);  // false (разные экземпляры)
+var_dump($a === $c);  // true (тот же экземпляр)
+
+var_dump($a->equals($b)); // true',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Зачем нужны readonly-свойства и readonly-классы (PHP 8.2) и какие у них ограничения?',
+                'answer' => 'readonly-свойство можно инициализировать один раз изнутри объявившего класса (обычно в конструкторе, но строго это "первая запись из scope класса", а не только из конструктора). После первой записи переписать его снаружи или из наследника нельзя - Error. readonly-класс (PHP 8.2+) делает все нестатические свойства readonly автоматически. Это даёт иммутабельные DTO/value objects без бойлерплейта геттеров. Ограничения: нельзя static-свойства, нельзя дефолтные значения у типизированных readonly-свойств. Про клонирование: до PHP 8.3 clone не позволял переписать readonly на копии, использовали wither (return new self(...)); с PHP 8.3 (RFC "readonly amendments") readonly-свойства можно reinitialize СТРОГО внутри тела магического метода __clone() того класса, где они объявлены - вне __clone() запись по-прежнему Error. Полезно это для глубокого клонирования вложенных readonly-объектов и сброса кешированного state на копии; для классических wither-ов new self(...) остаётся каноном.',
+                'code_example' => '<?php
+final readonly class Money {
+    public function __construct(
+        public int $amount,
+        public string $currency,
+    ) {}
+}
+$m = new Money(100, "USD");
+// $m->amount = 200; // Error',
+                'code_language' => 'php',
+                'difficulty' => 4,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'В чём разница между WeakMap, WeakReference и SplObjectStorage?',
+                'answer' => 'SplObjectStorage хранит сильные ссылки - объект-ключ не освободится, пока хранилище живёт. WeakReference (PHP 7.4) - обёртка, не препятствующая GC, get() вернёт null после уборки. WeakMap (PHP 8.0) - ассоциативный массив со слабыми ключами: при удалении объекта запись исчезает автоматически. Используется для кэшей и метаданных, привязанных к объекту, без утечек.',
+                'code_example' => '<?php
+$cache = new WeakMap();
+$user = new stdClass();
+$cache[$user] = "expensive_payload";
+unset($user);             // запись из WeakMap уйдёт автоматически',
+                'code_language' => 'php',
+                'difficulty' => 4,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Приведи практический пример утечки памяти, которую решает WeakMap',
+                'answer' => 'Классический сценарий - кеширование вычисленных метаданных по объекту в долгоживущем процессе (Octane, queue:work, ReactPHP). Например, EventDispatcher запоминает прав доступа для каждого Request/User, чтобы не ходить в БД повторно при каждом fired event. Если кеш - обычный array со spl_object_id($user) или SplObjectStorage в качестве ключа, то ссылка на $user в кеше СИЛЬНАЯ: даже когда обработчик запроса завершён и нигде в коде $user больше не нужен, refcount остаётся > 0 - объект не освобождается, и через 100k запросов память кончается. С WeakMap ключ - слабая ссылка: как только закончился запрос и кончились сильные ссылки на $user, GC уничтожит и объект, и автоматически уберёт запись из WeakMap. Это правильный инструмент для "side-table" данных: метаданных, прав, ленивых вычислений, observer-паттерна (слушатели не должны мешать GC своих субъектов). Аналогичная проблема в JS: WeakMap используется для приватных полей и DOM-метаданных по той же причине.',
+                'code_example' => '<?php
+// ❌ УТЕЧКА в long-running процессе
+class PermissionCacheBad
+{
+    private array $cache = []; // массив с object_id ключами
+
+    public function for(User $user): array
+    {
+        $id = spl_object_id($user);
+        return $this->cache[$id] ??= $this->compute($user);
+        // ⚠️ $this->compute($user) может содержать $user
+        // или ссылки на него - сильная ссылка остаётся в $cache
+    }
+}
+
+// после 100k запросов:
+// memory_get_usage() = 1 GB, OOM
+
+// ✅ Без утечки благодаря WeakMap
+class PermissionCacheGood
+{
+    private WeakMap $cache;
+
+    public function __construct() { $this->cache = new WeakMap(); }
+
+    public function for(User $user): array
+    {
+        return $this->cache[$user] ??= $this->compute($user);
+    }
+}
+
+// $user из текущего запроса попадает в WeakMap;
+// когда контроллер вернул response и $user вышел из scope,
+// GC удаляет объект И запись из WeakMap - память стабильна.
+
+// Реальный кейс: Symfony EventDispatcher, Doctrine UnitOfWork,
+// Laravel Octane кешируют метаданные именно через WeakMap',
+                'code_language' => 'php',
+                'difficulty' => 4,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что произойдёт при new ClassName(...) для класса с конструктором, объявленным как private?',
+                'answer' => 'Получите Error: Call to private ClassName::__construct(). Такой паттерн используется для именованных конструкторов и Singleton: класс предоставляет статические фабричные методы (fromArray, fromString), которые внутри вызывают new self(). Это позволяет инкапсулировать инвариант построения и иметь несколько способов создания с осмысленными именами.',
+                'difficulty' => 3,
                 'topic' => 'php.oop',
             ],
         ];

@@ -87,7 +87,7 @@ function processData(Logger $logger) {
 // Передаём анонимный класс
 processData(new class implements Logger {
     public function log(string $msg): void {
-        echo "LOG: $msg\n";
+        echo "LOG: $msg\\n";
     }
 });
 
@@ -101,6 +101,13 @@ $mock = new class extends BaseRepo implements Storable {
     public function save(): void { /* мок */ }
 };',
                 'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'php.closures',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое first-class callable syntax (PHP 8.1) и зачем он нужен?',
+                'answer' => 'Синтаксис $fn = strlen(...) или $obj->method(...) создаёт Closure из функции/метода без строкового имени. По сравнению со старым [$obj, "method"] и "strlen" - типобезопасно, поддерживает рефакторинг IDE, и, что важно, ловит ошибки опечаток на этапе компиляции. Удобно для array_map, pipeline и DI-резолверов.',
                 'difficulty' => 3,
                 'topic' => 'php.closures',
             ],

@@ -4,9 +4,6 @@ namespace Database\Seeders\Data\Categories\Database;
 
 class Optimization
 {
-    /**
-     * @return array<int, array{category: string, question: string, answer: string, code_example?: ?string, code_language?: ?string, difficulty?: int, topic?: string}>
-     */
     public static function all(): array
     {
         return [
@@ -14,15 +11,13 @@ class Optimization
                 'category' => 'Базы данных',
                 'question' => 'Что такое EXPLAIN и EXPLAIN ANALYZE?',
                 'answer' => 'EXPLAIN показывает план выполнения запроса - как БД будет его выполнять (какие индексы, JOIN-ы, сортировки). EXPLAIN ANALYZE дополнительно реально выполняет запрос и показывает фактическое время и количество строк. Главное смотреть: тип scan (Seq/Index), оценочные vs реальные строки, самые дорогие узлы.',
-                'code_example' => <<<'SQL'
-EXPLAIN SELECT * FROM users WHERE email = 'ivan@mail.ru';
+                'code_example' => 'EXPLAIN SELECT * FROM users WHERE email = \'ivan@mail.ru\';
 
 EXPLAIN ANALYZE
 SELECT u.name, COUNT(o.id)
 FROM users u
 LEFT JOIN orders o ON o.user_id = u.id
-GROUP BY u.name;
-SQL,
+GROUP BY u.name;',
                 'code_language' => 'sql',
                 'difficulty' => 4,
                 'topic' => 'database.optimization',
@@ -31,8 +26,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое Nested Loop, Hash Join, Merge Join?',
                 'answer' => 'Это три алгоритма JOIN. Nested Loop: для каждой строки слева ищем подходящие справа (хорошо когда слева мало строк и есть индекс справа). Hash Join: строим хэш-таблицу из правой стороны и для каждой левой ищем в хэше O(1) (хорошо для больших таблиц без индексов). Merge Join: обе стороны должны быть отсортированы по ключу JOIN, идём слиянием как при merge sort (хорошо для уже отсортированных данных). Планировщик сам выбирает.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.optimization',
             ],
@@ -40,8 +33,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Когда стоит добавлять индекс?',
                 'answer' => 'Добавлять индекс стоит, когда: столбец часто в WHERE/JOIN/ORDER BY и таблица большая; запрос медленный, EXPLAIN показывает Seq Scan; столбец имеет высокую cardinality; чтений намного больше записей. НЕ стоит: маленькие таблицы (<1000 строк), очень частые INSERT/UPDATE, низкая селективность фильтра.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'database.optimization',
             ],
@@ -49,8 +40,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Почему слишком много индексов - это плохо?',
                 'answer' => 'Каждый индекс: занимает место на диске, замедляет INSERT/UPDATE/DELETE (БД должна обновлять все индексы), увеличивает время бэкапов, может запутать планировщик и привести к выбору не самого быстрого. Правило: индексируй только то, что реально часто запрашивается. Удаляй неиспользуемые индексы (в PG: pg_stat_user_indexes).',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'database.optimization',
             ],
@@ -58,16 +47,14 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'OFFSET vs Keyset (cursor) пагинация - что лучше?',
                 'answer' => 'OFFSET-пагинация: LIMIT 20 OFFSET 10000. Минусы: БД сканирует и отбрасывает все 10000 пропускаемых строк - очень медленно на больших таблицах (стоимость растёт с глубиной OFFSET). Keyset (cursor) пагинация: запоминаем последний ключ предыдущей страницы и фильтруем WHERE id > last_id. Преимущество: стоимость не зависит от глубины OFFSET - при подходящем индексе это index seek + чтение LIMIT строк (~O(log N + page_size); не O(1), как часто пишут, но стабильно на любой глубине). Минус: нельзя "перейти на страницу 50", только next/prev; при ORDER BY по неуникальному полю нужен составной курсор (sort_col, id) для tiebreaker, иначе пропуски/дубли.',
-                'code_example' => <<<'SQL'
--- OFFSET (медленно на глубине)
+                'code_example' => '-- OFFSET (медленно на глубине)
 SELECT * FROM articles ORDER BY id LIMIT 20 OFFSET 10000;
 
 -- Keyset (быстро всегда)
 SELECT * FROM articles
 WHERE id > 12345  -- last id с прошлой страницы
 ORDER BY id
-LIMIT 20;
-SQL,
+LIMIT 20;',
                 'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.optimization',
@@ -76,25 +63,23 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое N+1 проблема и как её решать?',
                 'answer' => 'N+1 - проблема ORM, когда для получения N записей делается 1 запрос на список + N запросов на связанные данные. Например, 100 пользователей -> 1 + 100 = 101 запрос. Решение: eager loading (Eloquent: with(), JPA: JOIN FETCH), JOIN-ы вручную, dataloader (для GraphQL). В Laravel: User::with("posts")->get() вместо ->get() + загрузка $user->posts по требованию.',
-                'code_example' => <<<'PHP'
-// Плохо: N+1 (1 запрос users + N запросов posts)
+                'code_example' => '// Плохо: N+1 (1 запрос users + N запросов posts)
 $users = User::all();
 foreach ($users as $user) {
     echo $user->posts->count(); // ленивая загрузка posts на каждой итерации
 }
 
 // Хорошо: eager loading (всего 2 запроса)
-$users = User::with('posts')->get();
+$users = User::with(\'posts\')->get();
 foreach ($users as $user) {
     echo $user->posts->count(); // posts уже загружены, count() по коллекции
 }
 
 // Ещё лучше для счётчиков: withCount (один запрос с подзапросом)
-$users = User::withCount('posts')->get();
+$users = User::withCount(\'posts\')->get();
 foreach ($users as $user) {
     echo $user->posts_count;
-}
-PHP,
+}',
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'database.optimization',
@@ -202,6 +187,44 @@ EXPLAIN FORMAT=TREE SELECT * FROM users WHERE email = ?;
                 'category' => 'Базы данных',
                 'question' => 'Зачем нужен ANALYZE TABLE и чем он отличается от EXPLAIN?',
                 'answer' => 'ANALYZE TABLE пересчитывает статистику распределения значений в индексах: cardinality, гистограммы, плотность ключей. На основе этой статистики оптимизатор решает, какой индекс использовать и в каком порядке соединять таблицы. EXPLAIN, наоборот, ничего не пересчитывает — он только показывает план для конкретного запроса. Если после массовой загрузки или DELETE планы выглядят странно ("оптимизатор берёт ALL вместо очевидного индекса"), часто помогает именно ANALYZE TABLE. EXPLAIN ANALYZE — отдельная команда MySQL 8, она выполняет запрос и показывает фактические времена и количества строк рядом с оценками.',
+                'difficulty' => 3,
+                'topic' => 'database.optimization',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Как читать вывод EXPLAIN ANALYZE в PostgreSQL и какие признаки плохого плана?',
+                'answer' => 'EXPLAIN показывает план; ANALYZE реально выполняет запрос и добавляет actual time, rows, loops. Тревожные признаки: Seq Scan по большой таблице с селективным WHERE (нет индекса), резкое расхождение rows-estimate vs actual (плохая статистика, нужен ANALYZE), Nested Loop с большим внешним циклом (надо Hash Join), Sort с внешним диском (work_mem мал), Bitmap Heap Scan + Recheck Cond (lossy). Используют BUFFERS для shared hit/read.',
+                'code_example' => 'EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
+SELECT u.id, COUNT(o.id)
+FROM users u JOIN orders o ON o.user_id = u.id
+WHERE u.created_at > NOW() - INTERVAL \'30 days\'
+GROUP BY u.id;',
+                'code_language' => 'sql',
+                'difficulty' => 4,
+                'topic' => 'database.optimization',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Как устроен оптимизатор запросов и что такое статистики?',
+                'answer' => 'Оптимизатор перебирает планы и оценивает стоимость через cost-based модель. Статистики (pg_statistic, ANALYZE) дают cardinality для столбцов: гистограммы, MCV, n_distinct. На их основе оценивается selectivity предикатов и размер промежуточных наборов. Если статистики устарели или коррелированные предикаты - план кривой. Решения: ANALYZE, увеличить default_statistics_target, CREATE STATISTICS для функциональных зависимостей.',
+                'code_example' => '-- multivariate statistics для коррелированных колонок
+CREATE STATISTICS orders_corr (dependencies)
+ON status, payment_method FROM orders;
+ANALYZE orders;',
+                'code_language' => 'sql',
+                'difficulty' => 5,
+                'topic' => 'database.optimization',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Как реализовать поиск с пагинацией без OFFSET и почему OFFSET плохой?',
+                'answer' => 'OFFSET N сканирует и отбрасывает первые N строк - стоимость линейная, на 10-й странице запрос медленнее, чем на 1-й, при том же limit. Keyset (cursor) пагинация использует значение последней увиденной строки в WHERE и ORDER BY: WHERE (created_at, id) < (:last_at, :last_id). Стоимость стабильна и низкая при индексе на (created_at, id). Минус - нельзя прыгнуть на конкретную страницу, только next/prev.',
+                'code_example' => '-- keyset pagination
+SELECT id, title, created_at FROM posts
+WHERE (created_at, id) < (:cursor_at, :cursor_id)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.optimization',
             ],

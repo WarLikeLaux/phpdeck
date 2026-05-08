@@ -4,9 +4,6 @@ namespace Database\Seeders\Data\Categories\Database;
 
 class TransactionsAcid
 {
-    /**
-     * @return array<int, array{category: string, question: string, answer: string, code_example?: ?string, code_language?: ?string, difficulty?: int, topic?: string}>
-     */
     public static function all(): array
     {
         return [
@@ -14,8 +11,7 @@ class TransactionsAcid
                 'category' => 'Базы данных',
                 'question' => 'Что такое транзакция?',
                 'answer' => 'Транзакция - это группа операций над БД, выполняющаяся как единое целое: либо все операции применяются, либо ни одна (откат). Управляется командами BEGIN/START TRANSACTION, COMMIT, ROLLBACK. Классический пример: перевод денег - надо снять с одного счёта и зачислить на другой; если упадёт между, без транзакции деньги исчезнут.',
-                'code_example' => <<<'SQL'
-BEGIN;
+                'code_example' => 'BEGIN;
 
 UPDATE accounts SET balance = balance - 100 WHERE id = 1;
 UPDATE accounts SET balance = balance + 100 WHERE id = 2;
@@ -23,8 +19,7 @@ UPDATE accounts SET balance = balance + 100 WHERE id = 2;
 -- Если всё ок:
 COMMIT;
 -- Если ошибка:
--- ROLLBACK;
-SQL,
+-- ROLLBACK;',
                 'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.transactions_acid',
@@ -33,8 +28,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое ACID?',
                 'answer' => 'ACID - набор свойств транзакций: Atomicity (атомарность), Consistency (согласованность), Isolation (изолированность), Durability (долговечность). Обеспечивает, что транзакции выполняются надёжно. Реляционные БД (PostgreSQL, MySQL/InnoDB) гарантируют ACID, многие NoSQL - нет.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
             ],
@@ -42,8 +35,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'A в ACID - что такое Atomicity (атомарность)?',
                 'answer' => 'Атомарность означает: транзакция выполняется целиком или не выполняется вообще. Промежуточных состояний нет. Если в середине что-то падает, БД откатывает все уже сделанные изменения транзакции. Простыми словами: всё или ничего, как нажатие одной кнопки.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 2,
                 'topic' => 'database.transactions_acid',
             ],
@@ -51,8 +42,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'C в ACID - что такое Consistency (согласованность)?',
                 'answer' => 'Consistency: транзакция сохраняет инварианты приложения — после COMMIT БД находится в логически корректном состоянии. БД помогает проверить декларативные ограничения (PK, FK, CHECK, NOT NULL, UNIQUE) и откатывает транзакцию, если они нарушены, но сами инварианты определяет разработчик: например, "сумма счётов сохраняется при переводе" никаким CHECK/FK не выразить, эту логику пишут в коде транзакции. Поэтому C в ACID — самая "слабая" и прикладная буква, которая в значительной части дублирует A+I плюс прикладную логику.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 2,
                 'topic' => 'database.transactions_acid',
             ],
@@ -60,12 +49,10 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'I в ACID - что такое Isolation (изолированность)?',
                 'answer' => 'Изолированность: параллельные транзакции не "мешают" друг другу - результат как будто они выполняются последовательно. Степень изоляции настраивается уровнями (READ COMMITTED, REPEATABLE READ, SERIALIZABLE). Чем строже - тем безопаснее, но медленнее.',
-                'code_example' => <<<'SQL'
-SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+                'code_example' => 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 BEGIN;
 -- ...
-COMMIT;
-SQL,
+COMMIT;',
                 'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
@@ -74,8 +61,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'D в ACID - что такое Durability (долговечность)?',
                 'answer' => 'Долговечность: после COMMIT изменения сохранены навсегда, даже если сервер сразу упадёт. БД пишет изменения в журнал (WAL/redo log) на диск перед подтверждением. Простыми словами: COMMIT прошёл - значит, данные точно не пропадут.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 2,
                 'topic' => 'database.transactions_acid',
             ],
@@ -83,15 +68,13 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Какие бывают уровни изоляции транзакций?',
                 'answer' => '4 стандартных уровня по SQL и аномалии, которые они допускают: READ UNCOMMITTED - dirty/non-repeatable/phantom; READ COMMITTED - non-repeatable/phantom; REPEATABLE READ - phantom (по стандарту); SERIALIZABLE - ничего. Особенности: PostgreSQL не реализует READ UNCOMMITTED (минимум READ COMMITTED), а в его REPEATABLE READ (snapshot isolation) фантомы тоже не возникают, но возможен write skew. InnoDB на REPEATABLE READ блокирует фантомы через gap-locks. SERIALIZABLE в PG реализован через SSI (Serializable Snapshot Isolation) и может откатывать транзакции с ошибкой serialization_failure.',
-                'code_example' => <<<'SQL'
--- Таблица аномалий по стандарту SQL
+                'code_example' => '-- Таблица аномалий по стандарту SQL
 -- Уровень           | Dirty | NonRepeat | Phantom
 -- READ UNCOMMITTED  |   +   |    +      |    +
 -- READ COMMITTED    |   -   |    +      |    +
 -- REPEATABLE READ   |   -   |    -      |    +
 -- SERIALIZABLE      |   -   |    -      |    -
-SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-SQL,
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;',
                 'code_language' => 'sql',
                 'difficulty' => 4,
                 'topic' => 'database.transactions_acid',
@@ -100,16 +83,14 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое Lost Update (потерянное обновление)?',
                 'answer' => 'Lost Update - аномалия, когда две транзакции читают одно значение, обе модифицируют и пишут, и обновление одной перезаписывает другое - изменение "теряется". Пример: T1 и T2 читают balance=100, T1 пишет 90 (-10), T2 пишет 80 (-20), вместо ожидаемых 70. Защита: SERIALIZABLE; SELECT FOR UPDATE перед UPDATE; атомарный UPDATE с выражением (UPDATE accounts SET balance = balance - 10); оптимистическая блокировка через version-столбец.',
-                'code_example' => <<<'SQL'
--- Атомарное обновление - безопасно
+                'code_example' => '-- Атомарное обновление - безопасно
 UPDATE accounts SET balance = balance - 10 WHERE id = 1;
 
 -- Оптимистическая блокировка
 UPDATE products
 SET price = 99, version = version + 1
 WHERE id = 1 AND version = 5;
--- если 0 строк изменено - кто-то опередил, ретраим
-SQL,
+-- если 0 строк изменено - кто-то опередил, ретраим',
                 'code_language' => 'sql',
                 'difficulty' => 4,
                 'topic' => 'database.transactions_acid',
@@ -118,8 +99,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое Dirty Read (грязное чтение)?',
                 'answer' => 'Грязное чтение - транзакция читает данные, изменённые другой ещё незакоммиченной транзакцией. Если та откатится - мы прочитали "несуществующие" данные. Случается на уровне READ UNCOMMITTED. PostgreSQL вообще не допускает грязного чтения, минимальный уровень - READ COMMITTED.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.transactions_acid',
             ],
@@ -127,8 +106,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое Non-repeatable Read?',
                 'answer' => 'Неповторяемое чтение - в рамках одной транзакции мы читаем строку дважды и получаем разные значения, потому что между чтениями другая транзакция её обновила и закоммитила. Случается на READ COMMITTED. Решается уровнем REPEATABLE READ или выше.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.transactions_acid',
             ],
@@ -136,8 +113,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое Phantom Read (фантомное чтение)?',
                 'answer' => 'Фантомное чтение - в одной транзакции мы выполняем один и тот же запрос (SELECT WHERE) дважды и получаем разное количество строк, потому что другая транзакция вставила/удалила подходящие. Решается уровнем SERIALIZABLE. В PostgreSQL REPEATABLE READ уже защищает от фантомов (snapshot-уровень).',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.transactions_acid',
             ],
@@ -145,8 +120,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое Write Skew?',
                 'answer' => 'Write Skew - аномалия, когда две транзакции читают одни и те же данные, принимают решения, и пишут разные строки, нарушая бизнес-инвариант. Пример: правило "хотя бы один врач на смене", обе транзакции читают, видят что есть двое, и обе уходят с дежурства. Решается на уровне SERIALIZABLE или явными блокировками SELECT FOR UPDATE.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 5,
                 'topic' => 'database.transactions_acid',
             ],
@@ -154,8 +127,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое блокировки (locks)?',
                 'answer' => 'Блокировки - механизм, который не даёт нескольким транзакциям одновременно изменять одни и те же данные. Бывают: shared (S, разделяемая) - для чтения, exclusive (X) - для записи. Гранулярность: row-level (PG, InnoDB), table-level (LOCK TABLES в MySQL, ACCESS EXCLUSIVE в PG), page-level (исторически SQL Server, DB2; в MySQL/InnoDB и PG как пользовательский режим отсутствует, остаются только внутренние latch-и страниц). Также бывают advisory (явные пользовательские блокировки по ключу).',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
             ],
@@ -163,8 +134,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Чем отличаются shared lock и exclusive lock?',
                 'answer' => 'Shared (S) - "читать можно, писать нельзя". Несколько транзакций могут одновременно держать S на одной строке. Exclusive (X) - блокирует другие S и X на этом ресурсе, захватывается при UPDATE/DELETE. Важный нюанс: в PostgreSQL и других MVCC-СУБД row-level X-lock НЕ блокирует обычные SELECT (читатели видят прежний снапшот) - блокируются только UPDATE/DELETE/SELECT FOR UPDATE/SHARE. S и X между собой несовместимы. Это базовая модель совместимости блокировок.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
             ],
@@ -172,13 +141,11 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что делает SELECT FOR UPDATE?',
                 'answer' => 'SELECT FOR UPDATE захватывает exclusive-блокировку на выбранные строки до конца транзакции. Другие транзакции, пытающиеся обновить или взять FOR UPDATE те же строки, будут ждать. Используется, когда мы прочитали данные и собираемся обновить, и не хотим, чтобы кто-то изменил их между.',
-                'code_example' => <<<'SQL'
-BEGIN;
+                'code_example' => 'BEGIN;
 SELECT * FROM accounts WHERE id = 1 FOR UPDATE;
 -- никто другой не может изменить эту строку
 UPDATE accounts SET balance = balance - 100 WHERE id = 1;
-COMMIT;
-SQL,
+COMMIT;',
                 'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
@@ -187,12 +154,10 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что делает SELECT FOR SHARE?',
                 'answer' => 'SELECT FOR SHARE (или FOR SHARE / LOCK IN SHARE MODE в MySQL) берёт shared-lock на строки. Другие транзакции могут читать (тоже FOR SHARE), но не могут изменять, пока наша транзакция не завершится. Полезно, когда мы хотим гарантировать, что данные не изменятся, пока мы их используем (например, для проверки FK вручную).',
-                'code_example' => <<<'SQL'
-BEGIN;
+                'code_example' => 'BEGIN;
 SELECT * FROM products WHERE id = 1 FOR SHARE;
 -- другие могут читать, но не апдейтить
-COMMIT;
-SQL,
+COMMIT;',
                 'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
@@ -201,15 +166,13 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое advisory lock?',
                 'answer' => 'Advisory lock (рекомендательная блокировка) - блокировка по произвольному ключу (числу), не привязана к строкам. БД не использует её для своей логики - её смысл задаёт приложение. Удобно для распределённых cron-задач, очередей, координации между процессами. В PostgreSQL: pg_advisory_lock(key).',
-                'code_example' => <<<'SQL'
--- Заблокировать "что-то" с ключом 42
+                'code_example' => '-- Заблокировать "что-то" с ключом 42
 SELECT pg_advisory_lock(42);
 -- ... критическая секция ...
 SELECT pg_advisory_unlock(42);
 
 -- Транзакционный вариант, отпустится сам
-SELECT pg_advisory_xact_lock(42);
-SQL,
+SELECT pg_advisory_xact_lock(42);',
                 'code_language' => 'sql',
                 'difficulty' => 4,
                 'topic' => 'database.transactions_acid',
@@ -218,8 +181,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое Deadlock и как его избегать?',
                 'answer' => 'Deadlock (взаимная блокировка) - ситуация, когда транзакция A ждёт ресурс, удерживаемый B, а B ждёт ресурс, удерживаемый A. БД сама обнаруживает deadlock и убивает одну из транзакций (откатывая её). Простыми словами: два человека пытаются разойтись в узком коридоре и не могут. Как избегать: всегда захватывать блокировки в одинаковом порядке, держать транзакции короткими, использовать SELECT FOR UPDATE NOWAIT/SKIP LOCKED, ретраить откатившиеся транзакции.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.transactions_acid',
             ],
@@ -227,8 +188,6 @@ SQL,
                 'category' => 'Базы данных',
                 'question' => 'Что такое MVCC простыми словами?',
                 'answer' => 'MVCC (Multi-Version Concurrency Control) - механизм, при котором при изменении строки в таблице создаётся её новая версия, а старая ещё какое-то время живёт для других транзакций. Простыми словами: вместо того чтобы переписывать строку поверх, БД оставляет старый вариант для тех, кто уже начал читать. Поэтому "читатели не блокируют писателей и наоборот". PostgreSQL и Oracle используют MVCC. Минус: накапливаются мёртвые версии (bloat), нужен VACUUM.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.transactions_acid',
             ],
@@ -333,6 +292,58 @@ DB::update("UPDATE accounts SET balance = balance - ?
                 'question' => 'Когда стоит использовать Redis-локи вместо встроенных блокировок SQL?',
                 'answer' => 'Redis уместен для координационных задач, не связанных с консистентностью данных: rate limiting (счётчики с TTL), circuit breakers, выбор лидера для cron, дедупликация на короткое окно. SQL-блокировки выигрывают, когда речь о целостности данных в самой БД: уникальные ключи, FOR UPDATE на строке, CHECK-ограничения работают атомарно с COMMIT и не имеют проблем с истечением TTL посреди транзакции. Распределённый Redis-лок (Redlock) ещё и не даёт строгих гарантий при сбоях узлов. Принцип: защищать данные внутри БД средствами БД, а Redis использовать там, где БД нет (между сервисами) или где допустим eventual consistency.',
                 'difficulty' => 4,
+                'topic' => 'database.transactions_acid',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Объясните уровни изоляции и какие аномалии каждый предотвращает.',
+                'answer' => 'READ UNCOMMITTED - допускает dirty read. READ COMMITTED - нет dirty, но возможны non-repeatable read и phantom. REPEATABLE READ - устраняет non-repeatable; в PostgreSQL (snapshot isolation) фантомы тоже исключены - остаётся только write skew / serialization anomalies; в MySQL InnoDB фантомы исключены за счёт MVCC для consistent reads и за счёт next-key/gap locks для locking reads. SERIALIZABLE - полная сериализуемость, в Postgres через SSI с rollback при конфликте (serialization_failure 40001), в InnoDB - через range/gap locks. Write skew отлавливается только на Serializable.',
+                'code_example' => '-- write skew пример
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+SELECT SUM(on_call) FROM doctors WHERE shift = \'night\';
+-- если >=2, можно уйти
+UPDATE doctors SET on_call = false WHERE id = 1;
+COMMIT; -- может откатиться при serialization_failure',
+                'code_language' => 'sql',
+                'difficulty' => 5,
+                'topic' => 'database.transactions_acid',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Как работает MVCC в PostgreSQL и зачем нужен VACUUM?',
+                'answer' => 'MVCC: каждое UPDATE/DELETE не меняет строку, а создаёт новую версию с xmin (transaction id создания) и xmax (id удаления). Транзакции видят только версии с подходящим xmin/xmax относительно своего snapshot. Старые tuple остаются в таблице как "мертвые" - bloat. VACUUM маркирует их свободными для переиспользования; VACUUM FULL переписывает таблицу. Autovacuum триггерится по threshold; параметры autovacuum_vacuum_scale_factor нужно тюнить для горячих таблиц.',
+                'code_example' => '-- увидеть bloat
+SELECT relname, n_dead_tup, n_live_tup, last_autovacuum
+FROM pg_stat_user_tables
+ORDER BY n_dead_tup DESC LIMIT 10;',
+                'code_language' => 'sql',
+                'difficulty' => 5,
+                'topic' => 'database.transactions_acid',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что такое deadlock и как его диагностировать?',
+                'answer' => 'Deadlock - циклическое ожидание блокировок между транзакциями: T1 держит A, ждёт B; T2 держит B, ждёт A. БД детектирует цикл и убивает одну транзакцию (deadlock_timeout). Профилактика: блокировать ресурсы в одинаковом порядке (отсортировать ID), уменьшать длительность транзакций, использовать SELECT ... FOR UPDATE NOWAIT/SKIP LOCKED, индексировать колонки в WHERE при UPDATE. В Postgres логи показывают полные query обоих участников.',
+                'code_example' => '-- симметричный порядок блокировок
+SELECT * FROM accounts WHERE id IN (:a, :b)
+ORDER BY id FOR UPDATE;
+-- теперь обе транзакции лочат A раньше B',
+                'code_language' => 'sql',
+                'difficulty' => 4,
+                'topic' => 'database.transactions_acid',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что такое write skew и приведите пример из реального приложения.',
+                'answer' => 'Write skew - две транзакции читают пересекающийся набор строк, принимают решение на основе snapshot и пишут разные строки, нарушая инвариант. Классический пример: дежурство врачей. Две транзакции видят, что дежурят 2 человека, и одновременно "уходят домой" - оба отметят off-call, нарушив правило "минимум один". REPEATABLE READ не ловит write skew, нужен SERIALIZABLE или SELECT FOR UPDATE на конфликтующие строки.',
+                'code_example' => '-- защита через SELECT FOR UPDATE
+BEGIN;
+SELECT count(*) FROM doctors WHERE on_call = true FOR UPDATE;
+-- если > 1, можно отключиться
+UPDATE doctors SET on_call = false WHERE id = :me;
+COMMIT;',
+                'code_language' => 'sql',
+                'difficulty' => 5,
                 'topic' => 'database.transactions_acid',
             ],
         ];

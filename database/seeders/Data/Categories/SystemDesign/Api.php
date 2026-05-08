@@ -4,9 +4,6 @@ namespace Database\Seeders\Data\Categories\SystemDesign;
 
 class Api
 {
-    /**
-     * @return array<int, array{category: string, question: string, answer: string, code_example: ?string, code_language: ?string, difficulty: int, topic: string}>
-     */
     public static function all(): array
     {
         return [
@@ -28,8 +25,6 @@ DELETE /api/users/42    - удалить',
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между REST, GraphQL и gRPC?',
                 'answer' => 'REST - HTTP + JSON, ресурсо-ориентированный, клиент берёт всё что отдаёт endpoint, кэшируется штатно через HTTP-кэш по URL. GraphQL - один POST-endpoint, клиент в запросе указывает какие поля нужны (нет over/under-fetching), сильная типизация через SDL; стандартный HTTP-кэш по умолчанию НЕ работает (запросы POST с телом-JSON), но через Persisted Queries / APQ можно превратить в GET /graphql?hash=... и кешировать по hash в CDN/Varnish/browser-cache (см. отдельную карточку про архитектурные проблемы GraphQL). gRPC - HTTP/2 + Protocol Buffers, бинарный, формально 4 типа RPC (unary + три стриминга: server-, client-, bidirectional), контракт через .proto, кодогенерация на 11+ языков. Выбор: REST - публичный API и CRUD, GraphQL - богатый UI с разными view, gRPC - межсервисное общение с низкой задержкой и стримингом.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.api',
             ],
@@ -92,8 +87,6 @@ Link: </api/v3/users>; rel="successor-version"',
                 'category' => 'Архитектура систем',
                 'question' => 'Какие HTTP методы идемпотентны?',
                 'answer' => 'Идемпотентные по RFC 9110: GET, HEAD, PUT, DELETE, OPTIONS, TRACE - повторный вызов даёт тот же эффект на сервере, что и один. Не идемпотентен: POST - каждый вызов создаёт новый ресурс. PATCH по RFC 5789 не является идемпотентным по умолчанию, но может быть определён как идемпотентный конкретной семантикой (например, замена поля). Безопасные (read-only, не меняют состояние): GET, HEAD, OPTIONS, TRACE. Идемпотентность важна для retry: при таймауте/502 можно безопасно повторить запрос; для POST используют Idempotency-Key.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.api',
             ],
@@ -101,8 +94,6 @@ Link: </api/v3/users>; rel="successor-version"',
                 'category' => 'Архитектура систем',
                 'question' => 'Что означают основные HTTP статус-коды?',
                 'answer' => '2xx Success: 200 OK (общий успех), 201 Created (создано), 204 No Content (успех без тела). 3xx Redirect: 301 Moved Permanently, 302 Found, 304 Not Modified. 4xx Client error: 400 Bad Request, 401 Unauthorized (не аутентифицирован), 403 Forbidden (нет прав), 404 Not Found, 409 Conflict, 422 Unprocessable Entity (валидация), 429 Too Many Requests. 5xx Server error: 500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 2,
                 'topic' => 'system_design.api',
             ],
@@ -110,8 +101,6 @@ Link: </api/v3/users>; rel="successor-version"',
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое WebSockets и для чего нужны?',
                 'answer' => 'WebSocket - протокол двунаправленной связи между клиентом и сервером поверх одного TCP-соединения. Простыми словами: телефонный разговор вместо отправки писем (HTTP). После handshake канал остаётся открытым, обе стороны могут слать сообщения в любой момент. Используется для чатов, real-time уведомлений, онлайн-игр, торговых платформ, совместного редактирования. В Laravel - Reverb, Pusher, Soketi.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.api',
             ],
@@ -179,8 +168,6 @@ SELECT * FROM posts WHERE id < 12345 ORDER BY id DESC LIMIT 20;
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между WebSocket, SSE, long polling?',
                 'answer' => 'Long polling - клиент шлёт запрос, сервер держит его до появления данных, потом отвечает, клиент сразу шлёт новый. Имитирует реалтайм через HTTP. SSE (Server-Sent Events) - односторонний канал сервер→клиент через HTTP, проще WebSocket, не работает в обратную сторону. WebSocket - полноценный двунаправленный канал. Для чата лучше WebSocket, для уведомлений хватает SSE, long polling - старый fallback.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.api',
             ],

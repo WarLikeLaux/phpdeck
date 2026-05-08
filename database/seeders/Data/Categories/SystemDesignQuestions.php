@@ -15,20 +15,20 @@ use Database\Seeders\Data\Categories\SystemDesign\Security;
 class SystemDesignQuestions
 {
     /**
-     * @return array<int, array{category: string, question: string, answer: string, code_example: ?string, code_language: ?string, difficulty: int, topic: string}>
+     * @return array<int, array{category: string, question: string, answer: string, code_example?: ?string, code_language?: ?string, cloze_text?: ?string, short_answer?: ?string, assemble_chunks?: ?array<int, string>, difficulty?: int, topic?: string}>
      */
     public static function all(): array
     {
         return array_merge(
+            Api::all(),
             Architecture::all(),
             Caching::all(),
-            MessagingQueues::all(),
-            Distributed::all(),
-            Api::all(),
-            Security::all(),
-            Performance::all(),
-            Devops::all(),
             DesignTasks::all(),
+            Devops::all(),
+            Distributed::all(),
+            MessagingQueues::all(),
+            Performance::all(),
+            Security::all(),
         );
     }
 }

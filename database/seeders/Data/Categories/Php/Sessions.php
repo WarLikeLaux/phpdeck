@@ -9,6 +9,51 @@ class Sessions
         return [
             [
                 'category' => 'PHP',
+                'question' => 'Как работают сессии в PHP?',
+                'answer' => 'Сессия - механизм хранения данных пользователя между запросами. session_start() инициализирует/восстанавливает сессию. Данные хранятся в $_SESSION (суперглобальный массив). PHP создаёт уникальный session_id и сохраняет его в куку (PHPSESSID). Сами данные хранятся на сервере (по умолчанию в файлах /tmp). Можно настроить хранилище: Redis, Memcached, БД.',
+                'code_example' => '<?php
+session_start();
+
+$_SESSION["user_id"] = 42;
+$_SESSION["cart"] = ["item1", "item2"];
+
+// В другом запросе
+session_start();
+echo $_SESSION["user_id"]; // 42
+
+unset($_SESSION["cart"]);
+session_destroy();
+
+// Регенерация ID при логине - защита от fixation
+session_regenerate_id(true);',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'php.sessions',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как работают cookies в PHP?',
+                'answer' => 'Cookie - небольшие данные, хранимые в браузере и посылаемые с каждым запросом. Установка через setcookie() ДО любого вывода (это HTTP-заголовок). Чтение через $_COOKIE. Параметры: expires, path, domain, secure (только HTTPS), httponly (недоступен JS), samesite (Strict/Lax/None - защита от CSRF). С PHP 7.3 принимает массив опций.',
+                'code_example' => '<?php
+setcookie("user", "Иван", [
+    "expires" => time() + 3600,
+    "path" => "/",
+    "domain" => "example.com",
+    "secure" => true,
+    "httponly" => true,
+    "samesite" => "Strict",
+]);
+
+echo $_COOKIE["user"] ?? "guest";
+
+// Удалить
+setcookie("user", "", time() - 3600);',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'php.sessions',
+            ],
+            [
+                'category' => 'PHP',
                 'question' => 'Какова роль cookie PHPSESSID в работе сессий?',
                 'answer' => 'PHPSESSID — это HTTP-кука, которая хранит на клиенте только идентификатор сессии, а не сами данные. При первом session_start() PHP генерирует ID и шлёт его в Set-Cookie, а на следующих запросах браузер возвращает эту куку, и сервер по ID находит данные сессии в своём хранилище. То есть кука работает как «ключ от шкафчика», сами вещи лежат на сервере.',
                 'difficulty' => 2,

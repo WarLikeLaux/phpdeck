@@ -4,9 +4,6 @@ namespace Database\Seeders\Data\Categories\Database;
 
 class Distributed
 {
-    /**
-     * @return array<int, array{category: string, question: string, answer: string, code_example?: ?string, code_language?: ?string, difficulty?: int, topic?: string}>
-     */
     public static function all(): array
     {
         return [
@@ -14,8 +11,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'Что такое шардирование (sharding) простыми словами?',
                 'answer' => 'Шардирование - это разделение одной большой базы данных на несколько маленьких частей (шардов), которые хранятся на разных серверах. Простыми словами: представь огромный торт, который нельзя съесть одному - его разрезают на куски и раздают друзьям. Каждый сервер (кусок торта) хранит свою часть данных. Это позволяет масштабировать БД горизонтально - больше серверов = больше места и пропускной способности. Минусы: сложнее запросы между шардами, ребалансировка, нет глобальных JOIN-ов.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.distributed',
             ],
@@ -23,8 +18,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'Какие есть стратегии шардирования?',
                 'answer' => '1) Range-шардинг: по диапазону ключа (id 1-1M на shard1, 1M-2M на shard2). Просто, но "горячие" диапазоны. 2) Hash: hash(ключ) % N - равномерно, но при добавлении шарда ребалансируется почти всё. 3) Consistent hashing: хеш-кольцо, при добавлении/удалении шарда переезжает только 1/N данных. 4) Directory-based: отдельный сервис-маппер ключ -> шард, гибко но единая точка отказа.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 5,
                 'topic' => 'database.distributed',
             ],
@@ -32,8 +25,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'Что такое consistent hashing простыми словами?',
                 'answer' => 'Consistent hashing - способ распределять ключи между серверами так, чтобы при добавлении или удалении сервера переезжало только небольшое количество ключей. Представь круг (хеш-кольцо), на нём расставлены сервера и ключи (по их хэшу). Каждый ключ "идёт" по кольцу к ближайшему серверу. Если убрать один сервер, его ключи перейдут к следующему - остальные не двигаются. Используется в DynamoDB, Cassandra, memcached.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 5,
                 'topic' => 'database.distributed',
             ],
@@ -41,8 +32,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'Что такое репликация (replication) простыми словами?',
                 'answer' => 'Репликация - это копирование данных одной БД на другие серверы (реплики). Простыми словами: одни и те же данные хранятся в нескольких местах, как резервная копия в реальном времени. Зачем: отказоустойчивость (один сервер упал - есть запасной), масштабирование чтения (запросы балансируются по репликам), географическая близость к пользователям. В отличие от шардирования (где данные РАЗДЕЛЕНЫ), при репликации данные ДУБЛИРУЮТСЯ.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'database.distributed',
             ],
@@ -50,8 +39,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'Master-slave vs Master-master репликация?',
                 'answer' => 'Master-Slave (или primary-replica): один мастер принимает запись, реплики - только чтение. Просто и безопасно от конфликтов. Минус: единая точка записи. Master-Master (multi-master): несколько мастеров принимают запись. Сложнее (конфликты разрешения, eventual consistency), но устойчивее к сбоям и геораспределённый. На практике чаще встречается master-slave с failover-механизмом.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.distributed',
             ],
@@ -59,8 +46,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'Asynchronous vs Synchronous replication?',
                 'answer' => 'Синхронная: мастер ждёт подтверждения от реплики, прежде чем сказать клиенту "ок". Гарантирует, что данные есть на двух нодах, но медленнее и зависит от реплики. Асинхронная: мастер сразу отвечает клиенту и потом пересылает реплике. Быстрее, но при крахе мастера часть транзакций может пропасть. Полусинхронная (semi-sync) - компромисс: ждём хотя бы одну реплику.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.distributed',
             ],
@@ -68,8 +53,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'Что такое replication lag и как с ним жить?',
                 'answer' => 'Replication lag - задержка между записью на мастер и появлением данных на реплике. Возникает при асинхронной репликации. Может приводить к "только что добавил - не вижу в списке" (запрос пошёл на отстающую реплику). Решения: для критичных read-after-write читать с мастера; sticky-сессия пользователя на мастер на короткое время; использовать sync для критичных вещей; мониторить lag (pg_stat_replication).',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.distributed',
             ],
@@ -77,8 +60,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'Что такое CAP-теорема простыми словами?',
                 'answer' => 'CAP-теорема: распределённая система в условиях сетевого разделения (Partition) может гарантировать только два свойства из трёх: Consistency (все ноды видят одинаковые данные), Availability (каждый запрос получает ответ), Partition tolerance (система работает при потере связи между нодами). Простыми словами: сеть может рваться - выбирай, что важнее, согласованность или доступность. ВАЖНО: CAP-ярлыки на промышленные БД условны - почти все современные системы tunable. MongoDB управляет компромиссом через read concern / write concern (с majority writes ближе к CP, с w:1 ближе к AP); DynamoDB по умолчанию даёт eventually consistent reads (AP), но умеет strongly consistent reads на запрос; Cassandra с QUORUM ближе к CP, с ONE - к AP. Чисто CA-систем не существует (P нельзя выбрать - сеть всегда может разорваться); фразу "CA" применяют разве что к single-node системам, где партиционирования просто нет.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 5,
                 'topic' => 'database.distributed',
             ],
@@ -86,8 +67,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'BASE vs ACID?',
                 'answer' => 'ACID (реляционные): Atomicity, Consistency, Isolation, Durability - строгие гарантии транзакций. BASE (NoSQL): Basically Available - философия приоритета доступности и graceful degradation: при отказе/перегрузке система СТРЕМИТСЯ ответить хоть как-то (возможно с ослабленной консистентностью или партиальными данными), а не падает целиком; Soft state - состояние может меняться без явного входного сигнала из-за фоновой репликации/синка; Eventual consistency - рано или поздно реплики сойдутся. BASE жертвует строгой консистентностью ради доступности и масштабируемости. Это две философии: финансы любят ACID, ленты соцсетей живут с BASE.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.distributed',
             ],
@@ -95,8 +74,6 @@ class Distributed
                 'category' => 'Базы данных',
                 'question' => 'Что такое eventual consistency?',
                 'answer' => 'Eventual consistency (постепенная согласованность) - модель, при которой если перестать делать обновления, в конце концов все реплики придут к одному состоянию, но в моменте могут расходиться. Простыми словами: подожди немного - и все увидят одно и то же. Типичные системы: Cassandra, Riak, DynamoDB и MongoDB по дефолту (причём DynamoDB и MongoDB умеют strongly consistent reads по запросу). Исторический пример - Amazon S3, но с декабря 2020 S3 даёт strong read-after-write consistency для GET/PUT/LIST и в актуальных списках уже не упоминается. Хорошо для соцсетей, плохо для финансов.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'database.distributed',
             ],

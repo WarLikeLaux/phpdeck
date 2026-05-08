@@ -186,6 +186,21 @@ try {
                 'difficulty' => 5,
                 'topic' => 'php.generators',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое Fiber в PHP 8.1 и чем он отличается от generator и от корутины Go?',
+                'answer' => 'Fiber - примитив пользовательских стеков: можно приостановить (Fiber::suspend) и возобновить (resume) выполнение в произвольной точке, не только на yield. Generator кооперативен и тесно связан с iterator-протоколом, fiber же универсальнее и используется в ReactPHP/AMPHP для скрытия await. В отличие от горутин, fibers однопоточные, не имеют шедулера в ядре языка и не дают параллелизма - только конкурентность.',
+                'code_example' => '<?php
+$fiber = new Fiber(function (): void {
+    $x = Fiber::suspend("ready");
+    echo "got $x\\n";
+});
+$msg = $fiber->start();   // "ready"
+$fiber->resume("hello");  // печатает "got hello"',
+                'code_language' => 'php',
+                'difficulty' => 5,
+                'topic' => 'php.generators',
+            ],
         ];
     }
 }

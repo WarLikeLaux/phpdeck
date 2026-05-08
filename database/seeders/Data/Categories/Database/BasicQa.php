@@ -4,9 +4,6 @@ namespace Database\Seeders\Data\Categories\Database;
 
 class BasicQa
 {
-    /**
-     * @return array<int, array{category: string, question: string, answer: string, difficulty?: int, topic?: string}>
-     */
     public static function all(): array
     {
         return [

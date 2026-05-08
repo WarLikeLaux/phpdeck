@@ -486,6 +486,66 @@ $admin = $admin ? reset($admin) : null;',
                 'difficulty' => 4,
                 'topic' => 'php.php8_features',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое атрибуты PHP 8 (Attributes)?',
+                'answer' => 'Атрибуты PHP 8 - метаданные, прикрепляемые к классам, методам, свойствам через синтаксис #[AttrName(args)]. Простыми словами: "теги" для кода, читаемые через Reflection. До PHP 8 использовались PHPDoc-аннотации (Doctrine, Symfony) - те парсились как комментарии. Атрибуты - часть языка, проверяются на этапе компиляции, доступны через ReflectionClass::getAttributes().',
+                'code_example' => '<?php
+#[Attribute(Attribute::TARGET_METHOD)]
+class Route {
+    public function __construct(
+        public string $path,
+        public string $method = "GET",
+    ) {}
+}
+
+class UserController {
+    #[Route("/users", method: "GET")]
+    public function index() {}
+
+    #[Route("/users/{id}", method: "POST")]
+    public function update(int $id) {}
+}
+
+// Чтение
+$ref = new ReflectionClass(UserController::class);
+foreach ($ref->getMethods() as $method) {
+    foreach ($method->getAttributes(Route::class) as $attr) {
+        $route = $attr->newInstance();
+        echo "$route->method $route->path\\n";
+    }
+}',
+                'code_language' => 'php',
+                'difficulty' => 4,
+                'topic' => 'php.php8_features',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как реализованы enum в PHP 8.1 и чем backed-enum отличается от pure?',
+                'answer' => 'Enum - это специальный объектный тип; кейсы - синглтоны, сравнение по === безопасно. Pure enum просто перечисление; backed enum имеет скалярный backing-тип (int|string), что даёт ::from()/::tryFrom() и автосериализацию. Enum может реализовывать интерфейсы, иметь методы и константы, но не имеет состояния (свойств). cases() возвращает все варианты в порядке объявления.',
+                'code_example' => '<?php
+enum Status: string {
+    case Active = "active";
+    case Banned = "banned";
+    public function label(): string {
+        return match($this) {
+            self::Active => "Активен",
+            self::Banned => "Забанен",
+        };
+    }
+}
+Status::from("active");',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'php.php8_features',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое match-выражение и чем оно лучше switch?',
+                'answer' => 'match сравнивает строго (===), возвращает значение, требует исчерпывающего покрытия (бросает UnhandledMatchError), не имеет fallthrough - каждая ветка завершается неявно. switch использует == и требует break, легко поймать баг с числовым строковым ключом. match - выражение, поэтому удобно присваивать в переменную или возвращать.',
+                'difficulty' => 3,
+                'topic' => 'php.php8_features',
+            ],
         ];
     }
 }

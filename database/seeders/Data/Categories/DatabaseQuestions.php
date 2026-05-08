@@ -28,23 +28,23 @@ class DatabaseQuestions
     public static function all(): array
     {
         return array_merge(
+            Assemble::all(),
             BasicConcepts::all(),
-            SqlBasics::all(),
-            Normalization::all(),
-            TransactionsAcid::all(),
-            Indexes::all(),
-            Optimization::all(),
-            Postgresql::all(),
-            Mysql::all(),
-            Nosql::all(),
-            Elasticsearch::all(),
-            Distributed::all(),
-            InfrastructureBackup::all(),
-            Partitioning::all(),
             BasicQa::all(),
             Cloze::all(),
+            Distributed::all(),
+            Elasticsearch::all(),
+            Indexes::all(),
+            InfrastructureBackup::all(),
+            Mysql::all(),
+            Normalization::all(),
+            Nosql::all(),
+            Optimization::all(),
+            Partitioning::all(),
+            Postgresql::all(),
+            SqlBasics::all(),
+            TransactionsAcid::all(),
             TypeIn::all(),
-            Assemble::all(),
         );
     }
 }

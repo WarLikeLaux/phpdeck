@@ -11,6 +11,7 @@ use Database\Seeders\Data\Categories\Php\Closures;
 use Database\Seeders\Data\Categories\Php\Cloze;
 use Database\Seeders\Data\Categories\Php\ComposerAutoload;
 use Database\Seeders\Data\Categories\Php\Exceptions;
+use Database\Seeders\Data\Categories\Php\FilesStreams;
 use Database\Seeders\Data\Categories\Php\Generators;
 use Database\Seeders\Data\Categories\Php\MagicMethods;
 use Database\Seeders\Data\Categories\Php\Oop;
@@ -18,7 +19,10 @@ use Database\Seeders\Data\Categories\Php\Operators;
 use Database\Seeders\Data\Categories\Php\Php8Features;
 use Database\Seeders\Data\Categories\Php\Psr;
 use Database\Seeders\Data\Categories\Php\Regex;
+use Database\Seeders\Data\Categories\Php\Runtime;
+use Database\Seeders\Data\Categories\Php\Security;
 use Database\Seeders\Data\Categories\Php\Sessions;
+use Database\Seeders\Data\Categories\Php\StdLib;
 use Database\Seeders\Data\Categories\Php\Strings;
 use Database\Seeders\Data\Categories\Php\Symfony;
 use Database\Seeders\Data\Categories\Php\Testing;
@@ -33,28 +37,32 @@ class PhpQuestions
     public static function all(): array
     {
         return array_merge(
-            BasicSyntax::all(),
-            Operators::all(),
+            Algorithms::all(),
             Arrays::all(),
-            Strings::all(),
-            Regex::all(),
-            Oop::all(),
-            MagicMethods::all(),
+            Assemble::all(),
+            BasicQa::all(),
+            BasicSyntax::all(),
             Closures::all(),
-            Generators::all(),
-            Exceptions::all(),
-            Types::all(),
-            Php8Features::all(),
+            Cloze::all(),
             ComposerAutoload::all(),
-            Sessions::all(),
+            Exceptions::all(),
+            FilesStreams::all(),
+            Generators::all(),
+            MagicMethods::all(),
+            Oop::all(),
+            Operators::all(),
+            Php8Features::all(),
             Psr::all(),
+            Regex::all(),
+            Runtime::all(),
+            Security::all(),
+            Sessions::all(),
+            StdLib::all(),
+            Strings::all(),
             Symfony::all(),
             Testing::all(),
-            Algorithms::all(),
-            BasicQa::all(),
-            Cloze::all(),
             TypeIn::all(),
-            Assemble::all(),
+            Types::all(),
         );
     }
 }

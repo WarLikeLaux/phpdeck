@@ -80,6 +80,38 @@ class CreateUserAction {
                 'difficulty' => 3,
                 'topic' => 'php.magic_methods',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое clone и как работает магический __clone?',
+                'answer' => 'clone создаёт ПОВЕРХНОСТНУЮ копию объекта - все свойства копируются. НО: вложенные объекты копируются по ссылке-идентификатору (то есть указывают на тот же объект). Для глубокой копии нужно реализовать __clone и в нём вручную клонировать вложенные объекты. __clone вызывается автоматически после копирования свойств.',
+                'code_example' => '<?php
+class Address {
+    public string $city = "Moscow";
+}
+
+class User {
+    public Address $address;
+    public function __construct() {
+        $this->address = new Address();
+    }
+}
+
+$a = new User();
+$b = clone $a;
+$b->address->city = "SPB";
+echo $a->address->city; // "SPB"! - тот же объект
+
+// Глубокая копия
+class UserDeep {
+    public Address $address;
+    public function __clone(): void {
+        $this->address = clone $this->address;
+    }
+}',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'php.magic_methods',
+            ],
         ];
     }
 }

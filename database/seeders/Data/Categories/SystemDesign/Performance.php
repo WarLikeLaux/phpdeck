@@ -4,9 +4,6 @@ namespace Database\Seeders\Data\Categories\SystemDesign;
 
 class Performance
 {
-    /**
-     * @return array<int, array{category: string, question: string, answer: string, code_example: ?string, code_language: ?string, difficulty: int, topic: string}>
-     */
     public static function all(): array
     {
         return [
@@ -14,8 +11,6 @@ class Performance
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между latency и throughput?',
                 'answer' => 'Latency - задержка одной операции (сколько ждать ответа на один запрос). Throughput - пропускная способность (сколько запросов в секунду). Простыми словами: автобан с одной полосой и скоростью 100 км/ч - низкая latency, но низкий throughput. Дорога в 10 полос с пробкой 30 км/ч - высокая latency, но высокий throughput. Оптимизировать одно не значит улучшить другое.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.performance',
             ],
@@ -23,8 +18,6 @@ class Performance
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое перцентили P50, P95, P99 в метриках?',
                 'answer' => 'Перцентили - не среднее, а распределение. P50 (медиана) - 50% запросов быстрее этого значения. P95 - 95% быстрее (худшие 5% хуже). P99 - 99% быстрее. Простыми словами: средняя задержка может быть 100мс, но P99=2с означает что у 1% пользователей всё тормозит. Среднее обманывает - перцентили показывают "хвост". Цель SRE - снижать P95/P99, потому что именно они портят UX.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.performance',
             ],
@@ -32,8 +25,6 @@ class Performance
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое observability и три её столпа?',
                 'answer' => 'Observability - возможность понять что происходит внутри системы по её внешним сигналам. Три столпа: 1) Logs - дискретные записи событий ("user 42 logged in"), 2) Metrics - числовые ряды во времени (RPS, CPU, latency), 3) Traces - путь запроса через систему (через какие сервисы прошёл, где сколько времени). Monitoring отвечает "система работает?", observability - "почему так работает?". Инструменты: Prometheus+Grafana, OpenTelemetry, Jaeger.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'system_design.performance',
             ],
@@ -41,8 +32,6 @@ class Performance
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое distributed tracing?',
                 'answer' => 'Distributed tracing - отслеживание прохождения одного запроса через множество микросервисов. Каждый запрос получает trace_id, каждый шаг - span_id с родителем. На выходе видно: запрос пошёл в gateway → auth-service (5мс) → user-service (20мс) → db (15мс). Сразу видно где тормозит. Стандарт - W3C Trace Context (заголовки traceparent/tracestate), инструменты: Jaeger, Zipkin, OpenTelemetry, Datadog APM. Часто применяют sampling (1-10% трейсов) - storage и overhead для всех 100% дорог.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 4,
                 'topic' => 'system_design.performance',
             ],
@@ -50,8 +39,6 @@ class Performance
                 'category' => 'Архитектура систем',
                 'question' => 'Чем вертикальное масштабирование отличается от горизонтального?',
                 'answer' => 'Vertical scaling (scale up) - увеличиваем мощность одной машины: больше CPU, RAM, NVMe. Просто, не требует изменений в коде, но есть потолок железа и точка отказа одна. Horizontal scaling (scale out) - добавляем больше машин и распределяем нагрузку через load balancer. Почти безлимитно, отказоустойчиво, но требует stateless-приложений, общего хранилища сессий, распределённых кэшей и БД-репликации/шардинга. Правило: stateless web-слой - горизонтально, БД - вертикально до предела, потом read replicas, потом sharding. Cloud-native всегда тяготеет к horizontal.',
-                'code_example' => null,
-                'code_language' => null,
                 'difficulty' => 3,
                 'topic' => 'system_design.performance',
             ],
@@ -131,6 +118,34 @@ Model::preventLazyLoading(! app()->isProduction());',
                 'category' => 'Архитектура систем',
                 'question' => 'Как правильно обрабатывать deadlock в высоконагруженном приложении?',
                 'answer' => 'Deadlock на уровне БД — это не баг, а штатная ситуация под нагрузкой, и приложение должно её ожидать. Базовая защита — короткие транзакции и обращение к таблицам всегда в одном и том же порядке, чтобы взаимная блокировка просто не возникала. Снимать deadlock errno (1213 в MySQL, 40P01 в Postgres) надо retry-логикой с exponential backoff и небольшим jitter, а не показом 500 пользователю. Снизить вероятность помогают точечные блокировки (SELECT ... FOR UPDATE по конкретному id) и понижение уровня изоляции там, где допустимо.',
+                'difficulty' => 4,
+                'topic' => 'system_design.performance',
+            ],
+            [
+                'category' => 'Архитектура систем',
+                'question' => 'Что такое throttling и как отличается от rate limiting?',
+                'answer' => 'Часто используются как синонимы, но строго: rate limiting - жёсткий лимит "не больше N запросов в минуту", при превышении 429. Throttling - замедление: "запросы выше лимита обрабатываются медленнее, в очереди". Простыми словами: rate limit - "не пустим", throttling - "пустим, но в порядке очереди". Throttling мягче для пользователя, но требует буфер. На практике обычно делают rate limiting на API gateway.',
+                'difficulty' => 3,
+                'topic' => 'system_design.performance',
+            ],
+            [
+                'category' => 'Архитектура систем',
+                'question' => 'Что такое APM (Application Performance Monitoring)?',
+                'answer' => 'APM - инструменты для мониторинга производительности приложения в проде. Простыми словами: рентген для приложения - видно где тормозит, какой SQL медленный, где исключения, какой endpoint самый горячий. Включает: tracing запросов, профилирование, алерты, дашборды, error tracking. Инструменты: New Relic, Datadog, Sentry, Elastic APM, Laravel Telescope/Pulse. Без APM в большом проде ты слепой.',
+                'difficulty' => 3,
+                'topic' => 'system_design.performance',
+            ],
+            [
+                'category' => 'Архитектура систем',
+                'question' => 'Что такое connection pooling и зачем нужен?',
+                'answer' => 'Connection pool - готовый набор открытых коннектов к БД, переиспользуемых между запросами. Простыми словами: вместо того чтобы заново звонить и здороваться при каждом обращении - держим телефон поднятым. Открытие коннекта к Postgres дорого (TCP+TLS+auth = 10-50мс). Pool: 20-50 коннектов, при запросе берём свободный, после возвращаем в пул. Внешние пулы для PHP-FPM (где коннект на запрос): pgbouncer, RDS Proxy.',
+                'difficulty' => 3,
+                'topic' => 'system_design.performance',
+            ],
+            [
+                'category' => 'Архитектура систем',
+                'question' => 'В чём разница между monitoring и observability?',
+                'answer' => 'Monitoring - заранее знаем что мерить и алертим на отклонения (CPU>80%, latency>500ms). Отвечает на вопрос "система здорова?". Observability - возможность задать любой вопрос системе и получить ответ из её сигналов. Отвечает на "почему так?". Простыми словами: monitoring - "горит ли красная лампочка", observability - "что именно сломалось и где". Одно дополняет другое: monitoring алертит, observability помогает диагностировать.',
                 'difficulty' => 4,
                 'topic' => 'system_design.performance',
             ],
