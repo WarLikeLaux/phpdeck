@@ -31,38 +31,11 @@ public function __construct(PaymentInterface $payment) {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между bind, singleton, scoped и instance в Service Container?',
-                'answer' => 'bind - каждый раз создаётся новый объект при resolve. singleton - объект создаётся один раз и переиспользуется в течение всего приложения. scoped - объект живёт в рамках одного запроса/job (важно для Octane). instance - регистрирует уже созданный объект как singleton.',
+                'answer' => 'bind - каждый раз создаётся новый объект при resolve. singleton - объект создаётся один раз в рамках жизненного цикла приложения (т.е. одного запроса в FPM, всего воркера в Octane/RoadRunner). scoped - объект живёт в рамках одного запроса/job (Octane сбрасывает scoped между запросами, singleton - нет). instance - регистрирует уже созданный объект как singleton.',
                 'code_example' => '$this->app->bind(Foo::class, fn() => new Foo());
 $this->app->singleton(Bar::class, fn() => new Bar());
 $this->app->scoped(Baz::class, fn() => new Baz());
 $this->app->instance(Qux::class, new Qux());',
-                'code_language' => 'php',
-                'difficulty' => 4,
-                'topic' => 'laravel.service_container',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Что такое contextual binding в Service Container?',
-                'answer' => 'Contextual binding - это привязка разных реализаций интерфейса для разных классов. Например, в одном контроллере нужен Stripe, в другом - PayPal, оба реализуют PaymentInterface.',
-                'code_example' => '$this->app->when(OrderController::class)
-    ->needs(PaymentInterface::class)
-    ->give(StripePayment::class);
-
-$this->app->when(SubscriptionController::class)
-    ->needs(PaymentInterface::class)
-    ->give(PayPalPayment::class);',
-                'code_language' => 'php',
-                'difficulty' => 4,
-                'topic' => 'laravel.service_container',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Чем bind отличается от singleton и от scoped в сервис-контейнере Laravel?',
-                'answer' => 'bind() - каждый make() создаёт новый экземпляр. singleton() - один экземпляр на весь жизненный цикл приложения (т.е. на воркер). scoped() - один экземпляр в рамках запроса/job; Octane сбрасывает scoped-привязки между запросами, а singleton - нет, что важно для предотвращения утечки состояния. В FPM-режиме scoped и singleton ведут себя одинаково.',
-                'code_example' => '<?php
-$this->app->bind(Mailer::class, SmtpMailer::class);
-$this->app->singleton(Cache::class, fn() => new RedisCache(...));
-$this->app->scoped(RequestContext::class, fn() => new RequestContext());',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.service_container',

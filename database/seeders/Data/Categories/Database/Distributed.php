@@ -94,7 +94,7 @@ class Distributed
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое eventual consistency?',
-                'answer' => 'Eventual consistency (постепенная согласованность) - модель, при которой если перестать делать обновления, в конце концов все реплики придут к одному состоянию, но в моменте могут расходиться. Простыми словами: подожди немного - и все увидят одно и то же. Типичные системы: Cassandra, Riak, DynamoDB и MongoDB по дефолту (хотя оба умеют strongly consistent reads по запросу). Исторический пример - Amazon S3, но с декабря 2020 S3 даёт strong read-after-write consistency для GET/PUT/LIST и в актуальных списках уже не упоминается. Хорошо для соцсетей, плохо для финансов.',
+                'answer' => 'Eventual consistency (постепенная согласованность) - модель, при которой если перестать делать обновления, в конце концов все реплики придут к одному состоянию, но в моменте могут расходиться. Простыми словами: подожди немного - и все увидят одно и то же. Типичные системы: Cassandra, Riak, DynamoDB и MongoDB по дефолту (причём DynamoDB и MongoDB умеют strongly consistent reads по запросу). Исторический пример - Amazon S3, но с декабря 2020 S3 даёт strong read-after-write consistency для GET/PUT/LIST и в актуальных списках уже не упоминается. Хорошо для соцсетей, плохо для финансов.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 4,

@@ -13,10 +13,10 @@ class OctaneHorizon
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Octane? Какие у него плюсы и подводные камни?',
-                'answer' => 'Octane - это пакет для Laravel, который держит приложение в памяти между запросами вместо перезагрузки. Простыми словами: обычный PHP при каждом запросе заново загружает Laravel - это медленно. Octane загружает один раз и потом каждый запрос обрабатывается мгновенно. Серверы: Swoole, RoadRunner, FrankenPHP. Подводные камни: 1) Утечки памяти - переменные класса не сбрасываются. 2) Состояние singleton-ов сохраняется. 3) Глобальные/статические переменные опасны. 4) Нужно использовать scoped-биндинги вместо singleton там, где состояние per-request. 5) Закрытые соединения с БД могут "висеть".',
+                'answer' => 'Octane - это пакет для Laravel, который держит приложение в памяти между запросами вместо перезагрузки. Простыми словами: обычный PHP при каждом запросе заново загружает Laravel - это медленно. Octane загружает один раз и потом каждый запрос обрабатывается мгновенно. Серверы: Swoole, RoadRunner, FrankenPHP. Подводные камни: 1) Утечки памяти - переменные класса не сбрасываются. 2) Состояние singleton-ов сохраняется. 3) Глобальные/статические переменные опасны. 4) Нужно использовать scoped-биндинги вместо singleton там, где состояние per-request. 5) Долгоживущие соединения с БД могут отваливаться по wait_timeout (gone away) - нужны reconnect-стратегии или DB::reconnect() на лонг-айдл.',
                 'code_example' => 'composer require laravel/octane
 php artisan octane:install
-php artisan octane:start --workers=4 --task-workers=2
+php artisan octane:start --workers=4 --task-workers=2  # --task-workers только для Swoole
 
 // scoped binding для per-request состояния
 $this->app->scoped(RequestContext::class);',
@@ -50,7 +50,7 @@ php artisan horizon
             [
                 'category' => 'Laravel',
                 'question' => 'Какие подводные камни у Octane по сравнению с обычным FPM?',
-                'answer' => 'Octane держит фреймворк в памяти между запросами. Singletons и статические свойства не сбрасываются - типичный источник утечек данных между пользователями. Запрещено хранить в Auth::user() в синглтонах, использовать array-кэши на жизнь приложения, изменять контейнер из контроллеров. Решение: scoped()-биндинги, RefreshDatabase-аналоги в OctaneServiceProvider::tick. Также Octane не любит долгие и блокирующие операции - нужна модель Tasks/Coroutines.',
+                'answer' => 'Octane держит фреймворк в памяти между запросами. Singletons и статические свойства не сбрасываются - типичный источник утечек данных между пользователями. Запрещено хранить Auth::user() в синглтонах, использовать array-кэши на жизнь приложения, изменять контейнер из контроллеров. Решения: 1) регистрировать per-request сервисы через $this->app->scoped() - Octane сам сбрасывает scoped-биндинги между запросами; 2) подписаться на lifecycle-события Octane (RequestReceived/RequestHandled/RequestTerminated/WorkerStarting в config/octane.php → listeners) и сбрасывать там state, чистить статику, переподключать БД. Также Octane не любит долгие и блокирующие операции - нужна модель Tasks/Coroutines.',
                 'code_example' => '<?php
 // плохо в Octane
 class CartHolder { public static array $items = []; }
@@ -97,7 +97,7 @@ php artisan horizon:terminate',
                 'category' => 'Laravel',
                 'question' => 'Что такое протокол Goridge и какие каналы связи он поддерживает?',
                 'answer' => 'Goridge — это бинарный протокол, по которому Go-сервер RoadRunner общается с PHP-воркерами. Он умеет работать через стандартные pipes (по умолчанию, не требует настройки), TCP-сокеты (можно разнести воркеры по машинам или контейнерам) и Unix-сокеты для быстрой локальной связи. Любой echo или предупреждение, ушедшие в STDOUT, повредят протокол, поэтому RoadRunner 2.0+ автоматически перенаправляет STDOUT в STDERR.',
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
@@ -160,7 +160,7 @@ php artisan horizon:terminate',
                 'category' => 'Laravel',
                 'question' => 'Как работает плагин Locks в RoadRunner?',
                 'answer' => 'Плагин Locks даёт PHP-воркерам распределённые блокировки для синхронизации доступа к общим ресурсам. Lock можно взять между несколькими воркерами одного экземпляра RoadRunner или между несколькими экземплярами RR на разных машинах. В качестве бэкенда используют Redis для распределённого случая или локальную память, если синхронизация нужна только внутри одного процесса.',
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
             [

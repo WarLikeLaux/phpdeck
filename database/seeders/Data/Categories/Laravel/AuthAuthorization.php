@@ -13,7 +13,7 @@ class AuthAuthorization
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Authentication Guards в Laravel?',
-                'answer' => 'Guard - это способ аутентификации (как Laravel определяет, кто пользователь). Стандартные: web (через сессии), api (через токены), sanctum (cookies/токены SPA). Можно настроить несколько guards в config/auth.php (multi-auth) - например для admin и user отдельно.',
+                'answer' => 'Guard - это способ аутентификации (как Laravel определяет, кто пользователь). Стандартные: web (через сессии); api (исторически token-driven через TokenGuard, но он удалён в L6+ - в современном скаффолде api настраивают с драйвером sanctum); sanctum (cookies для SPA + bearer-токены для мобильных). Можно настроить несколько guards в config/auth.php (multi-auth) - например для admin и user отдельно.',
                 'code_example' => 'auth()->guard(\'admin\')->attempt($credentials);
 auth(\'admin\')->user();
 Auth::guard(\'api\')->check();
@@ -107,7 +107,7 @@ Route::get("/users/{user}/orders/{order}", function (User $user, Order $order) {
     return $order;
 })->scopeBindings();',
                 'code_language' => 'php',
-                'difficulty' => 4,
+                'difficulty' => 5,
                 'topic' => 'laravel.auth_authorization',
             ],
             [
@@ -145,7 +145,7 @@ axios.defaults.headers.common[\'X-CSRF-TOKEN\'] =
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Jetstream и чем он отличается от Breeze?',
-                'answer' => 'Jetstream — продвинутый стартовый набор поверх Sanctum с двухфакторной аутентификацией, управлением сессиями браузера, профилем пользователя, API-токенами и опциональными командами (teams). Bыбирается стек Livewire или Inertia. Breeze значительно проще и не тянет 2FA/команды — Jetstream берут, когда нужны фичи из коробки, иначе Breeze.',
+                'answer' => 'Jetstream — продвинутый стартовый набор поверх Sanctum с двухфакторной аутентификацией, управлением сессиями браузера, профилем пользователя, API-токенами и опциональными командами (teams). Выбирается стек Livewire или Inertia. Breeze значительно проще и не тянет 2FA/команды — Jetstream берут, когда нужны фичи из коробки, иначе Breeze.',
                 'difficulty' => 2,
                 'topic' => 'laravel.auth_authorization',
             ],
@@ -160,13 +160,6 @@ axios.defaults.headers.common[\'X-CSRF-TOKEN\'] =
                 'category' => 'Laravel',
                 'question' => 'Что такое Spatie Laravel-Permission и какую задачу он решает?',
                 'answer' => 'Spatie Laravel-Permission — самый популярный community-пакет для ролей и разрешений в Laravel. Добавляет трейты HasRoles и HasPermissions модели User, таблицы roles, permissions, model_has_roles, кэширует разрешения и интегрируется с Gate/Policy через canAny, hasRole, hasPermissionTo. Поддерживает множественные guards и teams для мультиарендных приложений.',
-                'difficulty' => 3,
-                'topic' => 'laravel.auth_authorization',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Что такое Laravel Passport и когда его выбирают вместо Sanctum?',
-                'answer' => 'Passport — официальный пакет для полноценного OAuth2-сервера на Laravel: authorization code, password grant (deprecated), client credentials, personal access tokens, refresh tokens. Тяжелее Sanctum, требует таблицы клиентов и хранимых ключей. Берут, когда нужно стать OAuth2-провайдером для сторонних приложений; для собственных SPA и мобильных клиентов хватает Sanctum.',
                 'difficulty' => 3,
                 'topic' => 'laravel.auth_authorization',
             ],

@@ -38,7 +38,7 @@ class Symfony
             [
                 'category' => 'PHP',
                 'question' => 'Что такое компонент HttpFoundation в Symfony?',
-                'answer' => 'HttpFoundation предоставляет объектно-ориентированную обёртку над HTTP-спецификацией: Request, Response, Cookie, Session и серверные параметры. Он заменяет работу с суперглобальными $_GET, $_POST, $_SERVER на тестируемое API с явными методами и неизменяемыми объектами заголовков. Это базовый кирпич всей Symfony и многих сторонних фреймворков, включая Laravel.',
+                'answer' => 'HttpFoundation предоставляет объектно-ориентированную обёртку над HTTP-спецификацией: Request, Response, Cookie, Session и серверные параметры. Он заменяет работу с суперглобальными $_GET, $_POST, $_SERVER на тестируемое API с явными объектами-обёртками над заголовками и параметрами (HeaderBag, ParameterBag — мутабельные; иммутабельность — это про PSR-7, а не HttpFoundation). Это базовый кирпич всей Symfony и многих сторонних фреймворков, включая Laravel.',
                 'difficulty' => 2,
                 'topic' => 'php.symfony',
             ],
@@ -66,7 +66,7 @@ class Symfony
             [
                 'category' => 'PHP',
                 'question' => 'Как получить доступ к сессии в современной Symfony (5.3+)?',
-                'answer' => 'С Symfony 5.3 сервис session как глобальный синглтон признан устаревшим. Сессию получают через RequestStack: $requestStack->getSession() либо напрямую из объекта Request методом $request->getSession(). Такой подход совместим с воркерными SAPI вроде RoadRunner и FrankenPHP, где состояние не должно жить дольше одного запроса.',
+                'answer' => 'С Symfony 5.3 инъекция сервиса session напрямую (через тип SessionInterface) и Request::getSession() вне RequestStack-цикла признаны устаревшими. Сессию получают через RequestStack: $requestStack->getSession() либо напрямую из объекта Request методом $request->getSession(). Такой подход совместим с воркерными SAPI вроде RoadRunner и FrankenPHP, где состояние не должно жить дольше одного запроса.',
                 'difficulty' => 3,
                 'topic' => 'php.symfony',
             ],
@@ -122,7 +122,7 @@ class Symfony
             [
                 'category' => 'PHP',
                 'question' => 'Как описывать роутинг через атрибуты в современной Symfony?',
-                'answer' => 'Начиная с Symfony 6 рекомендованный способ — атрибут #[Route] из Symfony\\Component\\Routing\\Attribute\\Route прямо над методом или классом контроллера. На классе атрибут задаёт префикс пути и общие требования, на методе — конкретный путь, имя, методы HTTP и условия. Аннотации Doctrine для роутинга считаются устаревшими и в Symfony 7+ удалены.',
+                'answer' => 'Начиная с Symfony 6 рекомендованный способ — атрибут #[Route] из Symfony\\Component\\Routing\\Attribute\\Route прямо над методом или классом контроллера. На классе атрибут задаёт префикс пути и общие требования, на методе — конкретный путь, имя, методы HTTP и условия. Поддержка doctrine/annotations в RoutingComponent помечена deprecated в Symfony 6.4 и удалена в 7.0; сам пакет doctrine/annotations существует, но фреймворком для роутинга не используется.',
                 'difficulty' => 3,
                 'topic' => 'php.symfony',
             ],

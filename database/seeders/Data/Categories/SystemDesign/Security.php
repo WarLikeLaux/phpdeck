@@ -13,7 +13,7 @@ class Security
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое HTTPS и TLS простыми словами?',
-                'answer' => 'HTTPS = HTTP + TLS. TLS (Transport Layer Security) - криптографический протокол, шифрующий передачу данных. Простыми словами: если HTTP - это открытка, которую может прочесть любой почтальон, то HTTPS - запечатанный конверт. Решает три задачи: 1) шифрование (никто не подслушает), 2) аутентификация сервера (через сертификат - это правда тот сайт), 3) целостность (данные не подменены). SSL - устаревший предшественник TLS.',
+                'answer' => 'HTTPS = HTTP + TLS. TLS (Transport Layer Security) - криптографический протокол, шифрующий передачу данных. Простыми словами: если HTTP - это открытка, которую может прочесть любой почтальон, то HTTPS - запечатанный конверт. Решает три задачи: 1) шифрование (никто не подслушает), 2) аутентификация сервера (через сертификат - это правда тот сайт), 3) целостность (данные не подменены). SSL - устаревший предшественник TLS; SSL 2.0 и 3.0 явно запрещены RFC 7568, в проде включают только TLS 1.2 и 1.3.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 2,
@@ -22,7 +22,7 @@ class Security
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как работает TLS handshake простыми словами?',
-                'answer' => 'TLS handshake (рукопожатие) - обмен между клиентом и сервером перед началом шифрования: 1) клиент: "привет, поддерживаю эти алгоритмы", 2) сервер: "выбираю этот, вот мой сертификат", 3) клиент проверяет сертификат через CA (центр сертификации), 4) обмениваются ключами через асимметричную криптографию (RSA/ECDHE), 5) договариваются о симметричном ключе для скорости, 6) дальше всё шифруется этим ключом. TLS 1.3 сократил handshake до 1 RTT.',
+                'answer' => 'TLS handshake (рукопожатие) - обмен между клиентом и сервером перед началом шифрования: 1) клиент: "привет, поддерживаю эти алгоритмы", 2) сервер: "выбираю этот, вот мой сертификат", 3) клиент проверяет сертификат через CA (центр сертификации), 4) обмениваются ключами через асимметричную криптографию: в TLS ≤ 1.2 это RSA-KE или (EC)DHE; в TLS 1.3 RSA-key-exchange удалён полностью, остались только (EC)DHE и PSK (RSA в 1.3 живёт только как алгоритм подписи сертификата), 5) договариваются о симметричном ключе для скорости, 6) дальше всё шифруется этим ключом. TLS 1.3 сократил full handshake до 1 RTT, resumption — до 0 RTT.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 4,
@@ -49,7 +49,7 @@ class Security
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое JWT и какие плюсы и минусы?',
-                'answer' => 'JWT (JSON Web Token, RFC 7519) - подписанный токен с тремя частями: header.payload.signature, разделёнными точкой, base64url-кодированы. Внутри payload - claims (sub, iat, exp, roles). Подписан симметричным секретом (HS256) или асимметричным ключом (RS256/ES256). Плюсы: stateless (сервер не хранит сессию), удобен для микросервисов и SPA, любой сервис с public key может проверить токен. Минусы: 1) нельзя отозвать до exp без серверного blacklist (теряем stateless), поэтому короткий exp 5-15 мин + refresh token, 2) размер больше cookie session_id, 3) payload не зашифрован, только подписан - не клади туда чувствительное (для шифрования есть JWE), 4) исторически были атаки alg=none и confusion (RS256→HS256 с public key как secret) - всегда явно whitelisting alg.',
+                'answer' => 'JWT (JSON Web Token, RFC 7519) - подписанный токен с тремя частями: header.payload.signature, разделёнными точкой, base64url-кодированы. Внутри payload - claims (sub, iat, exp, roles). Подписан симметричным секретом (HS256) или асимметричным ключом (RS256/ES256). Плюсы: stateless (сервер не хранит сессию), удобен для микросервисов и SPA, любой сервис с public key может проверить токен. Минусы: 1) нельзя отозвать до exp без серверного blacklist (теряем stateless), поэтому короткий exp 5-15 мин + refresh token, 2) размер больше cookie session_id, 3) payload не зашифрован, только подписан - не клади туда чувствительное (для шифрования есть JWE), 4) атаки alg=none и confusion RS256↔HS256 (с public key как secret) до сих пор регулярно ловят в JWT-библиотеках (CVE 2022-2024) - всегда явный allow-list алгоритмов.',
                 'code_example' => 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMiLCJleHAiOjE3MDB9.signature',
                 'code_language' => 'bash',
                 'difficulty' => 3,
@@ -79,7 +79,7 @@ class Security
                 'answer' => 'RBAC (Role-Based Access Control) - доступ через роли: admin, editor, viewer. У пользователя роль, у роли набор прав. Простой и понятный. ABAC (Attribute-Based Access Control) - доступ через атрибуты: пользователь+ресурс+действие+контекст. Например: "редактировать может автор, или админ, или модератор отдела автора, в рабочее время". Гибче RBAC, но сложнее. В реальности часто комбинируют: RBAC как база + ABAC-правила сверху.',
                 'code_example' => null,
                 'code_language' => null,
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
             [
@@ -118,7 +118,7 @@ Access-Control-Max-Age: 86400',
                 'answer' => 'OWASP Top 10 (2021) - топ-10 веб-уязвимостей: A01 Broken Access Control (нарушение прав доступа, IDOR), A02 Cryptographic Failures (слабая криптография, plain text), A03 Injection (SQLi, NoSQLi, командная), A04 Insecure Design, A05 Security Misconfiguration (дефолтные креды, debug в проде), A06 Vulnerable and Outdated Components (старые либы с CVE), A07 Identification and Authentication Failures (слабые пароли, brute-force), A08 Software and Data Integrity Failures (CI/CD, supply chain), A09 Security Logging and Monitoring Failures, A10 Server-Side Request Forgery (SSRF). Это базовый чек-лист для аудита.',
                 'code_example' => null,
                 'code_language' => null,
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
             [
@@ -299,7 +299,7 @@ public function validate(string $jwt): User
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Почему для шифрования в PHP сейчас рекомендуют sodium_*, а не openssl_*?',
-                'answer' => 'libsodium (расширение sodium, входит в стандарт PHP 7.2+) - современная криптографическая библиотека от Daniel J. Bernstein и команды, спроектированная по принципу "secure by default". OpenSSL - универсальный инструмент с тысячами опций, многие из которых небезопасны или устарели. Главные различия. 1) Защита от ошибок API. В sodium практически нечего настраивать: sodium_crypto_secretbox($plaintext, $nonce, $key) - один правильный набор примитивов (XSalsa20-Poly1305 или ChaCha20-Poly1305), authenticated encryption из коробки, защита от подмены шифротекста. В OpenSSL вы выбираете cipher (AES-128/256), mode (CBC/CTR/GCM), padding, IV длину - и шанс выбрать небезопасное (CBC без HMAC = padding oracle attack) огромен. 2) Современная криптография. ChaCha20-Poly1305 быстрее AES на устройствах без AES-NI (мобилки, embedded), Curve25519/Ed25519 для подписей, BLAKE2 для хешей, Argon2id для KDF. 3) Защита от side-channel. Все sodium-функции выполняются за константное время - устойчивы к timing-атакам. В OpenSSL это надо думать самому (и ошибаться). 4) Меньшая поверхность атаки: ~50 функций sodium vs тысячи openssl. 5) Forward secrecy и nonce-misuse resistant конструкции. Когда что: новый код - sodium всегда, кроме специфичных случаев (нужны конкретные cipher для совместимости со сторонним сервером, X.509-сертификаты, S/MIME). OpenSSL остаётся для совместимости, парсинга сертификатов, специфичных алгоритмов. Laravel\'s Crypt фасад (Illuminate\\Encryption\\Encrypter) использует openssl AES-256-CBC и применяет именно Encrypt-then-MAC: сначала openssl_encrypt над сериализованным значением, затем hash_hmac("sha256", $iv.$ciphertext, $key) - это безопасный канонический подход (защищает от padding-oracle), а не уязвимое MAC-then-Encrypt, погубившее SSL/TLS. Для AEAD-шифров (AES-GCM) HMAC не используется - tag/MAC даёт сам openssl_encrypt. Для нового кода всё равно sodium предпочтительнее (меньше ручных параметров, встроенный AEAD), но Crypt-фасад реализован грамотно.',
+                'answer' => 'libsodium (расширение sodium, входит в стандарт PHP 7.2+) - современная криптографическая библиотека, портабильная реализация NaCl (NaCl от Daniel J. Bernstein, libsodium ведёт Frank Denis), спроектированная по принципу "secure by default". OpenSSL - универсальный инструмент с тысячами опций, многие из которых небезопасны или устарели. Главные различия. 1) Защита от ошибок API. В sodium практически нечего настраивать: sodium_crypto_secretbox($plaintext, $nonce, $key) - один правильный набор примитивов (XSalsa20-Poly1305 или ChaCha20-Poly1305), authenticated encryption из коробки, защита от подмены шифротекста. В OpenSSL вы выбираете cipher (AES-128/256), mode (CBC/CTR/GCM), padding, IV длину - и шанс выбрать небезопасное (CBC без HMAC = padding oracle attack) огромен. 2) Современная криптография. ChaCha20-Poly1305 быстрее AES на устройствах без AES-NI (мобилки, embedded), Curve25519/Ed25519 для подписей, BLAKE2 для хешей, Argon2id для KDF. 3) Защита от side-channel. Все sodium-функции выполняются за константное время - устойчивы к timing-атакам. В OpenSSL это надо думать самому (и ошибаться). 4) Меньшая поверхность атаки: ~50 функций sodium vs тысячи openssl. 5) Forward secrecy и nonce-misuse resistant конструкции. Когда что: новый код - sodium всегда, кроме специфичных случаев (нужны конкретные cipher для совместимости со сторонним сервером, X.509-сертификаты, S/MIME). OpenSSL остаётся для совместимости, парсинга сертификатов, специфичных алгоритмов. Laravel\'s Crypt фасад (Illuminate\\Encryption\\Encrypter) по умолчанию использует AES-256-CBC + HMAC-SHA256 в режиме Encrypt-then-MAC: сначала openssl_encrypt над сериализованным значением, затем hash_hmac("sha256", $iv.$ciphertext, $key) - это безопасный канонический подход (защищает от padding-oracle), а не уязвимое MAC-then-Encrypt, погубившее SSL/TLS. С Laravel 9+ доступна альтернатива AES-256-GCM через cipher: AES-256-GCM в config/app.php; для AEAD-шифров HMAC не нужен - tag/MAC даёт сам openssl_encrypt. Для нового кода всё равно sodium предпочтительнее (меньше ручных параметров, встроенный AEAD), но Crypt-фасад реализован грамотно. libsodium — портабильная реализация NaCl (NaCl от Daniel J. Bernstein); ведёт Frank Denis.',
                 'code_example' => '<?php
 // ✅ sodium - secure by default
 $key = sodium_crypto_secretbox_keygen(); // 32 байта, безопасный random
@@ -335,7 +335,7 @@ $ciphertext = openssl_encrypt(
 // Затирание чувствительных данных в памяти
 sodium_memzero($password); // у openssl такого нет',
                 'code_language' => 'php',
-                'difficulty' => 4,
+                'difficulty' => 5,
                 'topic' => 'system_design.security',
             ],
             [

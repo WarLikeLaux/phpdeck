@@ -60,7 +60,7 @@ class UserController extends Controller {
             [
                 'category' => 'Laravel',
                 'question' => 'Опиши жизненный цикл запроса в Laravel.',
-                'answer' => '1) Запрос попадает в public/index.php. 2) Загружается composer autoload и создаётся экземпляр Application (контейнер). 3) Bootstraps - регистрируются провайдеры, загружается env, конфиги. 4) HTTP-ядро (Kernel) пропускает запрос через глобальные middleware. 5) Запрос диспатчится в роутер, который находит маршрут и его middleware. 6) Запускается контроллер/closure. 7) Формируется Response. 8) Response проходит обратно через middleware (terminate). 9) Ответ отправляется клиенту.',
+                'answer' => '1) Запрос попадает в public/index.php. 2) Загружается composer autoload и создаётся экземпляр Application (контейнер). 3) Bootstraps - регистрируются провайдеры, загружается env, конфиги. 4) HTTP-ядро (Illuminate\\Foundation\\Http\\Kernel) пропускает запрос через глобальные middleware - в L11 user-facing класса app/Http/Kernel.php нет, конфигурация ядра живёт в bootstrap/app.php, но сам класс Foundation\\Http\\Kernel остался внутри фреймворка. 5) Запрос диспатчится в роутер, который находит маршрут и его middleware. 6) Запускается контроллер/closure. 7) Формируется Response. 8) Response проходит обратно через middleware (terminate). 9) Ответ отправляется клиенту.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 3,
@@ -133,7 +133,7 @@ php artisan migrate
                 'question' => 'Что такое Laravel Pulse?',
                 'answer' => 'Pulse - это лёгкий dashboard для мониторинга performance в продакшене (от Laravel). Простыми словами: показывает медленные запросы, нагруженные jobs, slow queries, активных пользователей, cache hit rate в реальном времени. Альтернатива Telescope для production.',
                 'code_example' => 'composer require laravel/pulse
-php artisan vendor:publish --provider="Laravel\\Pulse\\PulseServiceProvider"
+php artisan vendor:publish --tag=pulse-config
 php artisan migrate
 
 // доступ /pulse',
@@ -184,8 +184,9 @@ $result = app(Pipeline::class)
                 'code_example' => 'use Illuminate\Support\Str;
 
 // Имя должно быть НОВЫМ - Macroable работает через __callStatic / __call,
-// а это срабатывает только когда метода ещё нет. Например, Str::isUuid()
-// уже существует в ядре, поэтому макрос с таким именем стал бы мёртвым кодом.
+// и приоритет всегда у реального метода класса: если метод уже определён,
+// он перекрывает макрос (макрос становится мёртвым кодом).
+// Например, Str::isUuid() уже существует в ядре - макрос с таким именем недостижим.
 Str::macro(\'isHexColor\', function ($value) {
     return preg_match(\'/^#[0-9a-f]{3}([0-9a-f]{3})?$/i\', $value) === 1;
 });
@@ -226,8 +227,8 @@ class PaymentFailed extends Exception {
             ],
             [
                 'category' => 'Laravel',
-                'question' => 'Что такое Action Classes (Single Action) и зачем они нужны?',
-                'answer' => 'Action Class - это класс с одним методом execute/handle/__invoke, который инкапсулирует одно действие приложения (например, "создать пользователя"). Простыми словами: вытащить бизнес-логику из контроллера в отдельный класс. Чище контроллер, легче тестировать, переиспользуемо в job/console/controller.',
+                'question' => 'Что такое Action Classes (Single-Purpose Service) и зачем они нужны?',
+                'answer' => 'Action Class - это класс с одним методом execute/handle/__invoke, который инкапсулирует одно действие приложения (например, "создать пользователя"). НЕ путать с invokable-контроллером: Action - сервис-объект, не привязанный к HTTP-запросу, его можно вызвать из контроллера, ArtisanCommand или Job. Простыми словами: вытащить бизнес-логику из контроллера в отдельный класс. Чище контроллер, легче тестировать, переиспользуемо в job/console/controller.',
                 'code_example' => 'class CreateUserAction {
     public function execute(array $data): User {
         return DB::transaction(function () use ($data) {
@@ -439,7 +440,7 @@ final class ChargeFailedPaymentRetryAction
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое фасад Context (Laravel 11+) и зачем он нужен?',
-                'answer' => 'Context (Illuminate\Support\Facades\Context, появился в Laravel 11) - это механизм для хранения метаданных в рамках текущего request/job, которые автоматически добавляются ко всем log-записям и автоматически передаются в queued jobs. Простыми словами: вы один раз пишете Context::add("trace_id", $id) в начале запроса, и это значение попадёт в каждую log-строку этого запроса, а также автоматически окажется доступно внутри любого job, диспатченного во время этого запроса. Это решает классическую проблему observability: связать логи разных слоёв (controller → service → job → notification) одним trace_id, не таская его руками через каждый параметр. Под капотом Context живёт в singleton сервиса в контейнере, корректно сбрасывается между запросами в Octane (через scoped binding), а при dispatch job текущий снимок Context-а сериализуется в payload job-а и восстанавливается в воркере. Также есть hidden context (Context::addHidden()) - не попадает в логи, но передаётся между job-ами; полезно для tenant_id или auth-state. Заменяет хак с глобальным singleton + Log::shareContext().',
+                'answer' => 'Context (Illuminate\Support\Facades\Context, появился в Laravel 11) - это механизм для хранения метаданных в рамках текущего request/job, которые автоматически добавляются ко всем log-записям и автоматически передаются в queued jobs. Простыми словами: вы один раз пишете Context::add("trace_id", $id) в начале запроса, и это значение попадёт в каждую log-строку этого запроса, а также автоматически окажется доступно внутри любого job, диспатченного во время этого запроса. Это решает классическую проблему observability: связать логи разных слоёв (controller → service → job → notification) одним trace_id, не таская его руками через каждый параметр. Под капотом Context живёт в singleton сервиса в контейнере; в Octane слушатель события RequestReceived вызывает Context::flush() между запросами, чтобы данные не утекли. При dispatch job текущий снимок Context-а сериализуется в payload job-а и восстанавливается в воркере. Также есть hidden context (Context::addHidden()) - не попадает в логи, но передаётся между job-ами; полезно для tenant_id или auth-state. Заменяет хак с глобальным singleton + Log::shareContext().',
                 'code_example' => '<?php
 // Middleware - добавляем trace_id один раз
 class AssignTraceId

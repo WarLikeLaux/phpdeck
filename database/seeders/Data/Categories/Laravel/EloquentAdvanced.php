@@ -41,7 +41,7 @@ Model::preventLazyLoading(! app()->isProduction());
 // или одноразово
 Post::preventLazyLoading();',
                 'code_language' => 'php',
-                'difficulty' => 3,
+                'difficulty' => 2,
                 'topic' => 'laravel.eloquent_advanced',
             ],
             [
@@ -230,7 +230,7 @@ $post->updateQuietly([\'views\' => $post->views + 1]);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое chunk, chunkById, lazy и cursor в Eloquent? В чём разница и где ловушка?',
-                'answer' => 'chunk - выбирает по N записей через LIMIT/OFFSET и отдаёт коллекцию в callback. lazy - возвращает LazyCollection, выбирая записи порциями (внутри тоже chunk). cursor - использует серверный SQL-курсор и держит ОДНУ запись в памяти, экономит память сильнее всего, но удерживает соединение и не работает с eager loading. ⚠️ КРИТИЧЕСКАЯ ЛОВУШКА chunk при UPDATE. Если внутри chunk() вы обновляете записи так, что они перестают подпадать под исходное where (например, where("processed", false) и в callback ставите processed=true), произойдёт сдвиг OFFSET и ПОЛОВИНА записей будет ПРОПУЩЕНА. Механика: первый запрос берёт строки 0-999, обновляет их → они уходят из выборки. Второй запрос с OFFSET 1000 теперь начинает с того, что было бы строкой 2000 в исходной выборке - 1000 записей просто пролетают. Для миграций данных и любых обновлений всегда используйте chunkById() (или lazyById()): он использует WHERE id > $lastId вместо нестабильного OFFSET, поэтому устойчив к изменению набора записей. Тот же риск есть в обратную сторону при INSERT в обрабатываемую таблицу. Lazy для просто чтения - ок; для UPDATE - lazyById. ⚠️ ОТДЕЛЬНОЕ ТРЕБОВАНИЕ chunkById/lazyById: колонка ($column, по умолчанию "id") должна быть СТРОГО МОНОТОННО ВОЗРАСТАЮЩЕЙ И УНИКАЛЬНОЙ. На неуникальной колонке (created_at без секунд, status, datetime с дублями) механизм WHERE column > $lastValue либо ПРОПУСКАЕТ записи с тем же значением, что у границы чанка, либо при сортировке asc и неуникальных значениях зацикливается, обрабатывая ту же группу повторно. Если естественной такой колонки нет - либо chunkById по pk, дополнительно фильтруя нужный where, либо chunkByIdDesc для обратного направления, либо вручную делать пагинацию через "WHERE (sort_col, id) > (?, ?)" (keyset pagination на составном ключе).',
+                'answer' => 'chunk - выбирает по N записей через LIMIT/OFFSET и отдаёт коллекцию в callback. lazy - возвращает LazyCollection, выбирая записи порциями (внутри тоже chunk). cursor - использует серверный SQL-курсор и держит ОДНУ запись в памяти, экономит память сильнее всего, но удерживает соединение и не работает с eager loading. ⚠️ КРИТИЧЕСКАЯ ЛОВУШКА chunk при UPDATE. Если внутри chunk() вы обновляете записи так, что они перестают подпадать под исходное where (например, where("processed", false) и в callback ставите processed=true), произойдёт сдвиг OFFSET и ПОЛОВИНА записей будет ПРОПУЩЕНА. Механика: первый запрос берёт строки 0-999, обновляет их → они уходят из выборки. Строки 1000-1999 уходят из выборки, а OFFSET 1000 теперь указывает на строки 2000-2999 - между ними пропускается 1000 записей. Для миграций данных и любых обновлений всегда используйте chunkById() (или lazyById()): он использует WHERE id > $lastId вместо нестабильного OFFSET, поэтому устойчив к изменению набора записей. Тот же риск есть в обратную сторону при INSERT в обрабатываемую таблицу. Lazy для просто чтения - ок; для UPDATE - lazyById. ⚠️ ОТДЕЛЬНОЕ ТРЕБОВАНИЕ chunkById/lazyById: колонка ($column, по умолчанию "id") должна быть СТРОГО МОНОТОННО ВОЗРАСТАЮЩЕЙ И УНИКАЛЬНОЙ. На неуникальной колонке (created_at без секунд, status, datetime с дублями) механизм WHERE column > $lastValue ПРОПУСКАЕТ записи с тем же значением, что у границы чанка - все строки с дубликатом ключа за пределами первого попадания теряются. Если естественной такой колонки нет - либо chunkById по pk, дополнительно фильтруя нужный where, либо chunkByIdDesc для обратного направления, либо вручную делать пагинацию через "WHERE (sort_col, id) > (?, ?)" (keyset pagination на составном ключе).',
                 'code_example' => '<?php
 // ❌ Опасно: chunk + UPDATE условия фильтра - пропуски записей
 User::where("notified", false)->chunk(1000, function ($users) {
@@ -393,7 +393,7 @@ Post::withoutGlobalScopes()->get();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что произойдёт, если вызвать $user->posts во foreach без with("posts")?',
-                'answer' => 'Это классический N+1: для каждого юзера выполнится отдельный SELECT по posts. with("posts") делает eager loading: один SELECT users + один WHERE user_id IN (...). При большом наборе данных N+1 даёт сотни запросов и убивает latency. Полезно включить Model::preventLazyLoading() в локальной среде - оно бросает исключение при ленивой загрузке и сразу ловит баг. ⚠️ ВАЖНО про limit() внутри with(): в Laravel 11+ это работает как per-parent limit (5 постов на КАЖДОГО юзера) благодаря интеграции пакета staudenmeir/eloquent-eager-limit в ядро. В Laravel ≤10 такой limit применяется к ОБЩЕЙ eager-load выборке (вы получите 5 постов суммарно на ВСЕХ юзеров) - классическая ловушка. На <=10 правильные альтернативы: hasOne+latestOfMany() для "последнего", subquery с ROW_NUMBER(), отдельный запрос с группировкой, или сторонний пакет.',
+                'answer' => 'Это классический N+1: для каждого юзера выполнится отдельный SELECT по posts. with("posts") делает eager loading: один SELECT users + один WHERE user_id IN (...). При большом наборе данных N+1 даёт сотни запросов и убивает latency. Полезно включить Model::preventLazyLoading() в локальной среде - оно бросает исключение при ленивой загрузке и сразу ловит баг. ⚠️ ВАЖНО про limit() внутри with(): в Laravel 11+ это работает как per-parent limit (5 постов на КАЖДОГО юзера) - в ядре реализован собственный per-parent limit (раньше нужен был сторонний пакет staudenmeir/eloquent-eager-limit). В Laravel ≤10 такой limit применяется к ОБЩЕЙ eager-load выборке (вы получите 5 постов суммарно на ВСЕХ юзеров) - классическая ловушка. На <=10 правильные альтернативы: hasOne+latestOfMany() для "последнего", subquery с ROW_NUMBER(), отдельный запрос с группировкой, или сторонний пакет.',
                 'code_example' => '<?php
 // AppServiceProvider::boot
 Model::preventLazyLoading(! app()->isProduction());
@@ -636,7 +636,7 @@ foreach (User::query()->where(...)->toBase()->cursor() as $row) {
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает withTrashed, onlyTrashed и restore при использовании SoftDeletes?',
-                'answer' => 'По умолчанию глобальный scope SoftDeletingScope скрывает записи с непустым deleted_at. withTrashed() включает их в выборку, onlyTrashed() возвращает только удалённые. restore() обнуляет deleted_at, а forceDelete() удаляет физически, минуя soft delete и вызывая событие forceDeleted.',
+                'answer' => 'По умолчанию глобальный scope SoftDeletingScope скрывает записи с непустым deleted_at. withTrashed() включает их в выборку, onlyTrashed() возвращает только удалённые. restore() обнуляет deleted_at и стреляет событиями restoring/restored. forceDelete() удаляет физически, минуя soft delete и вызывая событие forceDeleted.',
                 'difficulty' => 2,
                 'topic' => 'laravel.eloquent_advanced',
             ],
@@ -644,7 +644,7 @@ foreach (User::query()->where(...)->toBase()->cursor() as $row) {
                 'category' => 'Laravel',
                 'question' => 'Что нужно учитывать при выборе движка Scout: database, MeiliSearch, Algolia, Typesense?',
                 'answer' => 'database-драйвер хорош для прототипа и небольших коллекций — это просто LIKE по индексам, без релевантности. MeiliSearch и Typesense — self-hosted поисковые движки с морфологией и быстрым индексированием. Algolia — SaaS с очень хорошим ранжированием, но платный и оффшорный (PII). Выбор зависит от объёма данных, требований к релевантности, бюджета и compliance-ограничений на хранение данных у внешнего вендора.',
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'topic' => 'laravel.eloquent_advanced',
             ],
         ];

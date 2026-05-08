@@ -38,7 +38,7 @@ class ComposerAutoload
             [
                 'category' => 'PHP',
                 'question' => 'Что такое PSR-4 автозагрузка?',
-                'answer' => 'PSR-4 - стандарт автозагрузки классов. Простыми словами: имя класса с namespace однозначно отображается в путь к файлу. App\\Models\\User -> src/Models/User.php. Composer генерирует автозагрузчик по правилам в composer.json. Заменяет require_once для каждого файла. Старый стандарт PSR-0 заменял _ на / - устарел.',
+                'answer' => 'PSR-4 - стандарт автозагрузки классов. Простыми словами: имя класса с namespace однозначно отображается в путь к файлу. App\\Models\\User -> src/Models/User.php. Composer генерирует автозагрузчик по правилам в composer.json. Заменяет require_once для каждого файла. Старый стандарт PSR-0 разрешал и _ в имени класса (legacy от PEAR-стиля), и \\ в namespace — оба заменялись на /. Сейчас deprecated, имена с _ для маппинга в PSR-4 не интерпретируются.',
                 'code_example' => '<?php
 // composer.json: "autoload": { "psr-4": { "App\\\\": "src/" } }
 
@@ -60,7 +60,7 @@ $user = new User(); // автоматически подгрузится фай�
             [
                 'category' => 'PHP',
                 'question' => 'Чем отличаются include, require, include_once и require_once?',
-                'answer' => 'include - подключает файл, при ошибке - Warning, выполнение продолжается. require - при ошибке Fatal Error и остановка. include_once / require_once - то же самое, но если файл уже подключался - не подключают повторно. На современных проектах эти конструкции почти не используют - всё через Composer autoload (PSR-4).',
+                'answer' => 'include - подключает файл, при ошибке - Warning, выполнение продолжается. require - при ошибке Fatal Error и остановка. include_once / require_once - то же самое, но если файл уже подключался - не подключают повторно. На современных проектах эти конструкции почти не используют - всё через Composer autoload (PSR-4). Также include_once/require_once ощутимо медленнее кэшируемого Composer autoloader (он опирается на realpath cache + opcache).',
                 'code_example' => '<?php
 // При отсутствии файла - warning, идём дальше
 include "optional.php";
@@ -180,7 +180,7 @@ try {
             [
                 'category' => 'PHP',
                 'question' => 'Как читать и писать файлы в PHP?',
-                'answer' => 'Простые функции: file_get_contents (всё в строку), file_put_contents (записать). file() - читает в массив строк. fopen/fread/fwrite/fclose - для потоковой работы. fgets - построчно. file_put_contents с FILE_APPEND - дописывает. LOCK_EX - блокировка от конкурентной записи. Для больших файлов используй fopen + fgets, чтобы не загружать всё в память.',
+                'answer' => 'Простые функции: file_get_contents (всё в строку), file_put_contents (записать). file() - читает в массив строк. fopen/fread/fwrite/fclose - для потоковой работы. fgets - построчно. file_put_contents с FILE_APPEND - дописывает. LOCK_EX - блокировка от конкурентной записи. Для больших файлов используй fopen + fgets, чтобы не загружать всё в память; в реальном коде оборачивай в try/finally для гарантированного fclose даже при исключении.',
                 'code_example' => '<?php
 // Простое чтение
 $content = file_get_contents("file.txt");
@@ -239,55 +239,8 @@ echo $user->name; // "New" - переприсвоение НЕ работает'
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Что такое WeakMap и WeakReference?',
-                'answer' => 'WeakReference (PHP 7.4+) и WeakMap (PHP 8.0+) - механизм слабых ссылок. Простыми словами: ссылка, которая НЕ удерживает объект в памяти. Если других сильных ссылок нет - GC может уничтожить объект, и weak-ссылка вернёт null. WeakMap - словарь объект -> данные, не препятствующий уничтожению ключа. Полезно для кэшей, метаданных, observer-паттерна без утечек памяти.',
-                'code_example' => '<?php
-// WeakReference
-$obj = new stdClass();
-$weak = WeakReference::create($obj);
-var_dump($weak->get()); // object
-unset($obj);
-var_dump($weak->get()); // NULL - объект собран GC
-
-// WeakMap - кэш метаданных
-$cache = new WeakMap();
-$user = new stdClass();
-$cache[$user] = ["computed" => "data"];
-echo count($cache); // 1
-
-unset($user); // удалит и запись из WeakMap
-echo count($cache); // 0',
-                'code_language' => 'php',
-                'difficulty' => 4,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Что такое Fiber в PHP 8.1?',
-                'answer' => 'Fiber - механизм PHP 8.1+, позволяющий приостанавливать и возобновлять выполнение функции в любой точке. Простыми словами: это как пауза в видео - можешь остановить выполнение, отдать управление, потом вернуться. Полезно для асинхронного кода. Главное отличие от generator - можно приостановить из любой ВЛОЖЕННОЙ функции, а не только на yield в самой функции. Используется в ReactPHP, AMPHP, Laravel Octane.',
-                'code_example' => '<?php
-$fiber = new Fiber(function() {
-    echo "start\n";
-    $value = Fiber::suspend("paused");
-    echo "resumed with $value\n";
-    return "done";
-});
-
-$result = $fiber->start();
-echo "got: $result\n";  // "paused"
-
-$result = $fiber->resume("hello");
-echo "got: $result\n";  // "done"
-
-var_dump($fiber->isTerminated()); // true',
-                'code_language' => 'php',
-                'difficulty' => 5,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
                 'question' => 'Как безопасно хешировать пароли в PHP?',
-                'answer' => 'Используй password_hash($password, PASSWORD_DEFAULT) - функция автоматически генерирует соль и использует "текущий рекомендуемый PHP алгоритм" (на сегодня - bcrypt; PHP оставляет за собой право поменять дефолт в будущих версиях, поэтому колонку для хеша делайте VARCHAR(255)). Если в сборке доступен Argon2id и нужен явно он - используйте PASSWORD_ARGON2ID; password_hash($pwd, PASSWORD_ARGON2ID, ["memory_cost" => ..., "time_cost" => ..., "threads" => ...]). Никогда не используй md5/sha1/sha256 для паролей - они быстрые и заточены под GPU-брутфорс. password_verify($password, $hash) - проверка (за константное время, защита от timing-атак). password_needs_rehash($hash, PASSWORD_DEFAULT) проверяет, не пора ли пересчитать хеш (после смены дефолта или повышения cost) - вызывается на успешном логине.',
+                'answer' => 'Используй password_hash($password, PASSWORD_DEFAULT) - функция автоматически генерирует соль и использует "текущий рекомендуемый PHP алгоритм" (на сегодня - bcrypt; PHP оставляет за собой право поменять дефолт в будущих версиях, поэтому колонку для хеша делайте VARCHAR(255)). Если в сборке доступен Argon2id и нужен явно он - используйте PASSWORD_ARGON2ID; password_hash($pwd, PASSWORD_ARGON2ID, ["memory_cost" => ..., "time_cost" => ..., "threads" => ...]). Никогда не используй md5/sha1/sha256 для паролей - они быстрые и заточены под GPU-брутфорс. password_verify($password, $hash) - проверка; сравнение хешей внутри password_verify выполняется time-safe (как hash_equals), что защищает от timing-атак. password_needs_rehash($hash, PASSWORD_DEFAULT) проверяет, не пора ли пересчитать хеш (после смены дефолта или повышения cost) - вызывается на успешном логине.',
                 'code_example' => '<?php
 // При регистрации
 $password = "secret123";
@@ -306,32 +259,6 @@ if (password_verify($password, $hashFromDb)) {
 
 // С опциями
 $hash = password_hash($password, PASSWORD_BCRYPT, ["cost" => 12]);',
-                'code_language' => 'php',
-                'difficulty' => 3,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Как защититься от SQL-инъекций в PHP?',
-                'answer' => 'Главное правило: НИКОГДА не подставляй пользовательский ввод в SQL через конкатенацию или интерполяцию. Используй prepared statements (PDO или mysqli) - параметры передаются отдельно от SQL, БД сама их экранирует. С PDO - bindParam/bindValue или массив в execute(). Для динамических имён колонок/таблиц используй белый список allowed-значений.',
-                'code_example' => '<?php
-// ПЛОХО - SQL-инъекция!
-$name = $_GET["name"];
-$pdo->query("SELECT * FROM users WHERE name = \'$name\'");
-
-// ХОРОШО - prepared
-$stmt = $pdo->prepare("SELECT * FROM users WHERE name = ?");
-$stmt->execute([$_GET["name"]]);
-
-// С именованными параметрами
-$stmt = $pdo->prepare("SELECT * FROM users WHERE age > :age AND role = :role");
-$stmt->execute(["age" => 18, "role" => "admin"]);
-$users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Динамическая колонка - белый список
-$allowed = ["name", "email", "created_at"];
-$col = in_array($_GET["sort"], $allowed) ? $_GET["sort"] : "name";
-$pdo->query("SELECT * FROM users ORDER BY $col");',
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.composer_autoload',
@@ -389,7 +316,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             [
                 'category' => 'PHP',
                 'question' => 'Что такое Reflection в PHP?',
-                'answer' => 'Reflection - API для интроспекции кода в рантайме: получить информацию о классах, методах, свойствах, параметрах. Простыми словами: код, который анализирует другой код. Используется фреймворками для DI-контейнеров, ORM, сериализаторов, тестов. Основные классы: ReflectionClass, ReflectionMethod, ReflectionProperty, ReflectionParameter, ReflectionAttribute (PHP 8). Минус - медленнее прямых вызовов.',
+                'answer' => 'Reflection - API для интроспекции кода в рантайме: получить информацию о классах, методах, свойствах, параметрах. Простыми словами: код, который анализирует другой код. Используется фреймворками для DI-контейнеров, ORM, сериализаторов, тестов. Основные классы: ReflectionClass, ReflectionMethod, ReflectionProperty, ReflectionParameter, ReflectionAttribute (PHP 8). С PHP 8.1 setAccessible() стал deprecated/no-op — Reflection даёт доступ к private/protected свойствам и методам по умолчанию. Минус - медленнее прямых вызовов.',
                 'code_example' => '<?php
 class User {
     public function __construct(
@@ -488,82 +415,6 @@ $obj = unserialize($str, ["allowed_classes" => [User::class]]);',
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Какие структуры данных есть в SPL?',
-                'answer' => 'SPL (Standard PHP Library) - встроенные структуры данных и интерфейсы. Полезные классы: SplStack (LIFO), SplQueue (FIFO), SplDoublyLinkedList, SplFixedArray (массив фиксированного размера, экономит память), SplPriorityQueue (очередь с приоритетом), SplObjectStorage (хеш-таблица с объектами в ключах), SplHeap (куча). Интерфейсы: Iterator, IteratorAggregate, Countable, ArrayAccess.',
-                'code_example' => '<?php
-// Stack
-$stack = new SplStack();
-$stack->push(1);
-$stack->push(2);
-echo $stack->pop(); // 2
-
-// Queue
-$q = new SplQueue();
-$q->enqueue("a");
-$q->enqueue("b");
-echo $q->dequeue(); // "a"
-
-// Priority Queue
-$pq = new SplPriorityQueue();
-$pq->insert("task1", 1);
-$pq->insert("task2", 5); // выше приоритет
-echo $pq->extract(); // "task2"
-
-// FixedArray
-$arr = new SplFixedArray(1000);
-$arr[0] = "val";
-
-// ObjectStorage
-$storage = new SplObjectStorage();
-$storage[$obj] = "data";',
-                'code_language' => 'php',
-                'difficulty' => 4,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Что такое OPcache в PHP?',
-                'answer' => 'OPcache - встроенный байт-код кэш PHP. Простыми словами: PHP компилирует .php файлы в опкоды (промежуточный байт-код) при каждом запросе - OPcache сохраняет результат компиляции в shared memory, чтобы не пересобирать заново. Огромный буст в проде. Главные настройки: opcache.memory_consumption, opcache.max_accelerated_files, opcache.validate_timestamps (на проде = 0 для скорости, требует рестарта при деплое).',
-                'code_example' => '; php.ini
-opcache.enable=1
-opcache.enable_cli=0
-opcache.memory_consumption=256
-opcache.max_accelerated_files=20000
-opcache.validate_timestamps=0  ; в проде
-opcache.revalidate_freq=0
-opcache.save_comments=1        ; нужно для аннотаций
-
-; opcache_get_status() - получить статус
-; opcache_reset() - сбросить кэш',
-                'code_language' => 'bash',
-                'difficulty' => 4,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Что такое JIT в PHP 8?',
-                'answer' => 'JIT (Just-In-Time компиляция) - функция PHP 8+ (часть расширения OPcache), компилирует "горячий" опкод в нативный машинный код через DynASM прямо во время выполнения. Простыми словами: вместо интерпретации байткода - выполняется напрямую процессором. Включается через opcache.enable=1 + opcache.jit_buffer_size + opcache.jit=tracing|function. Важно для PHP 8.4: числовая форма флага (вроде 1255) объявлена deprecated - используйте именованные значения tracing / function / on / off / disable. Реально ускоряет CPU-bound задачи (математика, обработка изображений, шифры). Для типичных веб-приложений (БД, сеть) ускорения почти не даёт - бутылочное горло не CPU.',
-                'code_example' => '; php.ini для JIT - современная (PHP 8.4+) форма
-opcache.enable=1
-opcache.jit_buffer_size=256M
-opcache.jit=tracing             ; именованная форма
-; opcache.jit=1255              ; ⚠️ deprecated в PHP 8.4 - не используйте
-
-; Допустимые именованные значения:
-; tracing  - анализирует частые пути выполнения (рекомендуется)
-; function - JIT на уровне функций
-; on       - синоним tracing
-; off / disable - выключить
-
-; Проверка во время выполнения
-print_r(opcache_get_status(false)["jit"]);
-// ["enabled" => true, "on" => true, "kind" => 5, ...]',
-                'code_language' => 'bash',
-                'difficulty' => 5,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
                 'question' => 'Что такое сборщик мусора (GC) в PHP?',
                 'answer' => 'GC (Garbage Collector) - механизм освобождения памяти от объектов, которые больше не используются. PHP использует подсчёт ссылок (refcount) - когда счётчик становится 0, память освобождается сразу. Но есть проблема ЦИКЛИЧЕСКИХ ссылок (A ссылается на B, B на A) - тут refcount не доходит до 0. Для них есть отдельный циклический GC, запускающийся периодически. gc_collect_cycles() - запустить вручную.',
                 'code_example' => '<?php
@@ -586,28 +437,6 @@ var_dump(gc_status());
 gc_disable(); // отключить',
                 'code_language' => 'php',
                 'difficulty' => 5,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Что такое PHP-FPM?',
-                'answer' => 'PHP-FPM (FastCGI Process Manager) - менеджер процессов PHP для работы за веб-сервером (Nginx). Простыми словами: пул долгоживущих PHP-процессов, обрабатывающих запросы по протоколу FastCGI. Альтернатива mod_php (Apache) - быстрее, гибче. Настраиваются пулы: pm.max_children (макс процессов), pm.start_servers, pm = dynamic/static/ondemand. На запрос выделяется один воркер, после ответа PHP сбрасывает состояние.',
-                'code_example' => '; /etc/php/8.2/fpm/pool.d/www.conf
-[www]
-user = www-data
-listen = /run/php/php8.2-fpm.sock
-
-pm = dynamic
-pm.max_children = 50
-pm.start_servers = 5
-pm.min_spare_servers = 5
-pm.max_spare_servers = 10
-pm.max_requests = 500   ; рестарт воркера каждые N запросов
-
-pm.status_path = /status
-ping.path = /ping',
-                'code_language' => 'bash',
-                'difficulty' => 4,
                 'topic' => 'php.composer_autoload',
             ],
             [
@@ -723,38 +552,6 @@ class UserService {
 
 // FQCN
 $cls = \App\Models\User::class;',
-                'code_language' => 'php',
-                'difficulty' => 2,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Что такое callable и как передать функцию как параметр?',
-                'answer' => 'callable - тип, обозначающий "вызываемое". Может быть: имя функции (строка), массив [$obj, "method"] или ["Class", "staticMethod"], замыкание (Closure), объект с __invoke, first-class callable PHP 8.1 (function(...)). Часто используется в array_map, usort. Можно типизировать параметр как callable или Closure.',
-                'code_example' => '<?php
-function process(callable $fn, array $data): array {
-    return array_map($fn, $data);
-}
-
-// Имя функции
-process("strtoupper", ["a", "b"]);
-
-// Замыкание
-process(fn($x) => $x * 2, [1, 2, 3]);
-
-// Метод объекта
-class Doubler {
-    public function double($x) { return $x * 2; }
-}
-$d = new Doubler();
-process([$d, "double"], [1, 2]);
-
-// Статический метод
-process(["Math", "square"], [1, 2]);
-
-// First-class callable (PHP 8.1)
-process(strtoupper(...), ["a", "b"]);
-process($d->double(...), [1, 2]);',
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.composer_autoload',
@@ -880,7 +677,7 @@ var_dump(array_key_exists("key", $arr)); // true',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое суперглобальные переменные в PHP?',
-                'answer' => 'Суперглобальные переменные - встроенные массивы, доступные везде без global. $_GET - параметры из URL. $_POST - тело POST-запроса. $_REQUEST - объединение GET, POST, COOKIE. $_SERVER - данные сервера и заголовки. $_FILES - загруженные файлы. $_COOKIE - cookies. $_SESSION - данные сессии. $_ENV - переменные окружения. $GLOBALS - все глобальные переменные.',
+                'answer' => 'Суперглобальные переменные - встроенные массивы, доступные везде без global. $_GET - параметры из URL. $_POST - тело POST-запроса. $_REQUEST - по умолчанию объединение GET и POST (request_order = "GP"); попадание COOKIE настраивается через request_order в php.ini. $_SERVER - данные сервера и заголовки. $_FILES - загруженные файлы. $_COOKIE - cookies. $_SESSION - данные сессии. $_ENV - переменные окружения. $GLOBALS - все глобальные переменные.',
                 'code_example' => '<?php
 // URL: /search?q=php&page=2
 $query = $_GET["q"] ?? "";     // "php"
@@ -902,31 +699,6 @@ if ($_FILES["avatar"]["error"] === UPLOAD_ERR_OK) {
 }',
                 'code_language' => 'php',
                 'difficulty' => 2,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Как работает copy-on-write в PHP?',
-                'answer' => 'Copy-on-write (COW) - оптимизация, при которой PHP не копирует данные сразу при присваивании, а только когда одна из переменных МОДИФИЦИРУЕТСЯ. Простыми словами: $b = $a не копирует - просто увеличивает refcount. Реальная копия делается при первой записи. Для массивов и строк работает прозрачно. Для ОБЪЕКТОВ COW не работает - там handle-семантика.',
-                'code_example' => '<?php
-$a = range(1, 1_000_000); // большой массив
-$b = $a;  // НЕ копирование, просто refcount++
-// memory_get_usage() показывает, что память не выросла
-
-$b[0] = "new"; // ВОТ ТУТ копия!
-// Теперь $b - отдельный массив
-
-// Объекты - НЕ COW, всегда handle
-$obj1 = new User();
-$obj2 = $obj1;
-$obj2->name = "X";
-echo $obj1->name; // "X" - тот же объект
-
-// Передача в функцию - тоже COW для массивов
-function process(array $data) { /* ... */ }
-process($bigArray); // не копируется до изменения',
-                'code_language' => 'php',
-                'difficulty' => 4,
                 'topic' => 'php.composer_autoload',
             ],
             [
@@ -1006,7 +778,7 @@ echo $bag[0];       // "a"',
             [
                 'category' => 'PHP',
                 'question' => 'Как генерировать криптостойкие случайные числа в PHP?',
-                'answer' => 'rand() и mt_rand() - НЕ криптографически безопасны. Для безопасности (токены, пароли, CSRF) используй random_bytes() и random_int() (PHP 7+) - они дают криптостойкую случайность. random_int($min, $max) для целых, random_bytes($n) для бинарных данных. С PHP 8.2 появился новый объектный API через класс Random\\Engine.',
+                'answer' => 'rand() и mt_rand() - НЕ криптографически безопасны. Для безопасности (токены, пароли, CSRF) используй random_bytes() и random_int() (PHP 7+) - они дают криптостойкую случайность. random_int($min, $max) для целых, random_bytes($n) для бинарных данных. С PHP 8.2 - объектный API: Random\\Randomizer (top-level класс) + Random\\Engine\\* (движки), для криптостойкости — Random\\Engine\\Secure (default).',
                 'code_example' => '<?php
 // ПЛОХО - предсказуемо
 $token = md5(rand());
@@ -1159,41 +931,6 @@ $c = &$a;                 // CoW отключён для пары $a/$c',
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Чем generator отличается от обычной функции и почему он экономит память?',
-                'answer' => 'Generator - это функция с yield, возвращающая объект Generator, реализующий Iterator. Тело функции выполняется лениво: на каждой итерации до следующего yield, после чего стек замораживается. В памяти живёт только текущее значение и состояние корутины, а не весь набор данных. Это позволяет обрабатывать потоки данных любого размера в O(1) памяти. Дополнительно поддерживаются send() (двусторонняя коммуникация) и yield from (делегирование).',
-                'code_example' => '<?php
-// Обычная функция - строит весь массив
-function rangeArr(int $n): array {
-    $r = [];
-    for ($i = 0; $i < $n; $i++) $r[] = $i;
-    return $r; // O(n) памяти
-}
-
-// Generator - O(1) памяти
-function rangeGen(int $n): Generator {
-    for ($i = 0; $i < $n; $i++) yield $i;
-}
-
-foreach (rangeGen(1_000_000) as $i) {
-    if ($i > 5) break; // не строим миллион - выходим сразу
-}
-
-// send() - двусторонняя коммуникация
-function echoer(): Generator {
-    while (true) {
-        $msg = yield;
-        echo "got: $msg\\n";
-    }
-}
-$g = echoer();
-$g->current();          // запуск до первого yield
-$g->send("hi");         // got: hi',
-                'code_language' => 'php',
-                'difficulty' => 4,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
                 'question' => 'Что такое Fiber в PHP 8.1 и чем он отличается от generator и от корутины Go?',
                 'answer' => 'Fiber - примитив пользовательских стеков: можно приостановить (Fiber::suspend) и возобновить (resume) выполнение в произвольной точке, не только на yield. Generator кооперативен и тесно связан с iterator-протоколом, fiber же универсальнее и используется в ReactPHP/AMPHP для скрытия await. В отличие от горутин, fibers однопоточные, не имеют шедулера в ядре языка и не дают параллелизма - только конкурентность.',
                 'code_example' => '<?php
@@ -1317,7 +1054,7 @@ class PermissionCacheGood
             [
                 'category' => 'PHP',
                 'question' => 'Чем отличается == от === и какие сюрпризы бывают на нестрогом сравнении в PHP 8+?',
-                'answer' => '=== сравнивает тип и значение, == выполняет приведение типов. В PHP 8 поведение string vs number стало строже: "abc" == 0 теперь false (раньше true). Но "1abc" == 1 всё ещё true; "10" == "1e1" тоже true (оба числовые строки). Для null-safety и иммутабельности используйте ===, а для чисел - int-cast или явное приведение. Сравнение объектов по == проверяет класс и поля, а === - идентичность ссылки.',
+                'answer' => '=== сравнивает тип и значение, == выполняет приведение типов. В PHP 8 поведение string vs number стало строже: "abc" == 0 теперь false (раньше true). "1abc" == 1 теперь тоже false (нечисловая строка). Но "10" == "1e1" по-прежнему true (обе — числовые строки). Для null-safety и иммутабельности используйте ===, а для чисел - int-cast или явное приведение. Сравнение объектов по == проверяет класс и поля, а === - идентичность ссылки.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 3,
@@ -1329,83 +1066,6 @@ class PermissionCacheGood
                 'answer' => 'Получите Error: Call to private ClassName::__construct(). Такой паттерн используется для именованных конструкторов и Singleton: класс предоставляет статические фабричные методы (fromArray, fromString), которые внутри вызывают new self(). Это позволяет инкапсулировать инвариант построения и иметь несколько способов создания с осмысленными именами.',
                 'code_example' => null,
                 'code_language' => null,
-                'difficulty' => 3,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Как работают атрибуты PHP 8 и чем они лучше PHPDoc-аннотаций?',
-                'answer' => 'Атрибуты - это нативный синтаксис #[Attr(args)], который парсится компилятором и доступен через Reflection API без сторонних парсеров. У них есть таргеты (TARGET_CLASS, TARGET_METHOD), флаг IS_REPEATABLE и валидация аргументов, как у обычных классов. По сравнению с docblock-аннотациями: быстрее, безопаснее (нет регуляркой парсинга), IDE даёт автокомплит, типобезопасны.',
-                'code_example' => '<?php
-#[Attribute(Attribute::TARGET_METHOD)]
-final class Route {
-    public function __construct(public string $path, public string $method = "GET") {}
-}
-class Controller {
-    #[Route("/users/{id}")]
-    public function show(int $id) {}
-}',
-                'code_language' => 'php',
-                'difficulty' => 4,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'В чём разница между abstract, interface и trait и когда выбирать что?',
-                'answer' => 'Interface задаёт контракт без реализации, поддерживает множественную реализацию, не имеет состояния. Abstract class - частичная реализация плюс контракт, одиночное наследование, может иметь свойства. Trait - горизонтальное переиспользование кода (mixin), копируется в класс при компиляции, не образует тип. Интерфейс - для polymorphism, abstract - для шаблонного метода с общим состоянием, trait - для дублирующейся логики между несвязанными классами.',
-                'code_example' => '<?php
-// Interface - контракт без состояния, можно несколько
-interface Logger { public function log(string $m): void; }
-interface Cacheable { public function key(): string; }
-
-// Abstract - общая логика + один контракт
-abstract class Repository {
-    public function __construct(protected PDO $db) {}
-    abstract protected function table(): string;
-    public function all(): array {
-        return $this->db->query("SELECT * FROM {$this->table()}")->fetchAll();
-    }
-}
-
-// Trait - mixin: копируется в класс
-trait HasTimestamps {
-    public ?int $createdAt = null;
-    public function touch(): void { $this->createdAt = time(); }
-}
-
-class UserRepository extends Repository implements Logger {
-    use HasTimestamps;
-    protected function table(): string { return "users"; }
-    public function log(string $m): void { /* ... */ }
-}',
-                'code_language' => 'php',
-                'difficulty' => 3,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Что такое late static binding и зачем нужен static вместо self?',
-                'answer' => 'self ссылается на класс, в котором написана строка - связывание раннее, на этапе компиляции. static связывается поздно, по фактическому классу вызова. Это критично для фабричных методов и наследования: new self() вернёт родителя даже из дочернего класса, new static() - нужный потомок. Также static используется для возвращаемого типа методов вроде fluent API.',
-                'code_example' => null,
-                'code_language' => null,
-                'difficulty' => 4,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Что выведет код с замыканием, захватившим переменную по значению, если её изменить после создания замыкания?',
-                'answer' => 'use ($var) копирует значение в момент создания closure - последующие изменения снаружи не видны внутри. use (&$var) захватывает по ссылке: видны изменения в обе стороны. PHP 7.4+ поддерживает arrow functions (fn() =>), которые автоматически захватывают by value все используемые переменные внешнего скоупа.',
-                'code_example' => '<?php
-$x = 1;
-$byValue = function () use ($x) { return $x; };
-$byRef   = function () use (&$x) { return $x; };
-$arrow   = fn () => $x; // arrow тоже by value, в момент создания
-
-$x = 99;
-echo $byValue(); // 1   - захвачено старое значение
-echo $byRef();   // 99  - актуальное (по ссылке)
-echo $arrow();   // 1   - arrow зафиксировал значение при создании',
-                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.composer_autoload',
             ],
@@ -1455,15 +1115,6 @@ pm.max_requests = 1000',
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Чем отличается include от require и от autoload, и почему autoload предпочтительнее?',
-                'answer' => 'include выдаёт warning при отсутствии файла и продолжает выполнение, require - fatal error. _once делает идемпотентным. Autoload (spl_autoload_register / Composer PSR-4) загружает классы лениво: только когда они впервые упоминаются. Это снижает время загрузки, поддерживает namespaces и работает с opcache. В современных проектах ручные include использовать не нужно - только bootstrap.',
-                'code_example' => null,
-                'code_language' => null,
-                'difficulty' => 3,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
                 'question' => 'Что такое SPL и какие структуры из неё реально полезны на собеседованиях?',
                 'answer' => 'Standard PHP Library предоставляет специализированные структуры данных и итераторы. SplQueue/SplStack/SplDoublyLinkedList - связные списки с O(1) на голову/хвост. SplPriorityQueue - куча. SplObjectStorage - set/map для объектов. SplFixedArray - массив с числовыми индексами и фиксированным размером; немного экономит память по сравнению с обычным array (~1.1-1.3x на PHP 8 для int/string-значений - замерено через memory_get_usage), а не в 3-5 раз, как часто пишут (это легенда из эпохи PHP 5, когда HashTable был тяжёлым; в PHP 7+ packed array хранится как сплошной блок и почти догоняет SplFixedArray). Реальная польза SplFixedArray сегодня - жёсткая фиксация размера и невозможность нечисловых ключей, а не радикальная экономия памяти. Итераторы (RecursiveIteratorIterator, FilterIterator) дают компонуемые потоки.',
                 'code_example' => null,
@@ -1478,24 +1129,6 @@ pm.max_requests = 1000',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 4,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'В чём разница между __get/__set и реальными свойствами и какие подводные камни?',
-                'answer' => 'Магические методы вызываются, когда обращение к свойству невозможно (отсутствует или недоступно по видимости). Они в разы медленнее прямых обращений, ломают статический анализ, IDE-автодополнение и type inference. На каждом __get создаётся фрейм. Их используют для прокси-объектов и lazy-loading, но в DDD предпочтительнее явные геттеры или public readonly. С isset() работают только если определён __isset().',
-                'code_example' => null,
-                'code_language' => null,
-                'difficulty' => 3,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Как работает spread-оператор для массивов и именованных аргументов в PHP 8?',
-                'answer' => '... разворачивает iterable в позиционные аргументы или элементы массива. PHP 8.1 разрешает разворачивать массивы со строковыми ключами - они становятся именованными аргументами. Это удобно для proxy/decorator: принять args, добавить/изменить и пробросить дальше. Также именованные аргументы делают вызовы с длинными сигнатурами читаемыми и устойчивыми к перестановке.',
-                'code_example' => null,
-                'code_language' => null,
-                'difficulty' => 3,
                 'topic' => 'php.composer_autoload',
             ],
             [
@@ -1523,15 +1156,6 @@ pm.max_requests = 1000',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 3,
-                'topic' => 'php.composer_autoload',
-            ],
-            [
-                'category' => 'PHP',
-                'question' => 'Что такое stream wrappers и как с их помощью читать gzip "на лету"?',
-                'answer' => 'Stream wrapper - абстракция над источником данных с единым API fopen/fread/fwrite. PHP включает file://, http://, php://memory, а также compression-фильтры compress.zlib://, php://filter. Можно регистрировать свои через stream_wrapper_register. Это позволяет читать удалённые файлы, шифровать на лету и обрабатывать большие архивы потоково.',
-                'code_example' => null,
-                'code_language' => null,
-                'difficulty' => 4,
                 'topic' => 'php.composer_autoload',
             ],
             [

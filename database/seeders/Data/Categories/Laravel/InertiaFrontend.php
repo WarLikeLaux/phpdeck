@@ -77,7 +77,7 @@ return Inertia::render(\'Users/Index\', [
 defineProps({ users: Array })
 </script>',
                 'code_language' => 'php',
-                'difficulty' => 3,
+                'difficulty' => 2,
                 'topic' => 'laravel.inertia_frontend',
             ],
             [

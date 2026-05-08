@@ -134,7 +134,7 @@ SQL,
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое Index Scan и Sequential Scan?',
-                'answer' => 'Sequential Scan (seq scan) - полное сканирование таблицы, чтение строк подряд. Подходит для маленьких таблиц или когда возвращается большая доля строк. Index Scan - чтение через индекс, идёт по нему, потом по указателям к таблице. Бывает Index Only Scan (когда все нужные данные есть в индексе) и Bitmap Index Scan (собирает битмап позиций, потом за один проход читает таблицу). Какой использовать решает планировщик.',
+                'answer' => 'Sequential Scan (seq scan) - полное сканирование таблицы, чтение строк подряд. Подходит для маленьких таблиц или когда возвращается большая доля строк. Index Scan - чтение через индекс, идёт по нему, потом по указателям к таблице. Бывает Index Only Scan (когда все нужные данные есть в индексе) и Bitmap Index Scan (PostgreSQL/Oracle — собирает битмап позиций, потом за один проход читает таблицу; в MySQL/InnoDB этого режима нативно нет). Какой использовать решает планировщик.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 4,
@@ -209,7 +209,7 @@ CREATE INDEX idx_events_created ON events (created_at);
 -- Хороший: WHERE status=\'active\' AND created_at > X с индексом (status, created_at)
 -- Плохой:  WHERE created_at > X с индексом (status, created_at) без skip scan',
                 'code_language' => 'sql',
-                'difficulty' => 4,
+                'difficulty' => 5,
                 'topic' => 'database.indexes',
             ],
             [

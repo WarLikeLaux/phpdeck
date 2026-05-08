@@ -23,32 +23,32 @@ User::all()
     ->groupBy(\'country\')
     ->map(fn($users) => $users->count());',
                 'code_language' => 'php',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'laravel.collections',
             ],
             [
                 'category' => 'Laravel',
-                'question' => 'В чём разница между Collection и LazyCollection?',
-                'answer' => 'Collection - все элементы в памяти сразу. LazyCollection - использует PHP-генераторы и обрабатывает элементы по одному, не загружая всё в память. Простыми словами: Collection ест RAM пропорционально количеству элементов, LazyCollection - почти не ест. Используется для огромных датасетов и потоков.',
+                'question' => 'В чём разница между Collection и LazyCollection и когда её использовать?',
+                'answer' => 'Collection держит все элементы в памяти сразу - O(N) RAM. LazyCollection обёртывает PHP-Generator: операции (map/filter/take) не выполняются до первого forEach/reduce и не материализуют весь поток - O(1) память. Идеальна для построчной обработки больших файлов, cursor()-выборок Eloquent, импорта CSV. КРИТИЧЕСКАЯ ОСОБЕННОСТЬ - short-circuit на first()/take(): LazyCollection->filter(...)->first() остановит генератор на первом совпадении, тогда как обычная Collection->filter()->first() сначала отфильтрует ВЕСЬ массив, потом возьмёт первый элемент. То же для take(N) - lazy завершает обход после N совпадений. Ограничение: итератор однопроходный, count() или повторная итерация требуют remember()/eager(), что снова грузит в память.',
                 'code_example' => 'use Illuminate\Support\LazyCollection;
 
+// Big-file streaming + take(10) - читает только до 10-й ERROR-строки
 LazyCollection::make(function () {
     $handle = fopen(\'huge.log\', \'r\');
     while (($line = fgets($handle)) !== false) {
         yield $line;
     }
+    fclose($handle);
 })->filter(fn($l) => str_contains($l, \'ERROR\'))
   ->take(10)
-  ->each(fn($l) => print $l);',
-                'code_language' => 'php',
-                'difficulty' => 4,
-                'topic' => 'laravel.collections',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Чем Lazy Collection отличается от обычной Collection и когда её использовать?',
-                'answer' => 'LazyCollection обёртывает Generator: операции (map/filter/take) не выполняются до первого forEach/reduce, и не материализуют весь поток в память. Идеальна для построчной обработки больших файлов, cursor()-выборок Eloquent, импорта CSV. Основное ограничение - итератор однопроходный: count() или вторая итерация требуют remember()/eager(), что снова грузит в память.',
-                'code_example' => '<?php
+  ->each(fn($l) => print $l);
+
+// Short-circuit: ленивая остановка на first()
+LazyCollection::times(INF)
+    ->map(fn($n) => expensiveCheck($n))
+    ->first(fn($v) => $v === \'match\'); // expensiveCheck вызовется N раз, не INF
+
+// CSV-импорт чанками без памяти на весь файл
 LazyCollection::make(function () {
     $h = fopen("big.csv", "r");
     while (($row = fgetcsv($h)) !== false) yield $row;

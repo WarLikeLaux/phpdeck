@@ -46,7 +46,7 @@ $user->delete();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое mass assignment и зачем нужны $fillable и $guarded?',
-                'answer' => 'Mass assignment - это создание/обновление модели массивом данных (User::create($input)). Это опасно: пользователь может подсунуть лишние поля (например is_admin). Поэтому Laravel требует явно указать разрешённые поля через $fillable (whitelist) или запрещённые через $guarded (blacklist). Можно использовать только одно из двух.',
+                'answer' => 'Mass assignment - это создание/обновление модели массивом данных (User::create($input)). Это опасно: пользователь может подсунуть лишние поля (например is_admin). Поэтому Laravel требует явно указать разрешённые поля через $fillable (whitelist) или запрещённые через $guarded (blacklist). Технически можно объявить оба свойства, но при конфликте $fillable имеет приоритет, и $guarded фактически игнорируется - поэтому на практике используют что-то одно.',
                 'code_example' => 'class User extends Model {
     protected $fillable = [\'name\', \'email\', \'password\'];
     // или
@@ -74,8 +74,8 @@ $user->delete();',
             ],
             [
                 'category' => 'Laravel',
-                'question' => 'Как создать кастомный cast?',
-                'answer' => 'Кастомный cast - это класс, реализующий CastsAttributes с методами get (как читать) и set (как сохранять). Удобно для Value Objects.',
+                'question' => 'Cast для Value Object с раскладкой в несколько колонок (price → price_amount + price_currency)?',
+                'answer' => 'Cast реализует CastsAttributes и в set() возвращает массив с несколькими ключами - Laravel запишет каждый ключ в свою колонку. В get() читаются те же колонки из $attributes по префиксу $key. Это позволяет хранить Value Object вроде Money в нескольких физических колонках, а в коде работать с ним как с одним свойством модели. В $casts ключ совпадает с префиксом колонок.',
                 'code_example' => '// Cast разворачивает ОДНО логическое поле "price" в ДВЕ физические колонки
 // price_amount (int) и price_currency (string). $key даст префикс "price".
 class MoneyCast implements CastsAttributes {
@@ -271,8 +271,8 @@ final class MoneyCast implements CastsAttributes {
             ],
             [
                 'category' => 'Laravel',
-                'question' => 'В чём разница между firstOrCreate, updateOrCreate и upsert?',
-                'answer' => 'firstOrCreate ищет по атрибутам и создаёт, если нет; не атомарен - между select и insert возможна гонка, лучше иметь UNIQUE-индекс. updateOrCreate дополнительно обновляет поля у найденного. upsert делает массовый INSERT ... ON DUPLICATE KEY UPDATE (MySQL) или ON CONFLICT (Postgres) и атомарен на уровне БД, обходит каждую строку без N запросов. Используйте upsert для импорта, и uniques + транзакцию для одиночных кейсов.',
+                'question' => 'Атомарность firstOrCreate и upsert: где гонки и зачем UNIQUE-индекс?',
+                'answer' => 'firstOrCreate выполняет два запроса: SELECT по атрибутам, и если не нашёл - INSERT. Между ними окно гонки: два параллельных воркера могут одновременно увидеть "нет записи" и оба сделать INSERT - в результате две строки, дубликат. Защита - UNIQUE-индекс на колонках поиска: второй INSERT упадёт с 23000/23505, и Laravel перевыполнит SELECT (в современных версиях firstOrCreate ловит QueryException и делает retry). updateOrCreate имеет ту же гонку, плюс race на самом UPDATE при параллельных вызовах - нужен либо lockForUpdate в транзакции, либо UNIQUE-индекс. upsert делает массовый INSERT ... ON DUPLICATE KEY UPDATE (MySQL) / ON CONFLICT DO UPDATE (Postgres) - атомарен на уровне БД, обходит каждую строку без N запросов и ВСЕГДА требует UNIQUE/PRIMARY KEY на колонках из uniqueBy. Правило: для импортов - upsert; для одиночных кейсов - firstOrCreate/updateOrCreate с UNIQUE-индексом для подстраховки.',
                 'code_example' => '<?php
 User::upsert(
     [["email" => "a@b", "name" => "A"], ["email" => "c@d", "name" => "C"]],
@@ -344,7 +344,7 @@ User::whereIntegerInRaw("id", $userIds)->get();',
             [
                 'category' => 'Laravel',
                 'question' => 'Почему $model->save() может ТИХО вернуть false и в коде "ничего не сохранилось"?',
-                'answer' => 'Малоизвестная боль Eloquent: save() возвращает bool. В happy-path - true (запись создана/обновлена). НО save() возвращает false БЕЗ ИСКЛЮЧЕНИЯ, если любой из listener-ов событий saving / creating / updating вернул false. Это поведение fireModelEvent: false из любого подписчика = veto, операция отменяется. Аналогично для delete() - false из deleting отменяет удаление. Симптом в проде: разработчик пишет $user->save() и не проверяет результат - объект как будто сохранился (никаких ошибок), но в БД ничего не появилось. Чаще всего ловят: Observer/listener вернул void (а PHP void в bool-контексте дает false вместо обычного "ничего не возвращать") - до PHP 7.1 это было особенно частой ловушкой; явный return false для условной валидации в Observer (например, "не сохранять, если у юзера баланс отрицательный"); глобальный saving handler от какого-нибудь пакета (audit-log, activity), который не хочет писать конкретный тип записи. Решения: 1) ВСЕГДА проверять результат save()/delete() - if (!$user->save()) throw new RuntimeException(); 2) Использовать saveOrFail()/deleteOrFail() - бросают исключение при false (внутри транзакции); 3) В Observer-ах не возвращать ничего (return; явно) или return true; 4) При код-ревью observer-ов - явно проверять, что в коде нет случайного return false из логирующей логики.',
+                'answer' => 'Малоизвестная боль Eloquent: save() возвращает bool. В happy-path - true (запись создана/обновлена). НО save() возвращает false БЕЗ ИСКЛЮЧЕНИЯ, если любой из listener-ов событий saving / creating / updating вернул false. Это поведение fireModelEvent: false из любого подписчика = veto, операция отменяется. Аналогично для delete() - false из deleting отменяет удаление. Симптом в проде: разработчик пишет $user->save() и не проверяет результат - объект как будто сохранился (никаких ошибок), но в БД ничего не появилось. Чаще всего ловят: Observer/listener без явного return - fireModelEvent типизирует возврат как ?bool, и null трактуется как false, отменяя операцию; явный return false для условной валидации в Observer (например, "не сохранять, если у юзера баланс отрицательный"); глобальный saving handler от какого-нибудь пакета (audit-log, activity), который не хочет писать конкретный тип записи. Решения: 1) ВСЕГДА проверять результат save()/delete() - if (!$user->save()) throw new RuntimeException(); 2) Использовать saveOrFail()/deleteOrFail() - бросают исключение при false (внутри транзакции); 3) В Observer-ах не возвращать ничего (return; явно) или return true; 4) При код-ревью observer-ов - явно проверять, что в коде нет случайного return false из логирующей логики.',
                 'code_example' => '<?php
 // ❌ Тихий баг
 class UserObserver {

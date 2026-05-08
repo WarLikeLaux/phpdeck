@@ -81,7 +81,7 @@ public function withValidator($validator): void {
             [
                 'category' => 'Laravel',
                 'question' => 'Как создать кастомное правило валидации?',
-                'answer' => 'Через artisan make:rule создать класс, реализующий ValidationRule (Laravel 10+) с методом validate. Также можно использовать closure-правило прямо в массиве rules. Класс Rule предоставляет готовые сложные правила: Rule::unique, Rule::exists, Rule::in, Rule::when.',
+                'answer' => 'Через artisan make:rule создать класс, реализующий ValidationRule (Laravel 10+) с методом validate. Также можно использовать closure-правило прямо в массиве rules. Класс Rule предоставляет готовые сложные правила: Rule::unique, Rule::exists, Rule::in, Rule::enum(EnumClass::class), Rule::dimensions(), Rule::array([...]). Rule::when($condition, $rules, $defaultRules) - условно подключить набор правил.',
                 'code_example' => 'class Uppercase implements ValidationRule {
     public function validate(string $attribute, mixed $value, Closure $fail): void {
         if (strtoupper($value) !== $value) {

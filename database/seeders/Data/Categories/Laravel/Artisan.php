@@ -62,22 +62,25 @@ php artisan optimize:clear',
             [
                 'category' => 'Laravel',
                 'question' => 'Как создать кастомную artisan команду?',
-                'answer' => 'Через php artisan make:command. Класс наследуется от Command, имеет $signature (имя и аргументы) и $description. Логика в методе handle(). Зависимости можно инжектить в handle() или конструктор.',
+                'answer' => 'Через php artisan make:command. Класс наследуется от Command, имеет $signature (имя и аргументы) и $description. Логика в методе handle(). Зависимости можно инжектить в handle() или конструктор. Синтаксис опций: {--queue} - bool-флаг, {--queue=} - опция со значением, {--queue=default} - со значением по умолчанию, {--Q|queue=} - короткий alias.',
                 'code_example' => 'php artisan make:command SendEmails
 
 class SendEmails extends Command {
-    protected $signature = \'app:send-emails {user} {--queue=}\';
+    protected $signature = \'app:send-emails {user} {--Q|queue=default} {--dry}\';
     protected $description = \'Send emails to user\';
 
     public function handle(): int {
         $userId = $this->argument(\'user\');
-        $this->info("Sending to user {$userId}");
+        $queue  = $this->option(\'queue\');     // "default" если не передано
+        $dry    = $this->option(\'dry\');       // bool
+        $this->info("Sending to user {$userId} on {$queue}");
         return Command::SUCCESS;
     }
 }
 
 // Запуск
-php artisan app:send-emails 1 --queue=high',
+php artisan app:send-emails 1 --queue=high
+php artisan app:send-emails 1 -Qhigh --dry',
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.artisan',

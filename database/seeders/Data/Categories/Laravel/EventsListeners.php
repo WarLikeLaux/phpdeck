@@ -13,8 +13,11 @@ class EventsListeners
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Events и Listeners?',
-                'answer' => 'Event - это объект, описывающий "что-то произошло" (UserRegistered, OrderPaid). Listener - класс, реагирующий на событие. Простыми словами: один событие может иметь много слушателей, что позволяет отделять логику. Слушатель может реализовать ShouldQueue для асинхронной обработки.',
-                'code_example' => 'class UserRegistered {
+                'answer' => 'Event - это объект, описывающий "что-то произошло" (UserRegistered, OrderPaid). Listener - класс, реагирующий на событие. Простыми словами: одно событие может иметь много слушателей, что позволяет отделять логику. Слушатель может реализовать ShouldQueue для асинхронной обработки. Статический метод dispatch() даёт трейт Illuminate\\Foundation\\Events\\Dispatchable - он автоматически добавляется при php artisan make:event. Без трейта нужно использовать event(new Foo($x)).',
+                'code_example' => 'use Illuminate\\Foundation\\Events\\Dispatchable;
+
+class UserRegistered {
+    use Dispatchable; // даёт ::dispatch() и ::dispatchIf()
     public function __construct(public User $user) {}
 }
 
@@ -24,7 +27,9 @@ class SendWelcomeEmail implements ShouldQueue {
     }
 }
 
-UserRegistered::dispatch($user);',
+UserRegistered::dispatch($user);
+// либо без трейта
+event(new UserRegistered($user));',
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.events_listeners',
@@ -32,7 +37,7 @@ UserRegistered::dispatch($user);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Broadcasting в Laravel?',
-                'answer' => 'Broadcasting - это передача событий с сервера на клиента в реальном времени через WebSockets. Каналы: public (любой), private (требует авторизации), presence (с информацией о подключённых пользователях). Драйверы: Pusher, Ably, Reverb (свой WebSocket сервер от Laravel), Redis. Клиент использует Laravel Echo.',
+                'answer' => 'Broadcasting - это передача событий с сервера на клиента в реальном времени через WebSockets. Каналы: public (любой), private (требует авторизации), presence (с информацией о подключённых пользователях). Драйверы: Pusher, Ably, Reverb (свой WebSocket сервер от Laravel), Redis (pub/sub-транспорт - сам по себе WebSocket-клиентов не обслуживает, нужен внешний WS-сервер: Echo Server, Soketi). Клиент использует Laravel Echo.',
                 'code_example' => 'class MessageSent implements ShouldBroadcast {
     public function broadcastOn(): PrivateChannel {
         return new PrivateChannel(\'chat.\' . $this->message->room_id);
@@ -49,7 +54,7 @@ Echo.private(`chat.${roomId}`)
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое broadcasting и в чём разница private и presence-каналов?',
-                'answer' => 'Broadcasting публикует серверные события клиенту через драйверы (Pusher, Reverb, Soketi). Public - открыт всем. Private - требует Auth::user() и колбэк в Broadcast::channel("orders.{user}", fn($u, $userId) => $u->id === $userId), который проверяет доступ. Presence - расширение private, ещё возвращает массив с данными присутствующих пользователей; используется для онлайн-статуса и совместного редактирования.',
+                'answer' => 'Broadcasting публикует серверные события клиенту через драйверы (Pusher, Reverb, Soketi). Public - открыт всем. Private - требует Auth::user() и колбэк в Broadcast::channel("orders.{userId}", fn($u, $userId) => $u->id === $userId), который проверяет доступ. Presence - расширение private, ещё возвращает массив с данными присутствующих пользователей; используется для онлайн-статуса и совместного редактирования.',
                 'code_example' => '<?php
 Broadcast::channel("orders.{userId}", fn($u, $userId) => (int)$u->id === (int)$userId);
 
@@ -59,7 +64,7 @@ class OrderShipped implements ShouldBroadcast {
     }
 }',
                 'code_language' => 'php',
-                'difficulty' => 5,
+                'difficulty' => 4,
                 'topic' => 'laravel.events_listeners',
             ],
             [

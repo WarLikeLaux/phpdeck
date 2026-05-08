@@ -32,7 +32,7 @@ SELECT * FROM events WHERE data @> '{"type": "click"}';
 SELECT data->>'user_id' FROM events;
 SQL,
                 'code_language' => 'sql',
-                'difficulty' => 3,
+                'difficulty' => 2,
                 'topic' => 'database.postgresql',
             ],
             [
@@ -54,7 +54,7 @@ SELECT * FROM posts WHERE tags @> ARRAY['laravel'];
 CREATE INDEX idx_posts_tags ON posts USING gin(tags);
 SQL,
                 'code_language' => 'sql',
-                'difficulty' => 3,
+                'difficulty' => 2,
                 'topic' => 'database.postgresql',
             ],
             [
@@ -177,7 +177,7 @@ SQL,
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое репликация в PostgreSQL: streaming vs logical?',
-                'answer' => 'Streaming replication - физическая репликация, реплика побайтово копирует WAL-журнал мастера. Точная копия. Используется для отказоустойчивости и read-replicas. Logical replication - логическая, реплицируются изменения по таблицам через publication/subscription. Можно реплицировать выборочно (только нужные таблицы), между разными мажорными версиями, делать преобразования.',
+                'answer' => 'Streaming replication - физическая репликация, реплика получает записи WAL мастера (изменения страниц на уровне блоков). Точная копия. Используется для отказоустойчивости и read-replicas. Logical replication - логическая, реплицируются изменения по таблицам через publication/subscription. Можно реплицировать выборочно (только нужные таблицы), между разными мажорными версиями, делать преобразования.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 5,
@@ -186,7 +186,7 @@ SQL,
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое Full-Text Search в PostgreSQL?',
-                'answer' => 'Full-text search в PG - встроенный полнотекстовый поиск через типы tsvector (предобработанный документ) и tsquery (запрос). Поддерживает стемминг (приведение слов к основе), стоп-слова, ранжирование, разные языки. Индексируется через GIN. Для базовых задач хватает; для сложного - ElasticSearch.',
+                'answer' => 'Full-text search в PG - встроенный полнотекстовый поиск через типы tsvector (предобработанный документ) и tsquery (запрос). Поддерживает стемминг (приведение слов к основе), стоп-слова, ранжирование, разные языки. Индексируется через GIN. Для базовых задач хватает; для сложного - Elasticsearch.',
                 'code_example' => <<<'SQL'
 SELECT * FROM articles
 WHERE to_tsvector('russian', body) @@ to_tsquery('russian', 'лошадь & белая');
@@ -243,7 +243,7 @@ ORDER BY age DESC;
 -- Сброс статистики
 SELECT pg_stat_statements_reset();',
                 'code_language' => 'sql',
-                'difficulty' => 4,
+                'difficulty' => 5,
                 'topic' => 'database.postgresql',
             ],
             [
@@ -312,7 +312,7 @@ DB::raw("SELECT pg_advisory_lock(?)"); // session-level lock протекает 
                 'category' => 'Базы данных',
                 'question' => 'Что такое тип ENUM в PostgreSQL и какие у него ограничения?',
                 'answer' => 'ENUM — это пользовательский тип со статическим упорядоченным набором строковых значений, создаётся через CREATE TYPE mood AS ENUM (...). Сравнение и сортировка работают по порядку объявления, значения занимают 4 байта. Добавлять значения можно через ALTER TYPE ... ADD VALUE, но удалять или переименовывать существующие сложно и требует пересоздания типа. Из-за этой неподвижности на практике часто заменяют на отдельную lookup-таблицу или CHECK по строке.',
-                'difficulty' => 3,
+                'difficulty' => 2,
                 'topic' => 'database.postgresql',
             ],
             [
@@ -333,7 +333,7 @@ DB::raw("SELECT pg_advisory_lock(?)"); // session-level lock протекает 
                 'category' => 'Базы данных',
                 'question' => 'Какие сетевые типы и UUID есть в PostgreSQL и зачем они отдельно?',
                 'answer' => 'inet хранит IPv4/IPv6 адрес с опциональной маской подсети, cidr — сеть с обязательной маской, macaddr/macaddr8 — MAC-адреса. По сравнению с TEXT они занимают меньше места, валидируют формат на входе и поддерживают операторы вроде <<= (входит ли адрес в сеть). Тип uuid хранит 128-битный идентификатор в 16 байтах вместо 36-байтной строки, имеет генераторы (gen_random_uuid() из pgcrypto) и быстрее индексируется, чем TEXT-представление.',
-                'difficulty' => 3,
+                'difficulty' => 2,
                 'topic' => 'database.postgresql',
             ],
             [

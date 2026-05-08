@@ -103,7 +103,7 @@ Bus::batch([
             [
                 'category' => 'Laravel',
                 'question' => 'Как обеспечить идемпотентность Job в очереди и что произойдёт при двойном запуске?',
-                'answer' => 'Очередь даёт at-least-once: при таймауте/падении воркера job переехдёт в attempts+1. Для идемпотентности используют ключ операции (заказ id, request id) и проверяют через WithoutOverlapping или БД-запись unique constraint, либо реализуют ShouldBeUnique. Альтернатива - middleware Throttled с уникальным ключом. Также важно ставить retry_after > timeout, чтобы не дублировать запуск из-за таймаута слушателя.',
+                'answer' => 'Очередь даёт at-least-once: при таймауте/падении воркера job перейдёт в attempts+1. Для идемпотентности используют ключ операции (заказ id, request id) и проверяют через WithoutOverlapping или БД-запись unique constraint, либо реализуют ShouldBeUnique. Альтернатива - middleware Throttled с уникальным ключом. Также важно ставить retry_after > timeout, чтобы не дублировать запуск из-за таймаута слушателя.',
                 'code_example' => '<?php
 class ProcessPayment implements ShouldQueue, ShouldBeUnique {
     public int $uniqueFor = 3600;
@@ -118,7 +118,7 @@ class ProcessPayment implements ShouldQueue, ShouldBeUnique {
             [
                 'category' => 'Laravel',
                 'question' => 'Как настроить экспоненциальный backoff и максимальное число попыток для Job?',
-                'answer' => 'Свойство $tries или метод tries() задаёт число попыток. backoff() возвращает int или массив задержек по каждой попытке (экспоненциальный backoff). retryUntil() задаёт абсолютный дедлайн. Для долгих jobs нужна синхронизация $timeout (sec) и retry_after в конфиге queue, чтобы воркер не считал job упавшим. failed() вызывается после исчерпания tries - место для алертов.',
+                'answer' => 'Число попыток задаётся свойством $tries на классе Job, либо CLI-флагом queue:work --tries=N. Метод retryUntil(): \\DateTimeInterface задаёт абсолютный дедлайн (когда retryUntil вернул будущее время, число попыток игнорируется). backoff() возвращает int или массив задержек по каждой попытке (экспоненциальный backoff). Для долгих jobs нужна синхронизация $timeout (sec) и retry_after в конфиге queue, чтобы воркер не считал job упавшим. failed() вызывается после исчерпания tries - место для алертов.',
                 'code_example' => '<?php
 class SyncCrm implements ShouldQueue {
     public int $tries = 5;
@@ -255,7 +255,7 @@ numprocs=4
 // После деплоя
 php artisan queue:restart // воркеры грейсфул-завершатся, supervisor поднимет с новым кодом',
                 'code_language' => 'php',
-                'difficulty' => 4,
+                'difficulty' => 5,
                 'topic' => 'laravel.queues_jobs',
             ],
         ];

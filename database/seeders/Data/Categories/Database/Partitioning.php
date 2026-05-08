@@ -144,7 +144,7 @@ WHERE status = \'paid\' AND created_at > NOW() - INTERVAL \'1 day\';',
             [
                 'category' => 'Базы данных',
                 'question' => 'Какие виды партиционирования есть в Postgres и какие проблемы они решают?',
-                'answer' => 'PARTITION BY RANGE (по диапазону, чаще по дате) - типично для логов и time-series, позволяет быстро дропать старые данные через DROP PARTITION. PARTITION BY LIST - по перечислению (страна, тенант). PARTITION BY HASH - равномерное распределение. Partition pruning - оптимизатор не сканирует партиции, не подходящие под WHERE. Local indexes на каждой партиции; declarative partitioning поддерживает FK между партициями только с PG12+.',
+                'answer' => 'PARTITION BY RANGE (по диапазону, чаще по дате) - типично для логов и time-series, позволяет быстро дропать старые данные через DROP PARTITION. PARTITION BY LIST - по перечислению (страна, тенант). PARTITION BY HASH - равномерное распределение. Partition pruning - оптимизатор не сканирует партиции, не подходящие под WHERE. Local indexes на каждой партиции; FK *из* партиционированной таблицы появились в PG 11, FK *на* партиционированную таблицу (когда она выступает referenced-стороной) — только с PG 12+.',
                 'code_example' => 'CREATE TABLE events (
     id bigserial, created_at timestamptz NOT NULL, payload jsonb
 ) PARTITION BY RANGE (created_at);
@@ -153,38 +153,6 @@ CREATE TABLE events_2026_05 PARTITION OF events
     FOR VALUES FROM (\'2026-05-01\') TO (\'2026-06-01\');',
                 'code_language' => 'sql',
                 'difficulty' => 5,
-                'topic' => 'database.partitioning',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое replication lag и как с ним жить в read-heavy приложении?',
-                'answer' => 'Async-репликация: реплика отстаёт на величину от ms до секунд. Если сразу после записи прочитать с реплики, можно не увидеть свою же запись (read-your-writes). Лекарства: sticky-сессия на мастер N секунд после записи, использование synchronous_commit=remote_apply (синхронная репликация, дороже), read-your-writes routing по cookie/HEAD-запросу. Также Postgres может вернуть LSN после COMMIT и читать с реплики только когда replay_lsn >= нужного.',
-                'code_example' => '-- master
-COMMIT;
-SELECT pg_current_wal_lsn();
--- replica
-SELECT pg_last_wal_replay_lsn() >= :lsn;',
-                'code_language' => 'sql',
-                'difficulty' => 5,
-                'topic' => 'database.partitioning',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое materialized view и когда она лучше обычного view?',
-                'answer' => 'View - сохранённый запрос; разворачивается при каждом обращении. Materialized view физически хранит результат, обновляется явно через REFRESH MATERIALIZED VIEW (CONCURRENTLY - без эксклюзивной блокировки, но требует UNIQUE-индекса). Подходит для тяжёлых аналитических агрегатов, которые можно пересчитывать раз в N минут/часов. Минусы: stale data, нужно расписание обновления, индексы строятся отдельно. Альтернатива - incremental rollup в отдельной таблице с обновлением по триггеру или CDC.',
-                'code_example' => null,
-                'code_language' => null,
-                'difficulty' => 4,
-                'topic' => 'database.partitioning',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Чем отличаются jsonb и json в Postgres и почему jsonb обычно предпочтительнее?',
-                'answer' => 'json хранится текстом as-is, сохраняет порядок ключей и whitespace, медленный для запросов. jsonb парсится в бинарный формат при INSERT, ключи нормализованы, дубли удалены, доступ к полям O(log n), поддерживает GIN-индексы и операторы @>, ?, ?|. jsonb предпочтительнее почти всегда - кроме случаев, когда критичен exact-text round-trip (логирование сырых payload).',
-                'code_example' => 'CREATE INDEX idx_users_meta ON users USING gin (meta jsonb_path_ops);
-SELECT * FROM users WHERE meta @> \'{"plan":"premium"}\';',
-                'code_language' => 'sql',
-                'difficulty' => 3,
                 'topic' => 'database.partitioning',
             ],
             [
@@ -213,15 +181,6 @@ ANALYZE orders;',
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'Что такое CAP-теорема и как она применяется в выборе БД?',
-                'answer' => 'CAP: при network partition распределённая система может обеспечить либо Consistency, либо Availability - не оба. Применять CAP-ярлыки к "Postgres" или "MySQL" в целом некорректно - одиночный сервер вообще не распределённая система. Корректно говорить о КОНКРЕТНОЙ конфигурации: single-leader RDBMS с синхронной репликацией и quorum-фейловером (Postgres synchronous_standby_names, MySQL Group Replication) близка к CP - при потере связи с мастером пишущая сторона недоступна, чтобы не разойтись; та же СУБД с асинхронной репликацией и автофейловером может потерять подтверждённые транзакции при failover (жертва C в пользу A). Cassandra/DynamoDB позиционируются как AP, но и они tunable (Cassandra QUORUM ближе к CP, DynamoDB ConsistentRead=true тоже). PACELC расширяет CAP, добавляя trade-off latency vs consistency без partition.',
-                'code_example' => null,
-                'code_language' => null,
-                'difficulty' => 5,
-                'topic' => 'database.partitioning',
-            ],
-            [
-                'category' => 'Базы данных',
                 'question' => 'Что такое write skew и приведите пример из реального приложения.',
                 'answer' => 'Write skew - две транзакции читают пересекающийся набор строк, принимают решение на основе snapshot и пишут разные строки, нарушая инвариант. Классический пример: дежурство врачей. Две транзакции видят, что дежурят 2 человека, и одновременно "уходят домой" - оба отметят off-call, нарушив правило "минимум один". REPEATABLE READ не ловит write skew, нужен SERIALIZABLE или SELECT FOR UPDATE на конфликтующие строки.',
                 'code_example' => '-- защита через SELECT FOR UPDATE
@@ -244,7 +203,7 @@ WHERE (created_at, id) < (:cursor_at, :cursor_id)
 ORDER BY created_at DESC, id DESC
 LIMIT 20;',
                 'code_language' => 'sql',
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'topic' => 'database.partitioning',
             ],
         ];

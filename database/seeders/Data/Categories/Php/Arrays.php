@@ -126,7 +126,7 @@ array_key_exists("name", $data);   // true
 $set = array_flip(["a", "b", "c"]); // ["a"=>0, "b"=>1, "c"=>2]
 isset($set["a"]); // O(1)',
                 'code_language' => 'php',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'php.arrays',
             ],
             [

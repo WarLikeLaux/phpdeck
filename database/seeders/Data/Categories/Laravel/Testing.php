@@ -148,7 +148,7 @@ Event::fake();
 // под капотом Mail::fake() - это spy: записывает отправленные письма,
 // потом Mail::assertSent(InvoicePaid::class)',
                 'code_language' => 'php',
-                'difficulty' => 4,
+                'difficulty' => 5,
                 'topic' => 'laravel.testing',
             ],
             [

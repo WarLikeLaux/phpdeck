@@ -78,7 +78,7 @@ spec:
                 'answer' => 'Canary deploy - постепенный rollout: новая версия сначала получает 1% трафика, потом 5%, 25%, 100%. Простыми словами: канарейка в шахте - если что-то не так, потеряем малость. Метрики (ошибки, latency) на каждом этапе сравниваются с baseline - если ухудшение, автоматический rollback. Плюсы: маленький blast radius при ошибках. Минусы: нужна инфраструктура для маршрутизации (Istio, Linkerd, Argo Rollouts) и хороший observability.',
                 'code_example' => null,
                 'code_language' => null,
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
             [
@@ -137,7 +137,7 @@ return view("checkout.v1");',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как обеспечить Graceful Shutdown для PHP-воркеров и Kubernetes-подов?',
-                'answer' => 'Graceful shutdown - корректное завершение процесса при получении сигнала остановки: дождаться завершения текущей работы, не принимать новую, освободить ресурсы. Без него при деплое теряются in-flight Job-ы, обрываются HTTP-запросы, остаётся "висящий" state в БД. Механика в Linux: процесс получает SIGTERM (15) - нужно успеть завершиться за grace period; если не успел, через timeout приходит SIGKILL (9), который не перехватывается. Kubernetes по умолчанию даёт terminationGracePeriodSeconds=30 после SIGTERM, потом SIGKILL. Что делать в PHP: 1) В CLI-воркере - pcntl_async_signals(true) + pcntl_signal(SIGTERM, ...) + установить флаг "shouldStop", который проверяется в основном цикле между задачами. 2) Для очередей - Laravel queue:work уже умеет сам ловить SIGTERM/SIGINT и завершается после текущего Job; нужно только настроить правильный --timeout и terminationGracePeriodSeconds > timeout. 3) Для HTTP - php-fpm graceful через kill -USR1/USR2 (master форкает новых воркеров, старые дорабатывают текущие запросы). В Kubernetes: 4) preStop hook на pod (sleep 10) - даёт время сервис-меш / load balancer убрать pod из endpoints до начала остановки, чтобы новые запросы не шли. 5) Readiness probe возвращает unready при получении SIGTERM. 6) terminationGracePeriodSeconds = max время вашей задачи + buffer. Для Octane/Swoole/RoadRunner - встроенная поддержка graceful reload. Подводный камень: в Kubernetes SIGTERM приходит ДО того, как pod удалён из endpoints - всегда нужен preStop sleep либо корректная readiness-проверка.',
+                'answer' => 'Graceful shutdown - корректное завершение процесса при получении сигнала остановки: дождаться завершения текущей работы, не принимать новую, освободить ресурсы. Без него при деплое теряются in-flight Job-ы, обрываются HTTP-запросы, остаётся "висящий" state в БД. Механика в Linux: процесс получает SIGTERM (15) - нужно успеть завершиться за grace period; если не успел, через timeout приходит SIGKILL (9), который не перехватывается. Kubernetes по умолчанию даёт terminationGracePeriodSeconds=30 после SIGTERM, потом SIGKILL. Что делать в PHP: 1) В CLI-воркере - pcntl_async_signals(true) + pcntl_signal(SIGTERM, ...) + установить флаг "shouldStop", который проверяется в основном цикле между задачами. 2) Для очередей - Laravel queue:work уже умеет сам ловить SIGTERM/SIGINT и завершается после текущего Job; нужно только настроить правильный --timeout и terminationGracePeriodSeconds > timeout. 3) Для HTTP - php-fpm graceful через kill -USR2 (master форкает новых воркеров, старые дорабатывают текущие запросы); SIGUSR1 у php-fpm — это переоткрыть лог-файлы (для logrotate), а SIGQUIT — graceful shutdown без замены воркеров. В Kubernetes: 4) preStop hook на pod (sleep 10) - даёт время сервис-меш / load balancer убрать pod из endpoints до начала остановки, чтобы новые запросы не шли. 5) Readiness probe возвращает unready при получении SIGTERM. 6) terminationGracePeriodSeconds = max время вашей задачи + buffer. Для Octane/Swoole/RoadRunner - встроенная поддержка graceful reload. Подводный камень: в Kubernetes SIGTERM приходит ДО того, как pod удалён из endpoints - всегда нужен preStop sleep либо корректная readiness-проверка.',
                 'code_example' => '<?php
 // 1. Свой воркер с обработкой SIGTERM
 pcntl_async_signals(true);
@@ -177,7 +177,7 @@ $this->cleanup(); // close DB, flush metrics
 // 4. php-fpm graceful reload
 // kill -USR2 $(cat /var/run/php-fpm.pid) # перезагрузка с дописыванием текущих',
                 'code_language' => 'php',
-                'difficulty' => 4,
+                'difficulty' => 5,
                 'topic' => 'system_design.devops',
             ],
             [
@@ -240,7 +240,7 @@ Schema::table("users", function (Blueprint $table) {
 // В PG 11+ NOT NULL DEFAULT - метаданные, мгновенно.
 // Безопасно везде: ADD COLUMN nullable → backfill → ALTER COLUMN SET NOT NULL.',
                 'code_language' => 'php',
-                'difficulty' => 4,
+                'difficulty' => 5,
                 'topic' => 'system_design.devops',
             ],
             [
@@ -351,7 +351,7 @@ Schema::table("users", function (Blueprint $table) {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Какие настройки OPcache критичны для production-PHP?',
-                'answer' => 'opcache.enable=1 и opcache.memory_consumption (128-256 МБ для среднего проекта) — без них кеш либо выключен, либо вытесняется. opcache.max_accelerated_files должен быть больше реального числа .php файлов в проекте, иначе часть будет постоянно перекомпилироваться. opcache.validate_timestamps=0 на проде даёт максимум скорости, но требует opcache_reset/рестарт fpm при деплое — иначе старый код останется в памяти. opcache.preload (PHP 7.4+) загружает классы фреймворка при старте и убирает их компиляцию из горячего пути. Для измерения — opcache.jit и jit_buffer_size, но JIT помогает в основном CPU-bound коду.',
+                'answer' => 'opcache.enable=1 и opcache.memory_consumption (128-256 МБ для среднего проекта) — без них кеш либо выключен, либо вытесняется. opcache.max_accelerated_files должен быть больше реального числа .php файлов в проекте, иначе часть будет постоянно перекомпилироваться. opcache.validate_timestamps=0 на проде даёт максимум скорости, но требует opcache_reset/рестарт fpm при деплое — иначе старый код останется в памяти. opcache.preload (PHP 7.4+) загружает классы фреймворка при старте и убирает их компиляцию из горячего пути. JIT включается через opcache.jit (режим компиляции, например 1255) и opcache.jit_buffer_size (размер буфера) — помогает в основном CPU-bound коду, для типичных I/O-bound веб-приложений эффект скромный.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
@@ -393,7 +393,7 @@ Schema::table("users", function (Blueprint $table) {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Зачем PHP-приложению контейнеры запускать не от root, и что для этого нужно сделать?',
-                'answer' => 'По умолчанию контейнер запускается от UID 0 — если злоумышленник вырвался из процесса (например, через RCE в приложении) и нашёл уязвимость в runc/ядре, он получает root на хосте. Также root внутри легко повредит примонтированные тома. Правильно: в Dockerfile создать пользователя (RUN adduser -u 1000 app) и USER app перед CMD; в Kubernetes выставить securityContext.runAsNonRoot: true и runAsUser: 1000, плюс readOnlyRootFilesystem: true. Сложности: php-fpm нужно дать права на /var/run/php-fpm.sock и логи, а слушать порты ниже 1024 не-root не сможет — поэтому fpm обычно слушает 9000, а 80/443 терминируются на nginx-ingress.',
+                'answer' => 'По умолчанию контейнер запускается от UID 0 — если злоумышленник вырвался из процесса (например, через RCE в приложении) и нашёл уязвимость в runc/ядре, он получает root на хосте. Также root внутри легко повредит примонтированные тома. Правильно: в Dockerfile создать пользователя (RUN adduser -u 1000 app) и USER app перед CMD; в Kubernetes выставить securityContext.runAsNonRoot: true и runAsUser: 1000, плюс readOnlyRootFilesystem: true. Сложности: php-fpm нужно дать права на /var/run/php-fpm.sock и логи, а слушать порты ниже 1024 не-root не сможет — поэтому fpm обычно слушает 9000, а 80/443 терминируются на nginx-ingress. Подвох с readOnlyRootFilesystem в Laravel: storage/, bootstrap/cache/ (compiled views, route cache) пишутся в рантайме — нужны явные emptyDir volumes на эти пути, иначе приложение упадёт.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],

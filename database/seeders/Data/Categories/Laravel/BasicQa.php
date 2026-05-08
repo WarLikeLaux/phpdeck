@@ -13,7 +13,7 @@ class BasicQa
             [
                 'category' => 'Laravel',
                 'question' => 'Чем отличается Service Provider от Middleware?',
-                'answer' => 'Service Provider регистрирует биндинги и бутстрапит сервисы при старте приложения. Middleware фильтрует HTTP-запросы по конвейеру до и после контроллера.',
+                'answer' => 'Service Provider вызывается до обработки запроса (регистрирует биндинги и инициализирует сервисы). Middleware фильтрует HTTP-запросы по конвейеру до и после контроллера.',
                 'difficulty' => 2,
                 'topic' => 'laravel.basic_qa',
             ],
@@ -61,13 +61,6 @@ class BasicQa
             ],
             [
                 'category' => 'Laravel',
-                'question' => 'Что такое Route Model Binding?',
-                'answer' => 'Автоматический резолв модели по параметру роута. Implicit - по типу аргумента и имени параметра, explicit - через Route::model или Route::bind.',
-                'difficulty' => 2,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
                 'question' => 'Что такое Policy и Gate?',
                 'answer' => 'Gate - замыкание для проверки права действия. Policy - класс, группирующий правила доступа для конкретной модели. Используются через can()/authorize().',
                 'difficulty' => 2,
@@ -90,7 +83,7 @@ class BasicQa
             [
                 'category' => 'Laravel',
                 'question' => 'Зачем нужен php artisan optimize?',
-                'answer' => 'Кэширует конфиг, роуты, события и вьюхи в одиночные файлы для production. Ускоряет загрузку фреймворка, исключая парсинг при каждом запросе.',
+                'answer' => 'Связка из четырёх команд: config:cache + route:cache + view:cache + event:cache. Кэширует конфиг, роуты, события и вьюхи в одиночные файлы для production - ускоряет загрузку фреймворка, исключая парсинг при каждом запросе. Сбрасывается через optimize:clear.',
                 'difficulty' => 2,
                 'topic' => 'laravel.basic_qa',
             ],

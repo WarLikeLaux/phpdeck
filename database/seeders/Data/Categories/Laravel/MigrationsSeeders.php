@@ -87,7 +87,7 @@ public function run(): void {
             [
                 'category' => 'Laravel',
                 'question' => 'Как в фабрике создать модель с дочерними записями и пивотом, не вызывая save вручную?',
-                'answer' => 'Используйте методы has/for/hasAttached фабрики: User::factory()->has(Post::factory()->count(3))->create() создаст юзера с тремя постами, а ->hasAttached(Role::factory()->count(2), ["assigned_at" => now()]) добавит связи через pivot c дополнительными колонками. Метод for описывает обратную сторону belongsTo. Так фабрика сама разруливает foreign keys и pivot-таблицу.',
+                'answer' => 'Используйте методы has/for/hasAttached фабрики: User::factory()->has(Post::factory()->count(3))->create() создаст юзера с тремя постами, а ->hasAttached(Role::factory()->count(2), ["assigned_at" => now()]) добавит связи через pivot c дополнительными колонками. Метод for() задаёт родителя для belongsTo-связи (например, Post::factory()->for(User::factory())). Так фабрика сама разруливает foreign keys и pivot-таблицу.',
                 'difficulty' => 3,
                 'topic' => 'laravel.migrations_seeders',
             ],

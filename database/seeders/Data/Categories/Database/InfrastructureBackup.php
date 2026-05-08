@@ -43,7 +43,7 @@ pg_restore -U user -d mydb backup.dump
 pg_basebackup -D /backup -F tar -X stream -P
 BASH,
                 'code_language' => 'bash',
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'topic' => 'database.infrastructure_backup',
             ],
         ];

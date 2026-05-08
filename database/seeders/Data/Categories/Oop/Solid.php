@@ -187,6 +187,8 @@ class Robot implements Workable { /* eat и sleep не нужны */ }',
 // Плохо: сервис привязан к конкретной реализации
 class OrderServiceBad
 {
+    private MySqlOrderRepo $db;
+
     public function __construct()
     {
         $this->db = new MySqlOrderRepo(); // жёсткая зависимость

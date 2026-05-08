@@ -22,10 +22,10 @@ class Nosql
             [
                 'category' => 'Базы данных',
                 'question' => 'Какие есть виды NoSQL баз?',
-                'answer' => '1) Key-Value: ключ -> значение (Redis, DynamoDB, Memcached). 2) Document: хранит документы (обычно JSON) - MongoDB, CouchDB. 3) Column-family (wide-column): таблицы с динамическими столбцами - Cassandra, HBase. 4) Graph: вершины и рёбра - Neo4j, ArangoDB. Также сюда часто относят поисковые движки (ElasticSearch) и time-series БД (InfluxDB, TimescaleDB).',
+                'answer' => '1) Key-Value: ключ -> значение (Redis, DynamoDB, Memcached). 2) Document: хранит документы (обычно JSON) - MongoDB, CouchDB. 3) Column-family (wide-column): таблицы с динамическими столбцами - Cassandra, HBase. 4) Graph: вершины и рёбра - Neo4j, ArangoDB. Также сюда часто относят поисковые движки (Elasticsearch) и time-series БД (InfluxDB, Prometheus, OpenTSDB); TimescaleDB строго говоря не NoSQL — это расширение PostgreSQL с полноценной реляционной моделью и SQL.',
                 'code_example' => null,
                 'code_language' => null,
-                'difficulty' => 3,
+                'difficulty' => 2,
                 'topic' => 'database.nosql',
             ],
             [
@@ -53,7 +53,7 @@ BASH,
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое MongoDB?',
-                'answer' => 'MongoDB - документная NoSQL БД. Хранит JSON-подобные документы (BSON) в коллекциях, без жёсткой схемы. Поддерживает богатые запросы по полям документа (включая вложенные), индексы, агрегационный пайплайн, транзакции (с 4.0). Хороша когда схема меняется часто, нет сложных JOIN-ов, нужна гибкость. Минус: транзакции через несколько коллекций медленнее реляционных.',
+                'answer' => 'MongoDB - документная NoSQL БД. Хранит JSON-подобные документы (BSON) в коллекциях, без жёсткой схемы. Поддерживает богатые запросы по полям документа (включая вложенные), индексы, агрегационный пайплайн, транзакции (с 4.0). Хороша когда схема меняется часто, JOIN-ы дороги (формально $lookup есть, но не подходит для сложных связей), нужна гибкость. Минус: транзакции через несколько коллекций медленнее реляционных.',
                 'code_example' => <<<'BASH'
 db.users.insertOne({ name: "Иван", tags: ["admin", "user"] });
 
@@ -79,8 +79,8 @@ BASH,
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'Что такое ElasticSearch?',
-                'answer' => 'ElasticSearch - поисковый движок поверх Apache Lucene. Документная NoSQL-БД, заточенная под full-text search и аналитику. Хорош в: поиске с relevance scoring, фасетах, агрегациях, гео-поиске, логах (часть стека ELK). Не подходит как primary store для строгой транзакционной нагрузки. Часто используется в паре с реляционной БД.',
+                'question' => 'Что такое Elasticsearch?',
+                'answer' => 'Elasticsearch - поисковый движок поверх Apache Lucene. Документная NoSQL-БД, заточенная под full-text search и аналитику. Хорош в: поиске с relevance scoring, фасетах, агрегациях, гео-поиске, логах (часть стека ELK). Не подходит как primary store для строгой транзакционной нагрузки. Часто используется в паре с реляционной БД.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 3,

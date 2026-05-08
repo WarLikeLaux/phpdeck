@@ -13,7 +13,7 @@ class TypeIn
             [
                 'category' => 'Laravel',
                 'question' => 'Команда artisan, очищающая весь app-cache (config, route, view, events).',
-                'answer' => 'optimize:clear объединяет config:clear, route:clear, view:clear, event:clear, cache:clear.',
+                'answer' => 'optimize:clear объединяет cache:clear, compiled:clear, config:clear, event:clear, route:clear, view:clear.',
                 'short_answer' => 'optimize:clear',
                 'difficulty' => 2,
                 'topic' => 'laravel.type_in',

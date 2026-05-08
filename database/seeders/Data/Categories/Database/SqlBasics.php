@@ -323,7 +323,7 @@ SQL,
             [
                 'category' => 'Базы данных',
                 'question' => 'В чём разница между IN и EXISTS?',
-                'answer' => 'IN сравнивает значение со списком (или результатом подзапроса). EXISTS проверяет, вернул ли подзапрос хоть одну строку (TRUE/FALSE). На больших данных EXISTS часто быстрее, потому что останавливается на первой найденной строке. Также NOT IN подвержен проблемам с NULL: NOT IN с NULL в списке возвращает UNKNOWN.',
+                'answer' => 'IN сравнивает значение со списком (или результатом подзапроса). EXISTS проверяет, вернул ли подзапрос хоть одну строку (TRUE/FALSE). Исторически считалось, что EXISTS быстрее, но современные оптимизаторы (PostgreSQL 9+, MySQL 8+, SQL Server) обычно транслируют IN(subquery) и EXISTS(subquery) в один и тот же semi-join — план получается идентичный. Принципиальная разница остаётся в семантике NULL: NOT IN с NULL в подзапросе возвращает UNKNOWN и не находит ничего, поэтому NOT EXISTS почти всегда предпочтительнее.',
                 'code_example' => <<<'SQL'
 -- IN
 SELECT * FROM users WHERE id IN (SELECT user_id FROM orders);
@@ -402,7 +402,7 @@ public function rules(): array {
 // LIMIT/OFFSET - можно (значения)
 DB::select(\'SELECT * FROM users LIMIT ? OFFSET ?\', [20, 100]); // OK',
                 'code_language' => 'php',
-                'difficulty' => 3,
+                'difficulty' => 4,
                 'topic' => 'database.sql_basics',
             ],
             [

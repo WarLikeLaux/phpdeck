@@ -136,34 +136,6 @@ return 1',
             ],
             [
                 'category' => 'Архитектура систем',
-                'question' => 'Спроектируйте rate limiter на 1000 RPS на пользователя. Какие алгоритмы и хранилища выберете?',
-                'answer' => 'Sliding window log - точный, но дорогой по памяти. Sliding window counter - компромисс точности и памяти. Token bucket - поддерживает всплески, классика для API. Хранилище - Redis с атомарными INCR/EXPIRE и Lua-скриптом для атомарности проверки и обновления. Для распределённого ratelimit с low-latency - локальный counter с периодической синхронизацией (sloppy counter). Ключи: user-id или api-key, TTL = окно. Ответ: 429 + Retry-After + X-RateLimit-Remaining headers.',
-                'code_example' => '-- redis Lua: token bucket (atomic)
-local capacity = tonumber(ARGV[1])
-local rate = tonumber(ARGV[2])
-local now = tonumber(ARGV[3])
-local tokens = tonumber(redis.call("HGET", KEYS[1], "t") or capacity)
-local last = tonumber(redis.call("HGET", KEYS[1], "l") or now)
-tokens = math.min(capacity, tokens + (now - last) * rate)
-if tokens < 1 then return 0 end
-redis.call("HMSET", KEYS[1], "t", tokens - 1, "l", now)
-redis.call("EXPIRE", KEYS[1], 3600)
-return 1',
-                'code_language' => 'bash',
-                'difficulty' => 5,
-                'topic' => 'system_design.design_tasks',
-            ],
-            [
-                'category' => 'Архитектура систем',
-                'question' => 'Как спроектировать URL shortener на миллиарды записей?',
-                'answer' => 'Генерация: base62 от автоинкремента (читаемо, коллизий нет, но предсказуемо) или хеш URL+random salt + проверка уникальности. Хранилище: K/V (DynamoDB, Cassandra) или sharded RDBMS по hash(short). Запись редкая, чтение очень частое - кэш Redis перед БД, hit ratio 95%+. CDN для редиректов с Cache-Control. Аналитика - асинхронный поток в Kafka, агрегаты раз в N минут. Для кастомных alias - UNIQUE-индекс на short и реакция на conflict.',
-                'code_example' => null,
-                'code_language' => null,
-                'difficulty' => 5,
-                'topic' => 'system_design.design_tasks',
-            ],
-            [
-                'category' => 'Архитектура систем',
                 'question' => 'В чём разница между cache-aside, write-through и write-behind?',
                 'answer' => 'Cache-aside: приложение само читает кэш, при промахе читает БД и заполняет кэш. Запись напрямую в БД, кэш инвалидируется. Простота и надёжность, но возможна stale data при гонке. Write-through: запись идёт через кэш в БД синхронно - кэш всегда консистентен, но запись медленнее. Write-behind: запись в кэш, асинхронно flush в БД - самая быстрая, но при падении кэша теряются данные. Cache-aside - дефолт для веба; write-behind - для high-throughput с допустимой потерей.',
                 'code_example' => '<?php
@@ -194,7 +166,7 @@ $result = Cache::lock("idemp:$key", 60)->block(5, function () use ($key) {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Чем at-least-once отличается от exactly-once в очередях и достижим ли exactly-once на практике?',
-                'answer' => 'At-least-once: сообщение точно доставится один или больше раз - стандарт в SQS, Kafka, RabbitMQ. Exactly-once строго в распределённой системе невозможно (Two Generals problem). На практике достигается комбинацией at-least-once + идемпотентного потребителя (dedup по message-id) - это называется "effectively-once". Kafka даёт transactional EOS внутри своих топиков, но при выходе наружу ответственность ложится на consumer.',
+                'answer' => 'At-least-once: сообщение точно доставится один или больше раз - стандарт в SQS, Kafka, RabbitMQ. Exactly-once delivery в чистом виде в распределённой системе невозможен из-за неотличимости "сообщение потерялось" от "ack потерялся" (а в asynchronous-моделях ещё и из-за FLP-impossibility для consensus с failures). На практике достигается комбинацией at-least-once + идемпотентного потребителя (dedup по message-id) - это называется "effectively-once". Kafka даёт transactional EOS внутри своих топиков, но при выходе наружу ответственность ложится на consumer.',
                 'code_example' => '<?php
 // идемпотентный consumer
 public function handle(Message $m): void {
@@ -212,15 +184,6 @@ public function handle(Message $m): void {
                 'category' => 'Архитектура систем',
                 'question' => 'Когда event sourcing уместен и какие у него подводные камни?',
                 'answer' => 'Event sourcing: вместо текущего состояния хранится последовательность событий; состояние получается их сверткой. Уместен в доменах с богатой историей (банкинг, аудит, медицина), для аналитики "почему" и для восстановления состояния на любую точку. Минусы: сложность, проекции/read-models надо строить отдельно, миграции схемы событий тяжёлые (нужен upcasting), нельзя удалять события без compensating event-а - конфликт с GDPR требует crypto-shredding.',
-                'code_example' => null,
-                'code_language' => null,
-                'difficulty' => 5,
-                'topic' => 'system_design.design_tasks',
-            ],
-            [
-                'category' => 'Архитектура систем',
-                'question' => 'Какие стратегии шардинга есть и в чём их компромиссы?',
-                'answer' => 'Range sharding (по диапазонам ключей) - простой routing, но горячие шарды на свежих данных. Hash sharding - равномерное распределение, но range-запросы становятся scatter-gather. Consistent hashing - добавление/удаление узла перемещает только малую долю ключей, идеален для memcached/Cassandra. Directory-based - отдельный lookup-сервис, гибко, но точка отказа. Главный compromise: легко балансировать или легко делать range queries, не оба сразу.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 5,
