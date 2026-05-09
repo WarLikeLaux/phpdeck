@@ -2,10 +2,18 @@
 
 use App\Models\Flashcard;
 use App\Models\FlashcardEvent;
+use App\Models\FlashcardUserProgress;
+use App\Models\User;
 
-function logEvent(Flashcard $card, string $kind, ?string $when = null): void
+beforeEach(function (): void {
+    $this->user = User::factory()->create();
+    $this->actingAs($this->user);
+});
+
+function logTroubledEvent(int $userId, Flashcard $card, string $kind, ?string $when = null): void
 {
     FlashcardEvent::create([
+        'user_id' => $userId,
         'flashcard_id' => $card->id,
         'kind' => $kind,
         'occurred_at' => $when ?? now(),
@@ -26,14 +34,15 @@ it('renders empty state when there are no events', function (): void {
 it('lists cards with high error rate', function (): void {
     $bad = Flashcard::factory()->create(['question' => 'Bad']);
     $good = Flashcard::factory()->create(['question' => 'Good']);
+    $userId = $this->user->id;
 
     foreach (range(1, 4) as $_) {
-        logEvent($bad, 'study_incorrect');
+        logTroubledEvent($userId, $bad, 'study_incorrect');
     }
-    logEvent($bad, 'study_correct');
+    logTroubledEvent($userId, $bad, 'study_correct');
 
     foreach (range(1, 5) as $_) {
-        logEvent($good, 'study_correct');
+        logTroubledEvent($userId, $good, 'study_correct');
     }
 
     $this->get(route('troubled.show'))
@@ -49,10 +58,11 @@ it('lists cards with high error rate', function (): void {
 
 it('counts skipped events as bad', function (): void {
     $card = Flashcard::factory()->create();
+    $userId = $this->user->id;
 
-    logEvent($card, 'skipped');
-    logEvent($card, 'skipped');
-    logEvent($card, 'study_correct');
+    logTroubledEvent($userId, $card, 'skipped');
+    logTroubledEvent($userId, $card, 'skipped');
+    logTroubledEvent($userId, $card, 'study_correct');
 
     $this->get(route('troubled.show'))
         ->assertOk()
@@ -65,9 +75,10 @@ it('counts skipped events as bad', function (): void {
 
 it('ignores cards with fewer than 3 events', function (): void {
     $card = Flashcard::factory()->create();
+    $userId = $this->user->id;
 
-    logEvent($card, 'study_incorrect');
-    logEvent($card, 'study_incorrect');
+    logTroubledEvent($userId, $card, 'study_incorrect');
+    logTroubledEvent($userId, $card, 'study_incorrect');
 
     $this->get(route('troubled.show'))
         ->assertOk()
@@ -76,10 +87,11 @@ it('ignores cards with fewer than 3 events', function (): void {
 
 it('only considers events from the last 30 days', function (): void {
     $card = Flashcard::factory()->create();
+    $userId = $this->user->id;
 
-    logEvent($card, 'study_incorrect', now()->subDays(40));
-    logEvent($card, 'study_incorrect', now()->subDays(35));
-    logEvent($card, 'study_incorrect', now()->subDays(31));
+    logTroubledEvent($userId, $card, 'study_incorrect', now()->subDays(40)->toDateTimeString());
+    logTroubledEvent($userId, $card, 'study_incorrect', now()->subDays(35)->toDateTimeString());
+    logTroubledEvent($userId, $card, 'study_incorrect', now()->subDays(31)->toDateTimeString());
 
     $this->get(route('troubled.show'))
         ->assertOk()
@@ -89,17 +101,18 @@ it('only considers events from the last 30 days', function (): void {
 it('orders cards by error rate descending', function (): void {
     $worse = Flashcard::factory()->create(['question' => '90%']);
     $better = Flashcard::factory()->create(['question' => '50%']);
+    $userId = $this->user->id;
 
     foreach (range(1, 9) as $_) {
-        logEvent($worse, 'study_incorrect');
+        logTroubledEvent($userId, $worse, 'study_incorrect');
     }
-    logEvent($worse, 'study_correct');
+    logTroubledEvent($userId, $worse, 'study_correct');
 
     foreach (range(1, 2) as $_) {
-        logEvent($better, 'study_incorrect');
+        logTroubledEvent($userId, $better, 'study_incorrect');
     }
     foreach (range(1, 2) as $_) {
-        logEvent($better, 'study_correct');
+        logTroubledEvent($userId, $better, 'study_correct');
     }
 
     $this->get(route('troubled.show'))
@@ -111,12 +124,13 @@ it('orders cards by error rate descending', function (): void {
 });
 
 it('logs a skipped event when learn skip is hit', function (): void {
-    $card = Flashcard::factory()->unstudied()->create();
+    $card = Flashcard::factory()->create();
 
     $this->post(route('learn.skip', $card))->assertRedirect();
 
     $event = FlashcardEvent::query()->latest('id')->first();
     expect($event?->kind)->toBe('skipped')
+        ->and($event?->user_id)->toBe($this->user->id)
         ->and($event?->flashcard_id)->toBe($card->id);
 });
 
@@ -127,32 +141,41 @@ it('logs a skipped event when study skip is hit', function (): void {
 
     $event = FlashcardEvent::query()->latest('id')->first();
     expect($event?->kind)->toBe('skipped')
+        ->and($event?->user_id)->toBe($this->user->id)
         ->and($event?->flashcard_id)->toBe($card->id);
 });
 
 it('logs a skipped event when review skip is hit', function (): void {
-    $card = Flashcard::factory()->learned()->create();
+    $card = Flashcard::factory()->create();
+    FlashcardUserProgress::factory()
+        ->for($this->user)
+        ->for($card, 'flashcard')
+        ->learned()
+        ->create();
 
     $this->post(route('review.skip', $card))->assertRedirect();
 
     $event = FlashcardEvent::query()->latest('id')->first();
     expect($event?->kind)->toBe('skipped')
+        ->and($event?->user_id)->toBe($this->user->id)
         ->and($event?->flashcard_id)->toBe($card->id);
 });
 
-it('clears bad events for a card via the clear endpoint', function (): void {
+it('clears bad events for the current user via the clear endpoint', function (): void {
     $card = Flashcard::factory()->create();
+    $userId = $this->user->id;
 
-    logEvent($card, 'study_incorrect');
-    logEvent($card, 'study_incorrect');
-    logEvent($card, 'skipped');
-    logEvent($card, 'review_forgot');
-    logEvent($card, 'study_correct');
-    logEvent($card, 'review_remember');
+    logTroubledEvent($userId, $card, 'study_incorrect');
+    logTroubledEvent($userId, $card, 'study_incorrect');
+    logTroubledEvent($userId, $card, 'skipped');
+    logTroubledEvent($userId, $card, 'review_forgot');
+    logTroubledEvent($userId, $card, 'study_correct');
+    logTroubledEvent($userId, $card, 'review_remember');
 
     $this->post(route('troubled.clear', $card))->assertRedirect();
 
     $kinds = FlashcardEvent::query()
+        ->where('user_id', $userId)
         ->where('flashcard_id', $card->id)
         ->pluck('kind')
         ->all();
@@ -160,13 +183,29 @@ it('clears bad events for a card via the clear endpoint', function (): void {
     expect($kinds)->toBe(['study_correct', 'review_remember']);
 });
 
+it('does not clear bad events for other users', function (): void {
+    $card = Flashcard::factory()->create();
+    $other = User::factory()->create();
+
+    logTroubledEvent($other->id, $card, 'study_incorrect');
+    logTroubledEvent($other->id, $card, 'skipped');
+    logTroubledEvent($this->user->id, $card, 'study_incorrect');
+
+    $this->post(route('troubled.clear', $card))->assertRedirect();
+
+    expect(FlashcardEvent::query()->where('user_id', $other->id)->count())->toBe(2)
+        ->and(FlashcardEvent::query()->where('user_id', $this->user->id)->count())->toBe(0);
+});
+
 it('paginates troubled cards with 20 per page', function (): void {
+    $userId = $this->user->id;
+
     for ($i = 0; $i < 25; $i++) {
         $card = Flashcard::factory()->create();
         foreach (range(1, 4) as $_) {
-            logEvent($card, 'study_incorrect');
+            logTroubledEvent($userId, $card, 'study_incorrect');
         }
-        logEvent($card, 'study_correct');
+        logTroubledEvent($userId, $card, 'study_correct');
     }
 
     $this->get(route('troubled.show'))
@@ -185,4 +224,18 @@ it('paginates troubled cards with 20 per page', function (): void {
             ->has('rows', 5)
             ->where('pagination.current_page', 2)
         );
+});
+
+it('isolates troubled stats per user', function (): void {
+    $card = Flashcard::factory()->create();
+    $other = User::factory()->create();
+
+    // Lots of bad events for other user — must NOT show up for current user.
+    foreach (range(1, 5) as $_) {
+        logTroubledEvent($other->id, $card, 'study_incorrect');
+    }
+
+    $this->get(route('troubled.show'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('rows', []));
 });

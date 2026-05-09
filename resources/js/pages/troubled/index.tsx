@@ -5,7 +5,6 @@ import {
     Check,
     ChevronLeft,
     ChevronRight,
-    Pencil,
 } from 'lucide-react';
 import { CategoryBadge } from '@/components/category-badge';
 import { CodeBlock } from '@/components/code-block';
@@ -21,7 +20,6 @@ import {
 } from '@/components/ui/card';
 import { topicLabel } from '@/lib/topic-labels';
 import { cn } from '@/lib/utils';
-import flashcards from '@/routes/flashcards';
 import learn from '@/routes/learn';
 import troubled from '@/routes/troubled';
 import type { Flashcard } from '@/types';
@@ -162,12 +160,6 @@ function TroubledRow({ row }: { row: Row }) {
                             Проработал
                         </Button>
                     </Form>
-                    <Button asChild size="sm" variant="outline">
-                        <Link href={flashcards.edit(flashcard.id).url}>
-                            <Pencil />
-                            Редактировать
-                        </Link>
-                    </Button>
                     <Button asChild size="sm" variant="outline">
                         <Link href={learn.show().url}>
                             <BookOpen />К изучению

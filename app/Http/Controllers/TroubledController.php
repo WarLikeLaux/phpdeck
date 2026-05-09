@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Flashcard;
 use App\Models\FlashcardEvent;
+use App\Models\FlashcardUserProgress;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,12 +13,11 @@ use Inertia\Response;
 
 class TroubledController extends Controller
 {
-    private const FIELDS = [
+    private const CONTENT_FIELDS = [
         'id', 'category', 'topic', 'difficulty',
         'question', 'answer',
         'code_example', 'code_language',
-        'cloze_text', 'short_answer', 'assemble_chunks', 'note',
-        'is_learned', 'studied', 'srs_step', 'next_review_at',
+        'cloze_text', 'short_answer', 'assemble_chunks',
     ];
 
     private const BAD_KINDS = [
@@ -35,9 +35,11 @@ class TroubledController extends Controller
 
     public function show(Request $request): Response
     {
+        $userId = (int) $request->user()->id;
         $window = now()->subDays(self::WINDOW_DAYS);
 
         $stats = DB::table('flashcard_events')
+            ->where('user_id', $userId)
             ->where('occurred_at', '>=', $window)
             ->select(
                 'flashcard_id',
@@ -64,14 +66,22 @@ class TroubledController extends Controller
 
         $pageStats = $stats->slice(($page - 1) * $perPage, $perPage);
 
+        $cardIds = $pageStats->pluck('flashcard_id');
+
         $cards = Flashcard::query()
-            ->whereIn('id', $pageStats->pluck('flashcard_id'))
-            ->get(self::FIELDS)
+            ->whereIn('id', $cardIds)
+            ->get(self::CONTENT_FIELDS)
             ->keyBy('id');
 
+        $progressMap = FlashcardUserProgress::query()
+            ->forUser($userId)
+            ->whereIn('flashcard_id', $cardIds)
+            ->get()
+            ->keyBy('flashcard_id');
+
         $rows = $pageStats
-            ->map(function ($stat) use ($cards) {
-                /** @var \App\Models\Flashcard|null $card */
+            ->map(function ($stat) use ($cards, $progressMap) {
+                /** @var Flashcard|null $card */
                 $card = $cards->get($stat->flashcard_id);
                 if ($card === null) {
                     return null;
@@ -79,9 +89,13 @@ class TroubledController extends Controller
 
                 $total = (int) $stat->total;
                 $bad = (int) $stat->bad;
+                $progress = $progressMap->get($stat->flashcard_id);
 
                 return [
-                    'flashcard' => $card->only(self::FIELDS),
+                    'flashcard' => array_merge(
+                        $card->only(self::CONTENT_FIELDS),
+                        $progress?->asArray() ?? FlashcardUserProgress::defaults(),
+                    ),
                     'metrics' => [
                         'total' => $total,
                         'bad' => $bad,
@@ -113,9 +127,10 @@ class TroubledController extends Controller
         ]);
     }
 
-    public function clear(Flashcard $flashcard): RedirectResponse
+    public function clear(Request $request, Flashcard $flashcard): RedirectResponse
     {
         FlashcardEvent::query()
+            ->where('user_id', $request->user()->id)
             ->where('flashcard_id', $flashcard->id)
             ->whereIn('kind', self::BAD_KINDS)
             ->delete();

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Flashcard;
 use App\Models\FlashcardEvent;
+use App\Models\FlashcardUserProgress;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,29 +15,42 @@ class ReviewController extends Controller
 {
     private const SESSION_KEY = 'review.seen';
 
-    private const FIELDS = [
+    private const CONTENT_FIELDS = [
         'id', 'category', 'topic', 'difficulty',
         'question', 'answer',
         'code_example', 'code_language',
-        'cloze_text', 'short_answer', 'assemble_chunks', 'note',
-        'is_learned', 'srs_step', 'next_review_at',
+        'cloze_text', 'short_answer', 'assemble_chunks',
     ];
 
     public function show(Request $request): Response
     {
+        $userId = (int) $request->user()->id;
         $excludeId = $request->integer('exclude') ?: null;
         $seen = $this->seenIds($request);
 
-        $flashcard = $this->pickCard($seen, $excludeId);
+        $flashcard = $this->pickCard($userId, $seen, $excludeId);
 
-        $totalLearned = Flashcard::query()->where('is_learned', true)->count();
-        $remaining = Flashcard::query()
+        $totalLearned = FlashcardUserProgress::query()
+            ->forUser($userId)
             ->where('is_learned', true)
-            ->whereNotIn('id', $seen)
+            ->count();
+        $remaining = FlashcardUserProgress::query()
+            ->forUser($userId)
+            ->where('is_learned', true)
+            ->whereNotIn('flashcard_id', $seen)
             ->count();
 
+        $payload = null;
+        if ($flashcard !== null) {
+            $progress = FlashcardUserProgress::forCurrent($flashcard->id);
+            $payload = array_merge(
+                $flashcard->only(self::CONTENT_FIELDS),
+                $progress->exists ? $progress->asArray() : FlashcardUserProgress::defaults(),
+            );
+        }
+
         return Inertia::render('review/index', [
-            'flashcard' => $flashcard?->only(self::FIELDS),
+            'flashcard' => $payload,
             'stats' => [
                 'total' => $totalLearned,
                 'seen' => count($seen),
@@ -50,6 +64,7 @@ class ReviewController extends Controller
         $this->markSeen($request, $flashcard->id);
 
         FlashcardEvent::create([
+            'user_id' => $request->user()->id,
             'flashcard_id' => $flashcard->id,
             'kind' => 'review_remember',
             'occurred_at' => now(),
@@ -60,10 +75,14 @@ class ReviewController extends Controller
 
     public function forgot(Request $request, Flashcard $flashcard): RedirectResponse
     {
-        $flashcard->markIncorrect();
+        $progress = FlashcardUserProgress::forCurrent($flashcard->id);
+        if ($progress->exists) {
+            $progress->markIncorrect();
+        }
         $this->markSeen($request, $flashcard->id);
 
         FlashcardEvent::create([
+            'user_id' => $request->user()->id,
             'flashcard_id' => $flashcard->id,
             'kind' => 'review_forgot',
             'occurred_at' => now(),
@@ -72,9 +91,10 @@ class ReviewController extends Controller
         return redirect()->route('review.show');
     }
 
-    public function skip(Flashcard $flashcard): RedirectResponse
+    public function skip(Request $request, Flashcard $flashcard): RedirectResponse
     {
         FlashcardEvent::create([
+            'user_id' => $request->user()->id,
             'flashcard_id' => $flashcard->id,
             'kind' => 'skipped',
             'occurred_at' => now(),
@@ -93,11 +113,13 @@ class ReviewController extends Controller
     /**
      * @param  array<int, int>  $seen
      */
-    private function pickCard(array $seen, ?int $excludeId): ?Flashcard
+    private function pickCard(int $userId, array $seen, ?int $excludeId): ?Flashcard
     {
-        $build = function () use ($seen): Builder {
+        $build = function () use ($userId, $seen): Builder {
             return Flashcard::query()
-                ->where('is_learned', true)
+                ->whereHas('progress', fn ($p) => $p
+                    ->where('user_id', $userId)
+                    ->where('is_learned', true))
                 ->whereNotIn('id', $seen);
         };
 

@@ -4,15 +4,11 @@ import {
     ChevronRight,
     GraduationCap,
     Layers,
-    MoreHorizontal,
-    Pencil,
     PencilLine,
-    Plus,
     Puzzle,
     RotateCcw,
     Search,
     Spline,
-    Trash2,
     X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -27,12 +23,6 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { categoryStyle } from '@/lib/category-colors';
 import { topicLabel } from '@/lib/topic-labels';
@@ -263,12 +253,6 @@ function Hero({
                                     {stats.due}
                                 </Badge>
                             )}
-                        </Link>
-                    </Button>
-                    <Button asChild variant="outline" size="lg">
-                        <Link href={flashcards.create().url}>
-                            <Plus />
-                            Добавить
                         </Link>
                     </Button>
                 </div>
@@ -569,11 +553,7 @@ function EmptyResult({ hasFilters }: { hasFilters: boolean }) {
         <Card className="border-dashed">
             <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
                 <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
-                    {hasFilters ? (
-                        <Search className="size-6 text-muted-foreground" />
-                    ) : (
-                        <Plus className="size-6 text-muted-foreground" />
-                    )}
+                    <Search className="size-6 text-muted-foreground" />
                 </div>
                 <CardTitle>
                     {hasFilters ? 'Ничего не найдено' : 'Пока нет карточек'}
@@ -581,16 +561,8 @@ function EmptyResult({ hasFilters }: { hasFilters: boolean }) {
                 <CardDescription className="max-w-sm">
                     {hasFilters
                         ? 'Попробуй изменить запрос или сбросить фильтры.'
-                        : 'Добавь первую карточку — можно сразу с кодом, пропусками или порядком блоков для разных режимов.'}
+                        : 'Карточки добавляются через сидеры — запусти php artisan db:seed.'}
                 </CardDescription>
-                {!hasFilters && (
-                    <Button asChild>
-                        <Link href={flashcards.create().url}>
-                            <Plus />
-                            Добавить карточку
-                        </Link>
-                    </Button>
-                )}
             </CardContent>
         </Card>
     );
@@ -629,7 +601,6 @@ function FlashcardCard({ card }: { card: Flashcard }) {
                             </Badge>
                         )}
                     </div>
-                    <CardActions card={card} />
                 </div>
                 <CardTitle className="text-base leading-snug">
                     {card.question}
@@ -668,49 +639,6 @@ function DifficultyBadge({ level }: { level: number }) {
         >
             {'★'.repeat(clamped)}
         </Badge>
-    );
-}
-
-function CardActions({ card }: { card: Flashcard }) {
-    return (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 text-muted-foreground"
-                >
-                    <MoreHorizontal className="size-4" />
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem asChild>
-                    <Link href={flashcards.edit(card.id).url}>
-                        <Pencil className="mr-2 size-4" />
-                        Редактировать
-                    </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onSelect={(e) => {
-                        e.preventDefault();
-
-                        if (
-                            confirm(
-                                'Удалить карточку без возможности восстановления?',
-                            )
-                        ) {
-                            router.delete(flashcards.destroy(card.id).url, {
-                                preserveScroll: true,
-                            });
-                        }
-                    }}
-                >
-                    <Trash2 className="mr-2 size-4" />
-                    Удалить
-                </DropdownMenuItem>
-            </DropdownMenuContent>
-        </DropdownMenu>
     );
 }
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Flashcard;
 use App\Models\FlashcardEvent;
+use App\Models\FlashcardUserProgress;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
@@ -21,19 +22,22 @@ class StatsController extends Controller
 
     public function show(Request $request): Response
     {
+        $userId = (int) $request->user()->id;
+
         return Inertia::render('stats/index', [
-            'streak' => $this->streak(),
-            'today' => $this->today(),
-            'daily' => $this->daily(),
-            'totals' => $this->totals(),
-            'categories' => $this->categories(),
-            'weak_topics' => $this->weakTopics(),
+            'streak' => $this->streak($userId),
+            'today' => $this->today($userId),
+            'daily' => $this->daily($userId),
+            'totals' => $this->totals($userId),
+            'categories' => $this->categories($userId),
+            'weak_topics' => $this->weakTopics($userId),
         ]);
     }
 
-    private function streak(): int
+    private function streak(int $userId): int
     {
         $dates = FlashcardEvent::query()
+            ->where('user_id', $userId)
             ->selectRaw('DATE(occurred_at) as d')
             ->groupBy('d')
             ->orderByDesc('d')
@@ -68,12 +72,13 @@ class StatsController extends Controller
     /**
      * @return array{studied: int, correct: int, incorrect: int, remembered: int, forgot: int}
      */
-    private function today(): array
+    private function today(int $userId): array
     {
         $start = now()->startOfDay();
         $end = now()->endOfDay();
 
         $counts = FlashcardEvent::query()
+            ->where('user_id', $userId)
             ->whereBetween('occurred_at', [$start, $end])
             ->selectRaw('kind, COUNT(*) as c')
             ->groupBy('kind')
@@ -91,12 +96,13 @@ class StatsController extends Controller
     /**
      * @return array<int, array{date: string, studied: int, correct: int, incorrect: int, remembered: int, forgot: int}>
      */
-    private function daily(): array
+    private function daily(int $userId): array
     {
         $start = now()->subDays(self::DAILY_DAYS - 1)->startOfDay();
         $end = now()->endOfDay();
 
         $rows = FlashcardEvent::query()
+            ->where('user_id', $userId)
             ->whereBetween('occurred_at', [$start, $end])
             ->selectRaw('DATE(occurred_at) as d, kind, COUNT(*) as c')
             ->groupBy('d', 'kind')
@@ -130,39 +136,46 @@ class StatsController extends Controller
     /**
      * @return array{total: int, studied: int, learned: int, graduated: int, due_now: int}
      */
-    private function totals(): array
+    private function totals(int $userId): array
     {
+        $progressBase = FlashcardUserProgress::query()->forUser($userId);
+
         return [
             'total' => Flashcard::query()->count(),
-            'studied' => Flashcard::query()->where('studied', true)->count(),
-            'learned' => Flashcard::query()->where('is_learned', true)->count(),
-            'graduated' => Flashcard::query()
+            'studied' => (clone $progressBase)->where('studied', true)->count(),
+            'learned' => (clone $progressBase)->where('is_learned', true)->count(),
+            'graduated' => (clone $progressBase)
                 ->where('is_learned', true)
                 ->whereNull('next_review_at')
                 ->where('srs_step', '>', 0)
                 ->count(),
-            'due_now' => Flashcard::query()->due()->count(),
+            'due_now' => (clone $progressBase)->due()->count(),
         ];
     }
 
     /**
      * @return array<int, array{name: string, total: int, learned: int, accuracy: float|null}>
      */
-    private function categories(): array
+    private function categories(int $userId): array
     {
         $start = now()->subDays(self::RECENT_DAYS)->startOfDay();
 
         $cards = Flashcard::query()
-            ->whereNotNull('category')
-            ->select('category')
+            ->leftJoin('flashcard_user_progress as p', function ($join) use ($userId) {
+                $join->on('p.flashcard_id', '=', 'flashcards.id')
+                    ->where('p.user_id', $userId);
+            })
+            ->whereNotNull('flashcards.category')
+            ->select('flashcards.category')
             ->selectRaw('COUNT(*) as total')
-            ->selectRaw('SUM(CASE WHEN is_learned = 1 THEN 1 ELSE 0 END) as learned')
-            ->groupBy('category')
-            ->orderBy('category')
+            ->selectRaw('SUM(CASE WHEN p.is_learned = 1 THEN 1 ELSE 0 END) as learned')
+            ->groupBy('flashcards.category')
+            ->orderBy('flashcards.category')
             ->get();
 
         $accuracyRows = FlashcardEvent::query()
             ->join('flashcards', 'flashcards.id', '=', 'flashcard_events.flashcard_id')
+            ->where('flashcard_events.user_id', $userId)
             ->where('flashcard_events.occurred_at', '>=', $start)
             ->whereIn('flashcard_events.kind', ['study_correct', 'study_incorrect'])
             ->whereNotNull('flashcards.category')
@@ -202,12 +215,13 @@ class StatsController extends Controller
     /**
      * @return array<int, array{topic: string, errors: int, total: int, error_rate: float}>
      */
-    private function weakTopics(): array
+    private function weakTopics(int $userId): array
     {
         $start = now()->subDays(self::RECENT_DAYS)->startOfDay();
 
         $rows = FlashcardEvent::query()
             ->join('flashcards', 'flashcards.id', '=', 'flashcard_events.flashcard_id')
+            ->where('flashcard_events.user_id', $userId)
             ->where('flashcard_events.occurred_at', '>=', $start)
             ->whereIn('flashcard_events.kind', [
                 'study_correct',

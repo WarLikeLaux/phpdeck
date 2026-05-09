@@ -1,5 +1,5 @@
 import { Form, Head, Link, router } from '@inertiajs/react';
-import { ArrowRight, BookOpen, Check, GraduationCap, Plus } from 'lucide-react';
+import { ArrowRight, BookOpen, Check, GraduationCap } from 'lucide-react';
 import { CategoryBadge } from '@/components/category-badge';
 import { CodeBlock } from '@/components/code-block';
 import { NoteBlock } from '@/components/note-block';
@@ -16,7 +16,6 @@ import {
 import { useKeyboardShortcut } from '@/hooks/use-keyboard-shortcut';
 import { topicLabel } from '@/lib/topic-labels';
 import { cn } from '@/lib/utils';
-import flashcards from '@/routes/flashcards';
 import learn from '@/routes/learn';
 import study from '@/routes/study';
 import type { Flashcard } from '@/types';
@@ -391,19 +390,12 @@ function EmptyState({ stats }: { stats: Stats }) {
                     <>
                         <CardTitle>Нет карточек по фильтрам</CardTitle>
                         <CardDescription>
-                            Сбрось фильтры или добавь первую карточку.
+                            Сбрось фильтры или загрузи карточки сидером
+                            (php artisan db:seed).
                         </CardDescription>
-                        <div className="flex gap-2">
-                            <Button asChild variant="outline">
-                                <Link href={learn.show().url}>Сбросить</Link>
-                            </Button>
-                            <Button asChild>
-                                <Link href={flashcards.create().url}>
-                                    <Plus />
-                                    Добавить
-                                </Link>
-                            </Button>
-                        </div>
+                        <Button asChild variant="outline">
+                            <Link href={learn.show().url}>Сбросить</Link>
+                        </Button>
                     </>
                 )}
                 {allStudied && (

@@ -1,5 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { BookOpen, PartyPopper, Plus, RotateCcw } from 'lucide-react';
+import { BookOpen, PartyPopper, RotateCcw } from 'lucide-react';
 import { AssembleMode } from '@/components/study/assemble-mode';
 import { ClozeMode } from '@/components/study/cloze-mode';
 import { MatchingMode } from '@/components/study/matching-mode';
@@ -215,14 +215,9 @@ function EmptyState({ stats }: { stats: FlashcardStats }) {
                             <>
                                 <CardTitle>Пока нечего учить</CardTitle>
                                 <CardDescription>
-                                    Добавь первую карточку, чтобы начать.
+                                    База пуста. Запусти php artisan db:seed,
+                                    чтобы загрузить карточки.
                                 </CardDescription>
-                                <Button asChild>
-                                    <Link href={flashcards.create().url}>
-                                        <Plus />
-                                        Добавить карточку
-                                    </Link>
-                                </Button>
                             </>
                         )}
                         {nothingStudied && (

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Flashcard;
 use App\Models\FlashcardEvent;
+use App\Models\FlashcardUserProgress;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -12,25 +13,34 @@ use Inertia\Response;
 
 class LearnController extends Controller
 {
-    private const FIELDS = [
+    private const CONTENT_FIELDS = [
         'id', 'category', 'topic', 'difficulty',
         'question', 'answer',
         'code_example', 'code_language',
-        'cloze_text', 'short_answer', 'assemble_chunks', 'note',
-        'is_learned', 'studied',
+        'cloze_text', 'short_answer', 'assemble_chunks',
     ];
 
     public function show(Request $request): Response
     {
+        $userId = (int) $request->user()->id;
         $excludeId = $request->integer('exclude') ?: null;
         $category = trim((string) $request->query('category', ''));
         $topic = trim((string) $request->query('topic', ''));
 
-        $flashcard = $this->pickCard($excludeId, $category, $topic);
+        $flashcard = $this->pickCard($userId, $excludeId, $category, $topic);
+
+        $payload = null;
+        if ($flashcard !== null) {
+            $progress = FlashcardUserProgress::forCurrent($flashcard->id);
+            $payload = array_merge(
+                $flashcard->only(self::CONTENT_FIELDS),
+                $progress->exists ? $progress->asArray() : FlashcardUserProgress::defaults(),
+            );
+        }
 
         return Inertia::render('learn/index', [
-            'flashcard' => $flashcard?->only(self::FIELDS),
-            'stats' => $this->stats($category, $topic),
+            'flashcard' => $payload,
+            'stats' => $this->stats($userId, $category, $topic),
             'categories' => $this->categories(),
             'filters' => [
                 'category' => $category === '' ? 'all' : $category,
@@ -41,9 +51,11 @@ class LearnController extends Controller
 
     public function studied(Request $request, Flashcard $flashcard): RedirectResponse
     {
-        $flashcard->markStudied();
+        $progress = FlashcardUserProgress::forCurrent($flashcard->id);
+        $progress->markStudied();
 
         FlashcardEvent::create([
+            'user_id' => $request->user()->id,
             'flashcard_id' => $flashcard->id,
             'kind' => 'studied',
             'occurred_at' => now(),
@@ -55,6 +67,7 @@ class LearnController extends Controller
     public function skip(Request $request, Flashcard $flashcard): RedirectResponse
     {
         FlashcardEvent::create([
+            'user_id' => $request->user()->id,
             'flashcard_id' => $flashcard->id,
             'kind' => 'skipped',
             'occurred_at' => now(),
@@ -75,10 +88,13 @@ class LearnController extends Controller
         ]);
     }
 
-    private function pickCard(?int $excludeId, string $category, string $topic): ?Flashcard
+    private function pickCard(int $userId, ?int $excludeId, string $category, string $topic): ?Flashcard
     {
-        $build = function () use ($excludeId, $category, $topic): Builder {
-            $q = Flashcard::query()->unstudied();
+        $build = function () use ($userId, $excludeId, $category, $topic): Builder {
+            $q = Flashcard::query()
+                ->whereDoesntHave('progress', fn ($p) => $p
+                    ->where('user_id', $userId)
+                    ->where('studied', true));
             if ($excludeId !== null) {
                 $q->where('id', '!=', $excludeId);
             }
@@ -95,7 +111,7 @@ class LearnController extends Controller
         $minDifficulty = $build()->min('difficulty');
 
         if ($minDifficulty === null) {
-            return $excludeId !== null ? $this->pickCard(null, $category, $topic) : null;
+            return $excludeId !== null ? $this->pickCard($userId, null, $category, $topic) : null;
         }
 
         return $build()
@@ -107,7 +123,7 @@ class LearnController extends Controller
     /**
      * @return array{total: int, unstudied: int, studied: int, learned: int}
      */
-    private function stats(string $category, string $topic): array
+    private function stats(int $userId, string $category, string $topic): array
     {
         $base = function () use ($category, $topic): Builder {
             $q = Flashcard::query();
@@ -121,11 +137,25 @@ class LearnController extends Controller
             return $q;
         };
 
+        $studied = (clone $base())
+            ->whereHas('progress', fn ($p) => $p
+                ->where('user_id', $userId)
+                ->where('studied', true))
+            ->count();
+
+        $learned = (clone $base())
+            ->whereHas('progress', fn ($p) => $p
+                ->where('user_id', $userId)
+                ->where('is_learned', true))
+            ->count();
+
+        $total = $base()->count();
+
         return [
-            'total' => $base()->count(),
-            'unstudied' => $base()->where('studied', false)->count(),
-            'studied' => $base()->where('studied', true)->count(),
-            'learned' => $base()->where('is_learned', true)->count(),
+            'total' => $total,
+            'unstudied' => $total - $studied,
+            'studied' => $studied,
+            'learned' => $learned,
         ];
     }
 

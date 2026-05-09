@@ -2,6 +2,23 @@
 
 use App\Models\Flashcard;
 use App\Models\FlashcardEvent;
+use App\Models\User;
+
+beforeEach(function (): void {
+    $this->user = User::factory()->create();
+    $this->actingAs($this->user);
+});
+
+function logStatsEvent(int $userId, Flashcard $card, string $kind, ?string $when = null, ?string $mode = null): void
+{
+    FlashcardEvent::create([
+        'user_id' => $userId,
+        'flashcard_id' => $card->id,
+        'kind' => $kind,
+        'mode' => $mode,
+        'occurred_at' => $when ?? now(),
+    ]);
+}
 
 it('renders the stats page with zero stats', function (): void {
     $this->get(route('stats.show'))
@@ -24,51 +41,17 @@ it('renders the stats page with zero stats', function (): void {
 
 it("counts today's events correctly", function (): void {
     $card = Flashcard::factory()->create();
+    $userId = $this->user->id;
 
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'studied',
-        'occurred_at' => now(),
-    ]);
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'study_correct',
-        'mode' => 'reveal',
-        'occurred_at' => now(),
-    ]);
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'study_correct',
-        'mode' => 'true_false',
-        'occurred_at' => now(),
-    ]);
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'study_incorrect',
-        'mode' => 'cloze',
-        'occurred_at' => now(),
-    ]);
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'matching_correct',
-        'occurred_at' => now(),
-    ]);
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'review_remember',
-        'occurred_at' => now(),
-    ]);
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'review_forgot',
-        'occurred_at' => now(),
-    ]);
+    logStatsEvent($userId, $card, 'studied');
+    logStatsEvent($userId, $card, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $card, 'study_correct', mode: 'true_false');
+    logStatsEvent($userId, $card, 'study_incorrect', mode: 'cloze');
+    logStatsEvent($userId, $card, 'matching_correct');
+    logStatsEvent($userId, $card, 'review_remember');
+    logStatsEvent($userId, $card, 'review_forgot');
     // Old event — must not be counted in today.
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'studied',
-        'occurred_at' => now()->subDays(5),
-    ]);
+    logStatsEvent($userId, $card, 'studied', now()->subDays(5)->toDateTimeString());
 
     $this->get(route('stats.show'))
         ->assertOk()
@@ -83,18 +66,10 @@ it("counts today's events correctly", function (): void {
 
 it('builds 14-day daily array even when most days are empty', function (): void {
     $card = Flashcard::factory()->create();
+    $userId = $this->user->id;
 
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'studied',
-        'occurred_at' => now(),
-    ]);
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'study_correct',
-        'mode' => 'reveal',
-        'occurred_at' => now()->subDays(3),
-    ]);
+    logStatsEvent($userId, $card, 'studied');
+    logStatsEvent($userId, $card, 'study_correct', now()->subDays(3)->toDateTimeString(), 'reveal');
 
     $this->get(route('stats.show'))
         ->assertOk()
@@ -112,21 +87,14 @@ it('builds 14-day daily array even when most days are empty', function (): void 
 
 it('counts streak as consecutive days from today backward', function (): void {
     $card = Flashcard::factory()->create();
+    $userId = $this->user->id;
 
     foreach ([0, 1, 2] as $offset) {
-        FlashcardEvent::create([
-            'flashcard_id' => $card->id,
-            'kind' => 'studied',
-            'occurred_at' => now()->subDays($offset),
-        ]);
+        logStatsEvent($userId, $card, 'studied', now()->subDays($offset)->toDateTimeString());
     }
 
     // gap on day 3, then activity on day 4
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'studied',
-        'occurred_at' => now()->subDays(4),
-    ]);
+    logStatsEvent($userId, $card, 'studied', now()->subDays(4)->toDateTimeString());
 
     $this->get(route('stats.show'))
         ->assertOk()
@@ -135,17 +103,10 @@ it('counts streak as consecutive days from today backward', function (): void {
 
 it('streak counts from yesterday when today has no events', function (): void {
     $card = Flashcard::factory()->create();
+    $userId = $this->user->id;
 
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'studied',
-        'occurred_at' => now()->subDay(),
-    ]);
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'studied',
-        'occurred_at' => now()->subDays(2),
-    ]);
+    logStatsEvent($userId, $card, 'studied', now()->subDay()->toDateTimeString());
+    logStatsEvent($userId, $card, 'studied', now()->subDays(2)->toDateTimeString());
 
     $this->get(route('stats.show'))
         ->assertOk()
@@ -154,12 +115,9 @@ it('streak counts from yesterday when today has no events', function (): void {
 
 it('streak is zero when latest activity was 2+ days ago', function (): void {
     $card = Flashcard::factory()->create();
+    $userId = $this->user->id;
 
-    FlashcardEvent::create([
-        'flashcard_id' => $card->id,
-        'kind' => 'studied',
-        'occurred_at' => now()->subDays(3),
-    ]);
+    logStatsEvent($userId, $card, 'studied', now()->subDays(3)->toDateTimeString());
 
     $this->get(route('stats.show'))
         ->assertOk()
@@ -170,28 +128,29 @@ it('ranks weak topics by error rate', function (): void {
     $easy = Flashcard::factory()->create(['topic' => 'php.arrays']);
     $hard = Flashcard::factory()->create(['topic' => 'php.regex']);
     $mid = Flashcard::factory()->create(['topic' => 'php.oop']);
+    $userId = $this->user->id;
 
     // Easy topic: 1 incorrect / 5 events = 20%
-    FlashcardEvent::create(['flashcard_id' => $easy->id, 'kind' => 'study_correct', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $easy->id, 'kind' => 'study_correct', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $easy->id, 'kind' => 'study_correct', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $easy->id, 'kind' => 'study_correct', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $easy->id, 'kind' => 'study_incorrect', 'mode' => 'reveal', 'occurred_at' => now()]);
+    logStatsEvent($userId, $easy, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $easy, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $easy, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $easy, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $easy, 'study_incorrect', mode: 'reveal');
 
     // Hard topic: 3 incorrect / 4 events = 75%
-    FlashcardEvent::create(['flashcard_id' => $hard->id, 'kind' => 'study_correct', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $hard->id, 'kind' => 'study_incorrect', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $hard->id, 'kind' => 'study_incorrect', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $hard->id, 'kind' => 'study_incorrect', 'mode' => 'reveal', 'occurred_at' => now()]);
+    logStatsEvent($userId, $hard, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $hard, 'study_incorrect', mode: 'reveal');
+    logStatsEvent($userId, $hard, 'study_incorrect', mode: 'reveal');
+    logStatsEvent($userId, $hard, 'study_incorrect', mode: 'reveal');
 
     // Mid topic: 1 incorrect / 3 = 33%
-    FlashcardEvent::create(['flashcard_id' => $mid->id, 'kind' => 'study_correct', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $mid->id, 'kind' => 'study_correct', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $mid->id, 'kind' => 'review_forgot', 'occurred_at' => now()]);
+    logStatsEvent($userId, $mid, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $mid, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $mid, 'review_forgot');
 
     // Below threshold: 1 event only — must be excluded.
     $rare = Flashcard::factory()->create(['topic' => 'php.cloze']);
-    FlashcardEvent::create(['flashcard_id' => $rare->id, 'kind' => 'study_incorrect', 'mode' => 'reveal', 'occurred_at' => now()]);
+    logStatsEvent($userId, $rare, 'study_incorrect', mode: 'reveal');
 
     $this->get(route('stats.show'))
         ->assertOk()
@@ -207,13 +166,14 @@ it('ranks weak topics by error rate', function (): void {
 it('computes per-category accuracy over study events', function (): void {
     $php = Flashcard::factory()->create(['category' => 'PHP']);
     $sql = Flashcard::factory()->create(['category' => 'Database']);
+    $userId = $this->user->id;
 
-    FlashcardEvent::create(['flashcard_id' => $php->id, 'kind' => 'study_correct', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $php->id, 'kind' => 'study_correct', 'mode' => 'reveal', 'occurred_at' => now()]);
-    FlashcardEvent::create(['flashcard_id' => $php->id, 'kind' => 'study_incorrect', 'mode' => 'reveal', 'occurred_at' => now()]);
+    logStatsEvent($userId, $php, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $php, 'study_correct', mode: 'reveal');
+    logStatsEvent($userId, $php, 'study_incorrect', mode: 'reveal');
 
     // matching events should NOT influence category accuracy
-    FlashcardEvent::create(['flashcard_id' => $sql->id, 'kind' => 'matching_correct', 'occurred_at' => now()]);
+    logStatsEvent($userId, $sql, 'matching_correct');
 
     $this->get(route('stats.show'))
         ->assertOk()
@@ -226,4 +186,21 @@ it('computes per-category accuracy over study events', function (): void {
 
             return $page;
         });
+});
+
+it('isolates stats per user', function (): void {
+    $card = Flashcard::factory()->create(['topic' => 'php.regex']);
+    $other = User::factory()->create();
+
+    // Other user logs lots of events — must be ignored for current user's stats.
+    foreach (range(1, 5) as $_) {
+        logStatsEvent($other->id, $card, 'studied');
+    }
+
+    $this->get(route('stats.show'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('streak', 0)
+            ->where('today.studied', 0)
+        );
 });

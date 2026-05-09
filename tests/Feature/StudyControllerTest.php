@@ -1,7 +1,14 @@
 <?php
 
 use App\Models\Flashcard;
+use App\Models\FlashcardUserProgress;
+use App\Models\User;
 use Illuminate\Testing\TestResponse;
+
+beforeEach(function (): void {
+    $this->user = User::factory()->create();
+    $this->actingAs($this->user);
+});
 
 function studyMode(TestResponse $response): ?string
 {
@@ -11,9 +18,33 @@ function studyMode(TestResponse $response): ?string
     return $data['page']['props']['mode'] ?? null;
 }
 
+/**
+ * Create a card and ensure the current user has it studied (so it shows up
+ * as "due for study" in StudyController). Returns the Flashcard.
+ *
+ * @param  array<string, mixed>  $cardAttrs
+ */
+function studyCardForUser(User $user, array $cardAttrs = []): Flashcard
+{
+    $card = Flashcard::factory()->create($cardAttrs);
+    FlashcardUserProgress::factory()
+        ->for($user)
+        ->for($card, 'flashcard')
+        ->create(['studied' => true, 'is_learned' => false]);
+
+    return $card;
+}
+
 it('shows a due card with stats and a study mode', function (): void {
-    Flashcard::factory()->count(2)->create();
-    Flashcard::factory()->learned()->create();
+    studyCardForUser($this->user);
+    studyCardForUser($this->user);
+
+    $learned = Flashcard::factory()->create();
+    FlashcardUserProgress::factory()
+        ->for($this->user)
+        ->for($learned, 'flashcard')
+        ->learned()
+        ->create();
 
     $response = $this->get(route('study.show'));
 
@@ -28,11 +59,16 @@ it('shows a due card with stats and a study mode', function (): void {
             ->where('stats.learned', 1)
         );
 
-    expect(studyMode($response))->toBeIn(['reveal', 'true_false', 'multiple_choice']);
+    expect(studyMode($response))->toBeIn(['reveal', 'true_false', 'multiple_choice', 'matching']);
 });
 
 it('shows null flashcard when nothing is due', function (): void {
-    Flashcard::factory()->learned()->create();
+    $card = Flashcard::factory()->create();
+    FlashcardUserProgress::factory()
+        ->for($this->user)
+        ->for($card, 'flashcard')
+        ->learned()
+        ->create();
 
     $this->get(route('study.show'))
         ->assertOk()
@@ -43,7 +79,7 @@ it('shows null flashcard when nothing is due', function (): void {
 });
 
 it('falls back to reveal when no other cards exist in the category', function (): void {
-    Flashcard::factory()->create(['category' => 'Solo']);
+    studyCardForUser($this->user, ['category' => 'Solo']);
 
     $this->get(route('study.show'))
         ->assertOk()
@@ -55,7 +91,9 @@ it('falls back to reveal when no other cards exist in the category', function ()
 });
 
 it('builds multiple_choice options including the right answer', function (): void {
-    Flashcard::factory()->count(7)->create(['category' => 'PHP']);
+    for ($i = 0; $i < 7; $i++) {
+        studyCardForUser($this->user, ['category' => 'PHP']);
+    }
 
     $modes = collect();
     for ($i = 0; $i < 60; $i++) {
@@ -68,19 +106,21 @@ it('builds multiple_choice options including the right answer', function (): voi
 });
 
 it('enables multiple_choice when topic is tiny but category has neighbors', function (): void {
-    Flashcard::factory()->create([
+    studyCardForUser($this->user, [
         'category' => 'PHP',
         'topic' => 'php.tiny',
         'question' => 'Q',
     ]);
-    Flashcard::factory()->create([
+    studyCardForUser($this->user, [
         'category' => 'PHP',
         'topic' => 'php.tiny',
     ]);
-    Flashcard::factory()->count(5)->create([
-        'category' => 'PHP',
-        'topic' => 'php.other',
-    ]);
+    for ($i = 0; $i < 5; $i++) {
+        studyCardForUser($this->user, [
+            'category' => 'PHP',
+            'topic' => 'php.other',
+        ]);
+    }
 
     $modes = collect();
     for ($i = 0; $i < 80; $i++) {
@@ -98,7 +138,13 @@ it('marks a card correct via the answer endpoint after three distinct modes', fu
     $this->post(route('study.answer', $card), ['result' => 'correct', 'mode' => 'true_false']);
     $this->post(route('study.answer', $card), ['result' => 'correct', 'mode' => 'multiple_choice']);
 
-    expect($card->fresh()->is_learned)->toBeTrue();
+    $progress = FlashcardUserProgress::query()
+        ->forUser($this->user->id)
+        ->where('flashcard_id', $card->id)
+        ->first();
+
+    expect($progress)->not->toBeNull()
+        ->and($progress->is_learned)->toBeTrue();
 });
 
 it('does not mark a card learned when same mode repeats', function (): void {
@@ -108,7 +154,12 @@ it('does not mark a card learned when same mode repeats', function (): void {
     $this->post(route('study.answer', $card), ['result' => 'correct', 'mode' => 'reveal']);
     $this->post(route('study.answer', $card), ['result' => 'correct', 'mode' => 'reveal']);
 
-    expect($card->fresh()->is_learned)->toBeFalse();
+    $progress = FlashcardUserProgress::query()
+        ->forUser($this->user->id)
+        ->where('flashcard_id', $card->id)
+        ->first();
+
+    expect($progress?->is_learned)->toBeFalse();
 });
 
 it('marks a card incorrect and clears correct_modes', function (): void {
@@ -118,9 +169,13 @@ it('marks a card incorrect and clears correct_modes', function (): void {
     $this->post(route('study.answer', $card), ['result' => 'incorrect', 'mode' => 'true_false'])
         ->assertRedirect(route('study.show'));
 
-    $fresh = $card->fresh();
-    expect($fresh->is_learned)->toBeFalse()
-        ->and($fresh->correct_modes)->toBe([]);
+    $progress = FlashcardUserProgress::query()
+        ->forUser($this->user->id)
+        ->where('flashcard_id', $card->id)
+        ->first();
+
+    expect($progress?->is_learned)->toBeFalse()
+        ->and($progress?->correct_modes)->toBe([]);
 });
 
 it('rejects an unknown result value', function (): void {
@@ -131,7 +186,11 @@ it('rejects an unknown result value', function (): void {
 });
 
 it('exposes cloze mode when cloze_text is set', function (): void {
-    Flashcard::factory()->withCloze()->create(['category' => 'PHP']);
+    $card = Flashcard::factory()->withCloze()->create(['category' => 'PHP']);
+    FlashcardUserProgress::factory()
+        ->for($this->user)
+        ->for($card, 'flashcard')
+        ->create(['studied' => true, 'is_learned' => false]);
 
     $modes = collect();
     for ($i = 0; $i < 30; $i++) {
@@ -142,7 +201,11 @@ it('exposes cloze mode when cloze_text is set', function (): void {
 });
 
 it('exposes type_in mode when short_answer is set', function (): void {
-    Flashcard::factory()->withShortAnswer()->create(['category' => 'PHP']);
+    $card = Flashcard::factory()->withShortAnswer()->create(['category' => 'PHP']);
+    FlashcardUserProgress::factory()
+        ->for($this->user)
+        ->for($card, 'flashcard')
+        ->create(['studied' => true, 'is_learned' => false]);
 
     $modes = collect();
     for ($i = 0; $i < 30; $i++) {
@@ -153,7 +216,11 @@ it('exposes type_in mode when short_answer is set', function (): void {
 });
 
 it('exposes assemble mode with a shuffled pool when assemble_chunks is set', function (): void {
-    Flashcard::factory()->withAssemble()->create(['category' => 'PHP']);
+    $card = Flashcard::factory()->withAssemble()->create(['category' => 'PHP']);
+    FlashcardUserProgress::factory()
+        ->for($this->user)
+        ->for($card, 'flashcard')
+        ->create(['studied' => true, 'is_learned' => false]);
 
     for ($i = 0; $i < 40; $i++) {
         $response = $this->get(route('study.show'));
@@ -170,7 +237,13 @@ it('exposes assemble mode with a shuffled pool when assemble_chunks is set', fun
 });
 
 it('builds a matching payload when 4+ cards in a category have short_answer', function (): void {
-    Flashcard::factory()->count(4)->withShortAnswer()->create(['category' => 'Match']);
+    $cards = Flashcard::factory()->count(4)->withShortAnswer()->create(['category' => 'Match']);
+    foreach ($cards as $card) {
+        FlashcardUserProgress::factory()
+            ->for($this->user)
+            ->for($card, 'flashcard')
+            ->create(['studied' => true, 'is_learned' => false]);
+    }
 
     $matched = false;
     for ($i = 0; $i < 60; $i++) {
@@ -198,13 +271,46 @@ it('records matching answers correctly per pair', function (): void {
         ],
     ])->assertRedirect(route('study.show'));
 
-    expect($a->fresh()->correct_modes)->toBe(['matching'])
-        ->and($a->fresh()->is_learned)->toBeFalse()
-        ->and($b->fresh()->correct_modes)->toBe([])
-        ->and($b->fresh()->is_learned)->toBeFalse();
+    $progressA = FlashcardUserProgress::query()
+        ->forUser($this->user->id)
+        ->where('flashcard_id', $a->id)
+        ->first();
+    $progressB = FlashcardUserProgress::query()
+        ->forUser($this->user->id)
+        ->where('flashcard_id', $b->id)
+        ->first();
+
+    expect($progressA?->correct_modes)->toBe(['matching'])
+        ->and($progressA?->is_learned)->toBeFalse()
+        ->and($progressB?->correct_modes)->toBe([])
+        ->and($progressB?->is_learned)->toBeFalse();
 });
 
 it('rejects matching payload without pairs', function (): void {
     $this->post(route('study.matching'), [])
         ->assertSessionHasErrors('pairs');
+});
+
+it('study answer scopes progress to current user', function (): void {
+    $card = Flashcard::factory()->create();
+    $other = User::factory()->create();
+
+    // pre-existing progress for other user — must NOT be touched
+    $otherProgress = FlashcardUserProgress::factory()
+        ->for($other)
+        ->for($card, 'flashcard')
+        ->learned()
+        ->create();
+
+    $this->post(route('study.answer', $card), ['result' => 'correct', 'mode' => 'reveal']);
+
+    $mine = FlashcardUserProgress::query()
+        ->forUser($this->user->id)
+        ->where('flashcard_id', $card->id)
+        ->first();
+    $theirs = $otherProgress->fresh();
+
+    expect($mine?->correct_modes)->toBe(['reveal'])
+        ->and($theirs->is_learned)->toBeTrue()
+        ->and($theirs->correct_modes)->toBe(['reveal', 'type_in', 'multiple_choice']);
 });

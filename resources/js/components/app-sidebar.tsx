@@ -5,11 +5,11 @@ import {
     BookOpen,
     GraduationCap,
     Layers,
-    Plus,
     Repeat,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
+import { NavUser } from '@/components/nav-user';
 import {
     Sidebar,
     SidebarContent,
@@ -32,11 +32,6 @@ const mainNavItems: NavItem[] = [
         title: 'Карточки',
         href: flashcards.index().url,
         icon: Layers,
-    },
-    {
-        title: 'Новая карточка',
-        href: flashcards.create().url,
-        icon: Plus,
     },
     {
         title: 'Изучение',
@@ -84,7 +79,9 @@ export function AppSidebar() {
                 <NavMain items={mainNavItems} />
             </SidebarContent>
 
-            <SidebarFooter />
+            <SidebarFooter>
+                <NavUser />
+            </SidebarFooter>
         </Sidebar>
     );
 }

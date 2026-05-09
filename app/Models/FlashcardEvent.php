@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class FlashcardEvent extends Model
 {
     protected $fillable = [
+        'user_id',
         'flashcard_id',
         'kind',
         'mode',
@@ -24,5 +25,13 @@ class FlashcardEvent extends Model
     public function flashcard(): BelongsTo
     {
         return $this->belongsTo(Flashcard::class);
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }

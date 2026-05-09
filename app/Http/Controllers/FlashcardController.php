@@ -2,27 +2,25 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreFlashcardRequest;
 use App\Models\Flashcard;
+use App\Models\FlashcardUserProgress;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class FlashcardController extends Controller
 {
-    private const FIELDS = [
+    private const CONTENT_FIELDS = [
         'id', 'category', 'topic', 'difficulty',
         'question', 'answer',
         'code_example', 'code_language',
-        'cloze_text', 'short_answer', 'assemble_chunks', 'note',
-        'correct_streak', 'correct_modes', 'required_correct',
-        'is_learned', 'next_review_at', 'srs_step',
+        'cloze_text', 'short_answer', 'assemble_chunks',
     ];
 
     public function index(Request $request): Response
     {
+        $userId = (int) $request->user()->id;
         $q = trim((string) $request->query('q', ''));
         $status = (string) $request->query('status', 'all');
         $category = (string) $request->query('category', 'all');
@@ -40,23 +38,46 @@ class FlashcardController extends Controller
         }
 
         if ($status === 'due') {
-            $query->where('is_learned', false);
+            $query->whereDoesntHave('progress', fn ($p) => $p
+                ->where('user_id', $userId)
+                ->where('is_learned', true));
         } elseif ($status === 'learned') {
-            $query->where('is_learned', true);
+            $query->whereHas('progress', fn ($p) => $p
+                ->where('user_id', $userId)
+                ->where('is_learned', true));
         }
 
         if ($category !== 'all' && $category !== '') {
             $query->where('category', $category);
         }
 
+        $paginator = $query
+            ->orderBy('difficulty')
+            ->orderBy('id')
+            ->paginate(24, self::CONTENT_FIELDS)
+            ->withQueryString();
+
+        $progressMap = FlashcardUserProgress::query()
+            ->forUser($userId)
+            ->whereIn('flashcard_id', collect($paginator->items())->pluck('id'))
+            ->get()
+            ->keyBy('flashcard_id');
+
+        $paginator->setCollection(
+            $paginator->getCollection()->map(function (Flashcard $card) use ($progressMap) {
+                $progress = $progressMap->get($card->id);
+
+                return array_merge(
+                    $card->only(self::CONTENT_FIELDS),
+                    $progress?->asArray() ?? FlashcardUserProgress::defaults(),
+                );
+            })
+        );
+
         return Inertia::render('flashcards/index', [
-            'flashcards' => $query
-                ->orderBy('difficulty')
-                ->orderBy('id')
-                ->paginate(24, self::FIELDS)
-                ->withQueryString(),
-            'stats' => $this->stats(),
-            'categoryStats' => $this->categoryStats(),
+            'flashcards' => $paginator,
+            'stats' => $this->stats($userId),
+            'categoryStats' => $this->categoryStats($userId),
             'filters' => [
                 'q' => $q,
                 'status' => in_array($status, ['all', 'due', 'learned'], true) ? $status : 'all',
@@ -65,50 +86,11 @@ class FlashcardController extends Controller
         ]);
     }
 
-    public function create(): Response
+    public function reset(Request $request): RedirectResponse
     {
-        return Inertia::render('flashcards/create');
-    }
-
-    public function store(StoreFlashcardRequest $request): RedirectResponse
-    {
-        Flashcard::query()->create($request->validated());
-
-        return redirect()->route('flashcards.index');
-    }
-
-    public function edit(Flashcard $flashcard): Response
-    {
-        return Inertia::render('flashcards/edit', [
-            'flashcard' => $flashcard->only(self::FIELDS),
-        ]);
-    }
-
-    public function update(StoreFlashcardRequest $request, Flashcard $flashcard): RedirectResponse
-    {
-        $flashcard->update($request->validated());
-
-        return redirect()->route('flashcards.index');
-    }
-
-    public function destroy(Flashcard $flashcard): RedirectResponse
-    {
-        $flashcard->delete();
-
-        return redirect()->route('flashcards.index');
-    }
-
-    public function reset(): RedirectResponse
-    {
-        Flashcard::query()->update([
-            'correct_streak' => 0,
-            'correct_modes' => null,
-            'required_correct' => Flashcard::LEARN_THRESHOLD,
-            'is_learned' => false,
-            'studied' => false,
-            'next_review_at' => null,
-            'srs_step' => 0,
-        ]);
+        FlashcardUserProgress::query()
+            ->forUser((int) $request->user()->id)
+            ->delete();
 
         return redirect()->route('flashcards.index');
     }
@@ -116,25 +98,37 @@ class FlashcardController extends Controller
     /**
      * @return array{total: int, due: int, learned: int}
      */
-    private function stats(): array
+    private function stats(int $userId): array
     {
         return [
             'total' => Flashcard::query()->count(),
-            'learned' => Flashcard::query()->where('is_learned', true)->count(),
-            'due' => Flashcard::query()->due()->count(),
+            'learned' => FlashcardUserProgress::query()
+                ->forUser($userId)
+                ->where('is_learned', true)
+                ->count(),
+            'due' => FlashcardUserProgress::query()
+                ->forUser($userId)
+                ->due()
+                ->count(),
         ];
     }
 
     /**
      * @return array<int, array{name: string, total: int, learned: int}>
      */
-    private function categoryStats(): array
+    private function categoryStats(int $userId): array
     {
         return Flashcard::query()
-            ->select('category', DB::raw('COUNT(*) as total'), DB::raw('SUM(CASE WHEN is_learned = 1 THEN 1 ELSE 0 END) as learned'))
-            ->whereNotNull('category')
-            ->groupBy('category')
-            ->orderBy('category')
+            ->leftJoin('flashcard_user_progress as p', function ($join) use ($userId) {
+                $join->on('p.flashcard_id', '=', 'flashcards.id')
+                    ->where('p.user_id', $userId);
+            })
+            ->whereNotNull('flashcards.category')
+            ->select('flashcards.category')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw('SUM(CASE WHEN p.is_learned = 1 THEN 1 ELSE 0 END) as learned')
+            ->groupBy('flashcards.category')
+            ->orderBy('flashcards.category')
             ->get()
             ->map(fn ($r) => [
                 'name' => (string) $r->category,

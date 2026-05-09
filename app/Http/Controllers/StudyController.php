@@ -4,21 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Models\Flashcard;
 use App\Models\FlashcardEvent;
+use App\Models\FlashcardUserProgress;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class StudyController extends Controller
 {
-    private const FIELDS = [
+    private const CONTENT_FIELDS = [
         'id', 'category', 'topic', 'difficulty',
         'question', 'answer',
         'code_example', 'code_language',
-        'cloze_text', 'short_answer', 'assemble_chunks', 'note',
-        'correct_streak', 'correct_modes', 'required_correct',
-        'is_learned', 'next_review_at', 'srs_step',
+        'cloze_text', 'short_answer', 'assemble_chunks',
     ];
 
     private const MODES = [
@@ -26,11 +26,12 @@ class StudyController extends Controller
         'cloze', 'type_in', 'assemble', 'matching',
     ];
 
-    public function show(): Response
+    public function show(Request $request): Response
     {
-        $excludeId = request()->integer('exclude') ?: null;
+        $userId = (int) $request->user()->id;
+        $excludeId = $request->integer('exclude') ?: null;
 
-        $matching = $this->buildMatching();
+        $matching = $this->buildMatching($userId);
 
         if ($matching !== null && random_int(1, 5) === 1) {
             return Inertia::render('study/index', [
@@ -40,11 +41,11 @@ class StudyController extends Controller
                 'options' => null,
                 'assemble' => null,
                 'matching' => $matching,
-                'stats' => $this->stats(),
+                'stats' => $this->stats($userId),
             ]);
         }
 
-        $flashcard = $this->pickDueCard($excludeId);
+        $flashcard = $this->pickDueCard($userId, $excludeId);
 
         if ($flashcard === null) {
             return Inertia::render('study/index', [
@@ -54,27 +55,32 @@ class StudyController extends Controller
                 'options' => null,
                 'assemble' => null,
                 'matching' => null,
-                'stats' => $this->stats(),
+                'stats' => $this->stats($userId),
             ]);
         }
 
+        $progress = FlashcardUserProgress::forCurrent($flashcard->id);
         $modes = $this->availableModes($flashcard);
-        $mode = $this->pickMode($flashcard, $modes);
+        $mode = $this->pickMode($progress, $modes);
 
         return Inertia::render('study/index', [
             'mode' => $mode,
-            'flashcard' => $flashcard->only(self::FIELDS),
+            'flashcard' => array_merge(
+                $flashcard->only(self::CONTENT_FIELDS),
+                $progress->exists ? $progress->asArray() : FlashcardUserProgress::defaults(),
+            ),
             'shown' => $mode === 'true_false' ? $this->trueFalseAnswer($flashcard) : null,
             'options' => $mode === 'multiple_choice' ? $this->multipleChoiceOptions($flashcard) : null,
             'assemble' => $mode === 'assemble' ? $this->assemblePool($flashcard) : null,
             'matching' => null,
-            'stats' => $this->stats(),
+            'stats' => $this->stats($userId),
         ]);
     }
 
-    public function skip(Flashcard $flashcard): RedirectResponse
+    public function skip(Request $request, Flashcard $flashcard): RedirectResponse
     {
         FlashcardEvent::create([
+            'user_id' => $request->user()->id,
             'flashcard_id' => $flashcard->id,
             'kind' => 'skipped',
             'occurred_at' => now(),
@@ -83,18 +89,21 @@ class StudyController extends Controller
         return redirect()->route('study.show', ['exclude' => $flashcard->id]);
     }
 
-    public function answer(Flashcard $flashcard): RedirectResponse
+    public function answer(Request $request, Flashcard $flashcard): RedirectResponse
     {
-        $data = request()->validate([
+        $data = $request->validate([
             'result' => ['required', Rule::in(['correct', 'incorrect'])],
             'mode' => ['nullable', 'string', Rule::in(self::MODES)],
         ]);
 
+        $progress = FlashcardUserProgress::forCurrent($flashcard->id);
+
         $data['result'] === 'correct'
-            ? $flashcard->markCorrect($data['mode'] ?? null)
-            : $flashcard->markIncorrect();
+            ? $progress->markCorrect($data['mode'] ?? null)
+            : $progress->markIncorrect();
 
         FlashcardEvent::create([
+            'user_id' => $request->user()->id,
             'flashcard_id' => $flashcard->id,
             'kind' => $data['result'] === 'correct' ? 'study_correct' : 'study_incorrect',
             'mode' => $data['mode'] ?? null,
@@ -104,13 +113,15 @@ class StudyController extends Controller
         return redirect()->route('study.show');
     }
 
-    public function matching(): RedirectResponse
+    public function matching(Request $request): RedirectResponse
     {
-        $data = request()->validate([
+        $data = $request->validate([
             'pairs' => ['required', 'array', 'min:1', 'max:20'],
             'pairs.*.question_id' => ['required', 'integer', 'exists:flashcards,id'],
             'pairs.*.answer_id' => ['required', 'integer', 'exists:flashcards,id'],
         ]);
+
+        $userId = (int) $request->user()->id;
 
         foreach ($data['pairs'] as $pair) {
             $card = Flashcard::query()->find($pair['question_id']);
@@ -118,11 +129,14 @@ class StudyController extends Controller
                 continue;
             }
 
+            $progress = FlashcardUserProgress::forCurrent($card->id);
+
             $pair['question_id'] === $pair['answer_id']
-                ? $card->markCorrect('matching')
-                : $card->markIncorrect();
+                ? $progress->markCorrect('matching')
+                : $progress->markIncorrect();
 
             FlashcardEvent::create([
+                'user_id' => $userId,
                 'flashcard_id' => $card->id,
                 'kind' => $pair['question_id'] === $pair['answer_id']
                     ? 'matching_correct'
@@ -134,10 +148,20 @@ class StudyController extends Controller
         return redirect()->route('study.show');
     }
 
-    private function pickDueCard(?int $excludeId = null): ?Flashcard
+    private function pickDueCard(int $userId, ?int $excludeId = null): ?Flashcard
     {
-        $build = function () use ($excludeId): Builder {
-            $q = Flashcard::query()->due();
+        $build = function () use ($userId, $excludeId): Builder {
+            $q = Flashcard::query()->whereHas('progress', fn ($p) => $p
+                ->where('user_id', $userId)
+                ->where('studied', true)
+                ->where(function ($q2) {
+                    $q2->where('is_learned', false)
+                        ->orWhere(function ($q3) {
+                            $q3->where('is_learned', true)
+                                ->whereNotNull('next_review_at')
+                                ->where('next_review_at', '<=', now());
+                        });
+                }));
             if ($excludeId !== null) {
                 $q->where('id', '!=', $excludeId);
             }
@@ -148,7 +172,7 @@ class StudyController extends Controller
         $minDifficulty = $build()->min('difficulty');
 
         if ($minDifficulty === null) {
-            return $excludeId !== null ? $this->pickDueCard(null) : null;
+            return $excludeId !== null ? $this->pickDueCard($userId, null) : null;
         }
 
         return $build()
@@ -158,11 +182,11 @@ class StudyController extends Controller
     }
 
     /**
-     * @param array<int, string> $modes
+     * @param  array<int, string>  $modes
      */
-    private function pickMode(Flashcard $card, array $modes): string
+    private function pickMode(FlashcardUserProgress $progress, array $modes): string
     {
-        $taken = (array) ($card->correct_modes ?? []);
+        $taken = (array) ($progress->correct_modes ?? []);
         $remaining = array_values(array_diff($modes, $taken));
 
         $pool = $remaining !== [] ? $remaining : $modes;
@@ -328,10 +352,22 @@ class StudyController extends Controller
      *     answers: array<int, array{id: int, text: string}>
      * }|null
      */
-    private function buildMatching(): ?array
+    private function buildMatching(int $userId): ?array
     {
+        $dueScope = fn ($p) => $p
+            ->where('user_id', $userId)
+            ->where('studied', true)
+            ->where(function ($q2) {
+                $q2->where('is_learned', false)
+                    ->orWhere(function ($q3) {
+                        $q3->where('is_learned', true)
+                            ->whereNotNull('next_review_at')
+                            ->where('next_review_at', '<=', now());
+                    });
+            });
+
         $topic = Flashcard::query()
-            ->due()
+            ->whereHas('progress', $dueScope)
             ->whereNotNull('short_answer')
             ->whereNotNull('topic')
             ->groupBy('topic')
@@ -341,7 +377,7 @@ class StudyController extends Controller
 
         if ($topic !== null) {
             $cards = Flashcard::query()
-                ->due()
+                ->whereHas('progress', $dueScope)
                 ->whereNotNull('short_answer')
                 ->where('topic', $topic)
                 ->inRandomOrder()
@@ -349,7 +385,7 @@ class StudyController extends Controller
                 ->get(['id', 'category', 'question', 'short_answer']);
         } else {
             $category = Flashcard::query()
-                ->due()
+                ->whereHas('progress', $dueScope)
                 ->whereNotNull('short_answer')
                 ->groupBy('category')
                 ->havingRaw('COUNT(*) >= 4')
@@ -361,7 +397,7 @@ class StudyController extends Controller
             }
 
             $cards = Flashcard::query()
-                ->due()
+                ->whereHas('progress', $dueScope)
                 ->whereNotNull('short_answer')
                 ->where('category', $category)
                 ->inRandomOrder()
@@ -386,12 +422,18 @@ class StudyController extends Controller
     /**
      * @return array{total: int, due: int, learned: int}
      */
-    private function stats(): array
+    private function stats(int $userId): array
     {
         return [
             'total' => Flashcard::query()->count(),
-            'due' => Flashcard::query()->due()->count(),
-            'learned' => Flashcard::query()->where('is_learned', true)->count(),
+            'due' => FlashcardUserProgress::query()
+                ->forUser($userId)
+                ->due()
+                ->count(),
+            'learned' => FlashcardUserProgress::query()
+                ->forUser($userId)
+                ->where('is_learned', true)
+                ->count(),
         ];
     }
 }
