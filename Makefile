@@ -16,6 +16,7 @@ SQLITE_DB  := database/database.sqlite
         pint pint-check \
         ci optimize cache-clear route-list tinker storage-link \
         update upgrade fresh-install clean reset \
+        deploy \
         repomix
 
 help:
@@ -131,6 +132,11 @@ cache-clear: ## Сбросить все кэши Laravel
 
 route-list: ## Показать все маршруты
 	$(ARTISAN) route:list
+
+##@ Deploy
+
+deploy: ## Деплой на VPS (rsync + composer + migrate + cache)
+	./bin/deploy.sh
 
 tinker: ## Интерактивный REPL
 	$(ARTISAN) tinker
