@@ -16,7 +16,7 @@ SQLITE_DB  := database/database.sqlite
         pint pint-check \
         ci optimize cache-clear route-list tinker storage-link \
         update upgrade fresh-install clean reset \
-        deploy \
+        deploy env-sync \
         repomix
 
 help:
@@ -137,6 +137,9 @@ route-list: ## Показать все маршруты
 
 deploy: ## Деплой на VPS (rsync + composer + migrate + cache)
 	./bin/deploy.sh
+
+env-sync: ## Синхронизировать .env с .env.example (порядок + недостающие ключи)
+	./bin/env-sync.sh
 
 tinker: ## Интерактивный REPL
 	$(ARTISAN) tinker
