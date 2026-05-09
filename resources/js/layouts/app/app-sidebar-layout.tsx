@@ -9,12 +9,22 @@ export default function AppSidebarLayout({
     breadcrumbs = [],
 }: AppLayoutProps) {
     return (
-        <AppShell variant="sidebar">
-            <AppSidebar />
-            <AppContent variant="sidebar" className="overflow-x-hidden">
-                <AppSidebarHeader breadcrumbs={breadcrumbs} />
-                {children}
-            </AppContent>
-        </AppShell>
+        <>
+            <div
+                aria-hidden
+                className="pointer-events-none fixed inset-0 -z-10 hidden dark:block"
+                style={{
+                    background:
+                        'radial-gradient(ellipse 60% 50% at 15% 0%, rgba(236,72,153,0.10), transparent 60%), radial-gradient(ellipse 50% 60% at 100% 100%, rgba(124,58,237,0.12), transparent 60%)',
+                }}
+            />
+            <AppShell variant="sidebar">
+                <AppSidebar />
+                <AppContent variant="sidebar" className="overflow-x-hidden">
+                    <AppSidebarHeader breadcrumbs={breadcrumbs} />
+                    {children}
+                </AppContent>
+            </AppShell>
+        </>
     );
 }

@@ -1,19 +1,12 @@
-import { BrainCircuit } from 'lucide-react';
-
 export default function AppLogo() {
     return (
-        <>
-            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-sm">
-                <BrainCircuit className="size-5" />
-            </div>
-            <div className="ml-1 grid flex-1 text-left">
-                <span className="truncate text-sm leading-tight font-semibold">
-                    LaraCards
-                </span>
-                <span className="truncate text-[10px] leading-tight text-muted-foreground">
-                    тренажёр карточек
-                </span>
-            </div>
-        </>
+        <div className="flex items-center gap-2">
+            <span className="text-2xl leading-none font-bold tracking-tight bg-gradient-to-br from-pink-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent">
+                phpdeck
+            </span>
+            <span className="text-[10px] leading-tight text-muted-foreground hidden group-data-[collapsible=icon]:hidden">
+                карточки
+            </span>
+        </div>
     );
 }
