@@ -67,7 +67,7 @@ export default function Login({ status, canRegister }: Props) {
 
                             <Button
                                 type="submit"
-                                className="mt-4 w-full"
+                                className="mt-4 w-full bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-500 text-white shadow-lg shadow-fuchsia-500/30 transition-all hover:from-pink-400 hover:via-fuchsia-400 hover:to-violet-400 hover:shadow-fuchsia-500/50"
                                 tabIndex={4}
                                 disabled={processing}
                                 data-test="login-button"

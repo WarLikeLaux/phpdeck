@@ -32,7 +32,7 @@ export default function Register() {
                                     tabIndex={1}
                                     autoComplete="name"
                                     name="name"
-                                    placeholder="Как тебя зовут"
+                                    placeholder="Имя для отображения"
                                 />
                                 <InputError
                                     message={errors.name}
@@ -49,7 +49,7 @@ export default function Register() {
                                     tabIndex={2}
                                     autoComplete="username"
                                     name="username"
-                                    placeholder="например warlikelaux"
+                                    placeholder="3–32 символа: a–z, 0–9, _"
                                     minLength={3}
                                     maxLength={32}
                                     pattern="[a-zA-Z0-9_]+"
@@ -103,12 +103,12 @@ export default function Register() {
 
                             <Button
                                 type="submit"
-                                className="mt-2 w-full"
+                                className="mt-2 w-full bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-500 text-white shadow-lg shadow-fuchsia-500/30 transition-all hover:from-pink-400 hover:via-fuchsia-400 hover:to-violet-400 hover:shadow-fuchsia-500/50"
                                 tabIndex={6}
                                 data-test="register-user-button"
                             >
                                 {processing && <Spinner />}
-                                Зарегистрироваться
+                                Создать аккаунт
                             </Button>
                         </div>
 
