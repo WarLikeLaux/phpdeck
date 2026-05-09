@@ -195,7 +195,7 @@ function ReviewCard({
             {revealed && (
                 <>
                     <Separator />
-                    <CardFooter className="grid grid-cols-3 gap-2 sm:flex sm:justify-end">
+                    <CardFooter className="grid grid-cols-3 gap-2 px-3 [&_svg]:hidden sm:flex sm:justify-end sm:px-6 sm:[&_svg]:inline-block">
                         <Form
                             action={review.forgot(flashcard.id).url}
                             method="post"
