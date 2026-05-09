@@ -85,7 +85,13 @@ if cmp -s "$ENV_FILE" "$TMP"; then
     exit 0
 fi
 
-cp "$ENV_FILE" "$BACKUP"
+# Preserve original owner/group so www-data (or whoever) can still read .env
+ORIG_OWNER=$(stat -c '%u:%g' "$ENV_FILE" 2>/dev/null || stat -f '%u:%g' "$ENV_FILE")
+ORIG_MODE=$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE")
+
+cp -p "$ENV_FILE" "$BACKUP"
 mv "$TMP" "$ENV_FILE"
-chmod 600 "$ENV_FILE"
+chmod "${ORIG_MODE:-600}" "$ENV_FILE"
+chown "$ORIG_OWNER" "$ENV_FILE" 2>/dev/null || true
+
 echo "✓ .env updated (backup at .env.bak)"

@@ -68,7 +68,11 @@ SSHPASS="$DEPLOY_SSH_PASSWORD" sshpass -e rsync -az --delete \
     --exclude 'node_modules' \
     --exclude 'vendor' \
     --exclude '.env' \
-    --exclude '.env.*' \
+    --exclude '.env.backup' \
+    --exclude '.env.local' \
+    --exclude '.env.production' \
+    --exclude '.env.testing' \
+    --exclude '.env.bak' \
     --exclude 'tests' \
     --exclude 'phpunit.xml' \
     --exclude 'storage/logs/*.log' \
@@ -89,8 +93,6 @@ SSHPASS="$DEPLOY_SSH_PASSWORD" sshpass -e rsync -az --delete \
     --exclude 'package.json' \
     --exclude 'package-lock.json' \
     --exclude 'vite.config.ts' \
-    --exclude 'Makefile' \
-    --exclude 'bin' \
     --info=stats1 \
     --chown=www-data:www-data \
     --chmod=Du=rwx,Dg=rwxs,Do=rx,Fu=rw,Fg=r,Fo=r \
@@ -106,7 +108,7 @@ remote_exec "
     chmod -R 775 $DEPLOY_PATH/storage $DEPLOY_PATH/bootstrap/cache $DEPLOY_PATH/database
     [ -f $DEPLOY_PATH/database/database.sqlite ] && chmod 664 $DEPLOY_PATH/database/database.sqlite || true
     chmod 600 $DEPLOY_PATH/.env
-    chmod +x $DEPLOY_PATH/artisan
+    chmod +x $DEPLOY_PATH/artisan $DEPLOY_PATH/bin/*.sh 2>/dev/null || true
 "
 ok "perms set"
 
