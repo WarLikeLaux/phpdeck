@@ -8,7 +8,7 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $this->call(AdminUserSeeder::class);
+        $this->call(TestUserSeeder::class);
         $this->call(FlashcardSeeder::class);
     }
 }

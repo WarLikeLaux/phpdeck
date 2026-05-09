@@ -21,7 +21,7 @@ export default function Profile() {
                 <Heading
                     variant="small"
                     title="Информация о профиле"
-                    description="Обновите имя и адрес электронной почты"
+                    description="Обновите имя, логин и адрес электронной почты"
                 />
 
                 <Form
@@ -53,6 +53,28 @@ export default function Profile() {
                             </div>
 
                             <div className="grid gap-2">
+                                <Label htmlFor="username">Логин</Label>
+
+                                <Input
+                                    id="username"
+                                    className="mt-1 block w-full"
+                                    defaultValue={auth.user.username as string}
+                                    name="username"
+                                    required
+                                    autoComplete="username"
+                                    minLength={3}
+                                    maxLength={32}
+                                    pattern="[a-zA-Z0-9_]+"
+                                    placeholder="Логин (a-z, 0-9, _)"
+                                />
+
+                                <InputError
+                                    className="mt-2"
+                                    message={errors.username}
+                                />
+                            </div>
+
+                            <div className="grid gap-2">
                                 <Label htmlFor="email">Email</Label>
 
                                 <Input
@@ -62,7 +84,7 @@ export default function Profile() {
                                     defaultValue={auth.user.email}
                                     name="email"
                                     required
-                                    autoComplete="username"
+                                    autoComplete="email"
                                     placeholder="Адрес электронной почты"
                                 />
 

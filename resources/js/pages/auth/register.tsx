@@ -32,7 +32,7 @@ export default function Register() {
                                     tabIndex={1}
                                     autoComplete="name"
                                     name="name"
-                                    placeholder="Полное имя"
+                                    placeholder="Как тебя зовут"
                                 />
                                 <InputError
                                     message={errors.name}
@@ -41,12 +41,29 @@ export default function Register() {
                             </div>
 
                             <div className="grid gap-2">
+                                <Label htmlFor="username">Логин</Label>
+                                <Input
+                                    id="username"
+                                    type="text"
+                                    required
+                                    tabIndex={2}
+                                    autoComplete="username"
+                                    name="username"
+                                    placeholder="например warlikelaux"
+                                    minLength={3}
+                                    maxLength={32}
+                                    pattern="[a-zA-Z0-9_]+"
+                                />
+                                <InputError message={errors.username} />
+                            </div>
+
+                            <div className="grid gap-2">
                                 <Label htmlFor="email">Email</Label>
                                 <Input
                                     id="email"
                                     type="email"
                                     required
-                                    tabIndex={2}
+                                    tabIndex={3}
                                     autoComplete="email"
                                     name="email"
                                     placeholder="email@example.com"
@@ -59,7 +76,7 @@ export default function Register() {
                                 <PasswordInput
                                     id="password"
                                     required
-                                    tabIndex={3}
+                                    tabIndex={4}
                                     autoComplete="new-password"
                                     name="password"
                                     placeholder="Пароль"
@@ -74,7 +91,7 @@ export default function Register() {
                                 <PasswordInput
                                     id="password_confirmation"
                                     required
-                                    tabIndex={4}
+                                    tabIndex={5}
                                     autoComplete="new-password"
                                     name="password_confirmation"
                                     placeholder="Повторите пароль"
@@ -87,7 +104,7 @@ export default function Register() {
                             <Button
                                 type="submit"
                                 className="mt-2 w-full"
-                                tabIndex={5}
+                                tabIndex={6}
                                 data-test="register-user-button"
                             >
                                 {processing && <Spinner />}
@@ -97,7 +114,7 @@ export default function Register() {
 
                         <div className="text-center text-sm text-muted-foreground">
                             Уже есть аккаунт?{' '}
-                            <TextLink href={login()} tabIndex={6}>
+                            <TextLink href={login()} tabIndex={7}>
                                 Войти
                             </TextLink>
                         </div>

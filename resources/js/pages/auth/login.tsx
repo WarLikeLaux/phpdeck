@@ -29,18 +29,18 @@ export default function Login({ status, canRegister }: Props) {
                     <>
                         <div className="grid gap-6">
                             <div className="grid gap-2">
-                                <Label htmlFor="email">Email</Label>
+                                <Label htmlFor="login">Email или логин</Label>
                                 <Input
-                                    id="email"
-                                    type="email"
-                                    name="email"
+                                    id="login"
+                                    type="text"
+                                    name="login"
                                     required
                                     autoFocus
                                     tabIndex={1}
-                                    autoComplete="email"
-                                    placeholder="email@example.com"
+                                    autoComplete="username"
+                                    placeholder="email@example.com или login"
                                 />
-                                <InputError message={errors.email} />
+                                <InputError message={errors.login} />
                             </div>
 
                             <div className="grid gap-2">
@@ -100,5 +100,5 @@ export default function Login({ status, canRegister }: Props) {
 
 Login.layout = {
     title: 'Войти в аккаунт',
-    description: 'Введите email и пароль',
+    description: 'Введите email или логин и пароль',
 };
