@@ -41,13 +41,11 @@ export default function AuthSimpleLayout({
 
                     <div className="relative z-10 flex w-full items-center justify-center">
                         <div className="absolute inset-0 -z-10 blur-3xl opacity-60" style={{ background: 'radial-gradient(circle at center, rgba(236,72,153,0.35), transparent 60%)' }} />
-                        <div className="w-full overflow-hidden rounded-2xl">
-                            <img
-                                src="/hero.png"
-                                alt="phpdeck"
-                                className="w-full rounded-2xl shadow-[0_0_60px_-15px_rgba(236,72,153,0.5)] transition-transform duration-700 ease-out hover:scale-[1.04]"
-                            />
-                        </div>
+                        <img
+                            src="/hero.png"
+                            alt="phpdeck"
+                            className="w-full rounded-2xl shadow-[0_0_60px_-15px_rgba(236,72,153,0.5)]"
+                        />
                     </div>
 
                     <div className="z-10 whitespace-nowrap text-xl font-medium text-white/80">
