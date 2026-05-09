@@ -143,9 +143,11 @@ ok "php-fpm reloaded"
 # ---------- health check ----------
 if [ -n "$DEPLOY_DOMAIN" ]; then
     log "Health check"
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
-        -H "Host: $DEPLOY_DOMAIN" \
-        "http://$DEPLOY_SSH_HOST/login" 2>/dev/null || echo "000")
+    # Follow redirects (http→https) and check final landing page
+    HTTP_CODE=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 \
+        --resolve "$DEPLOY_DOMAIN:80:$DEPLOY_SSH_HOST" \
+        --resolve "$DEPLOY_DOMAIN:443:$DEPLOY_SSH_HOST" \
+        "http://$DEPLOY_DOMAIN/login" 2>/dev/null || echo "000")
     if [ "$HTTP_CODE" = "200" ]; then
         ok "/login → 200"
     else
