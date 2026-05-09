@@ -160,14 +160,14 @@ export default function StatsIndex({
                 <Card>
                     <CardHeader>
                         <div className="flex items-center justify-between gap-2">
-                            <div>
+                            <div className="min-w-0">
                                 <CardTitle>Активность за 14 дней</CardTitle>
                                 <CardDescription>
                                     Сумма всех действий за день: новые, ответы,
                                     повторение.
                                 </CardDescription>
                             </div>
-                            <BarChart3 className="size-5 text-muted-foreground" />
+                            <BarChart3 className="size-5 shrink-0 text-muted-foreground" />
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -368,12 +368,14 @@ function WeakTopicRow({ rank, topic }: { rank: number; topic: WeakTopic }) {
 
     return (
         <li className="flex items-center justify-between gap-3 rounded-lg border bg-background/60 p-3">
-            <div className="flex items-center gap-3">
-                <span className="flex size-7 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground tabular-nums">
+            <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground tabular-nums">
                     {rank}
                 </span>
-                <div className="flex flex-col">
-                    <span className="text-sm font-medium">{label}</span>
+                <div className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm font-medium">
+                        {label}
+                    </span>
                     <span className="text-xs text-muted-foreground tabular-nums">
                         {topic.errors} из {topic.total} событий
                     </span>
@@ -382,7 +384,7 @@ function WeakTopicRow({ rank, topic }: { rank: number; topic: WeakTopic }) {
             <Badge
                 variant="outline"
                 className={cn(
-                    'font-mono tabular-nums',
+                    'shrink-0 font-mono tabular-nums',
                     errorRateTone(topic.error_rate),
                 )}
             >

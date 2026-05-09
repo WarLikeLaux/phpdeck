@@ -84,21 +84,23 @@ export default function LearnIndex({
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground sm:justify-end">
-                        <Badge
-                            variant="outline"
-                            className="bg-background/60 tabular-nums"
-                            title="Не изучено / всего"
-                        >
-                            {stats.unstudied}/{stats.total} осталось
-                        </Badge>
-                        <Badge
-                            variant="outline"
-                            className="bg-background/60 tabular-nums"
-                            title="Готово к проверке"
-                        >
-                            {stats.studied} к проверке
-                        </Badge>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground sm:justify-end">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                                variant="outline"
+                                className="bg-background/60 tabular-nums"
+                                title="Не изучено / всего"
+                            >
+                                {stats.unstudied}/{stats.total} осталось
+                            </Badge>
+                            <Badge
+                                variant="outline"
+                                className="bg-background/60 tabular-nums"
+                                title="Готово к проверке"
+                            >
+                                {stats.studied} к проверке
+                            </Badge>
+                        </div>
                         <Button asChild size="sm" variant="outline">
                             <Link href={study.show().url}>
                                 <GraduationCap />К проверке

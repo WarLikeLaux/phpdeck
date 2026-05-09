@@ -145,7 +145,7 @@ function Wrapper({
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground sm:justify-end">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:justify-end sm:gap-3">
                         <Badge
                             variant="outline"
                             className="bg-background/60 tabular-nums"
