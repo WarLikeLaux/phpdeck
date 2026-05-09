@@ -27,12 +27,12 @@ export default function AuthSimpleLayout({
                 }}
             />
 
-            <div className="grid min-h-svh lg:grid-cols-2">
+            <div className="grid min-h-svh lg:grid-cols-[7fr_3fr]">
                 {/* hero side */}
                 <div className="relative hidden flex-col justify-between overflow-hidden p-10 lg:flex">
                     <Link
                         href={home()}
-                        className="z-10 inline-flex items-center gap-2 self-start text-lg font-semibold tracking-tight"
+                        className="z-10 inline-flex items-center gap-2 self-start text-5xl font-bold tracking-tight"
                     >
                         <span className="bg-gradient-to-br from-pink-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent">
                             phpdeck
@@ -41,16 +41,17 @@ export default function AuthSimpleLayout({
 
                     <div className="relative z-10 flex w-full items-center justify-center">
                         <div className="absolute inset-0 -z-10 blur-3xl opacity-60" style={{ background: 'radial-gradient(circle at center, rgba(236,72,153,0.35), transparent 60%)' }} />
-                        <img
-                            src="/hero.png"
-                            alt="phpdeck"
-                            className="w-full max-w-2xl rounded-2xl shadow-[0_0_60px_-15px_rgba(236,72,153,0.5)]"
-                        />
+                        <div className="w-full overflow-hidden rounded-2xl">
+                            <img
+                                src="/hero.png"
+                                alt="phpdeck"
+                                className="w-full rounded-2xl shadow-[0_0_60px_-15px_rgba(236,72,153,0.5)] transition-transform duration-700 ease-out hover:scale-[1.04]"
+                            />
+                        </div>
                     </div>
 
-                    <div className="z-10 max-w-md text-sm text-white/70">
-                        Карточки для подготовки к собеседованиям по PHP, Laravel, ООП, базам данных и архитектуре.
-                        Семь режимов обучения, SRS-повторение, аналитика прогресса.
+                    <div className="z-10 whitespace-nowrap text-xl font-medium text-white/80">
+                        Карточки для подготовки к собеседованиям по PHP-стеку.
                     </div>
                 </div>
 
