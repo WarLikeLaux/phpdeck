@@ -65,22 +65,13 @@ export default function ReviewIndex({ flashcard, stats }: Props) {
 
 function Header({ stats }: { stats: Stats }) {
     return (
-        <div className="flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-            <div className="flex items-center gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-background/80 text-amber-600 ring-1 ring-amber-500/40 dark:text-amber-300">
-                    <Repeat className="size-5" />
-                </div>
-                <div className="flex flex-col">
-                    <span className="text-sm leading-tight font-semibold">
-                        Повторение
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                        Прогон по выученным — закрытый тип, по разу за сессию.
-                    </span>
-                </div>
+        <div className="flex items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 sm:px-4 sm:py-2.5">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background/80 text-amber-600 ring-1 ring-amber-500/40 dark:text-amber-300">
+                <Repeat className="size-4" />
             </div>
+            <span className="text-sm font-semibold">Повторение</span>
 
-            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground sm:justify-end">
+            <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
                 <Badge
                     variant="outline"
                     className="bg-background/60 tabular-nums"
@@ -90,9 +81,14 @@ function Header({ stats }: { stats: Stats }) {
                 </Badge>
                 {stats.seen > 0 && (
                     <Form action={review.reset().url} method="post">
-                        <Button type="submit" size="sm" variant="ghost">
+                        <Button
+                            type="submit"
+                            size="sm"
+                            variant="ghost"
+                            aria-label="Сброс"
+                        >
                             <RotateCcw />
-                            Сброс
+                            <span className="hidden sm:inline">Сброс</span>
                         </Button>
                     </Form>
                 )}

@@ -120,43 +120,36 @@ function Wrapper({
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 pt-4 pb-6 sm:px-6 sm:pt-6">
                 <div
                     className={cn(
-                        'flex flex-col gap-3 rounded-2xl border p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4',
+                        'flex items-center gap-2 rounded-2xl border px-3 py-2 sm:px-4 sm:py-2.5',
                         meta.accentBg,
                         meta.accentBorder,
                     )}
                 >
-                    <div className="flex items-center gap-3">
-                        <div
-                            className={cn(
-                                'flex size-9 shrink-0 items-center justify-center rounded-xl bg-background/80 ring-1',
-                                meta.accentRing,
-                                meta.accentText,
-                            )}
-                        >
-                            <Icon className="size-5" />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-sm leading-tight font-semibold">
-                                {meta.label}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                                {meta.description}
-                            </span>
-                        </div>
+                    <div
+                        className={cn(
+                            'flex size-8 shrink-0 items-center justify-center rounded-lg bg-background/80 ring-1',
+                            meta.accentRing,
+                            meta.accentText,
+                        )}
+                    >
+                        <Icon className="size-4" />
                     </div>
+                    <span className="text-sm font-semibold">{meta.label}</span>
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:justify-end sm:gap-3">
+                    <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
                         <Badge
                             variant="outline"
                             className="bg-background/60 tabular-nums"
+                            title="К повтору"
                         >
-                            {stats.due} к повтору
+                            {stats.due}
                         </Badge>
                         <Badge
                             variant="outline"
-                            className="bg-background/60 tabular-nums"
+                            className="hidden bg-background/60 tabular-nums sm:inline-flex"
+                            title="Выучено / всего"
                         >
-                            {stats.learned}/{stats.total} выучено
+                            {stats.learned}/{stats.total}
                         </Badge>
                         {flashcard && (
                             <>
@@ -175,7 +168,7 @@ function Wrapper({
                                 {flashcard.is_learned ? (
                                     <Badge
                                         variant="outline"
-                                        className="bg-background/60 tabular-nums"
+                                        className="hidden bg-background/60 tabular-nums sm:inline-flex"
                                         title="Повторение по SRS"
                                     >
                                         повтор {flashcard.srs_step + 1}/4
@@ -183,7 +176,7 @@ function Wrapper({
                                 ) : (
                                     <Badge
                                         variant="outline"
-                                        className="bg-background/60 font-mono tabular-nums"
+                                        className="hidden bg-background/60 font-mono tabular-nums sm:inline-flex"
                                         title="Различных режимов с правильным ответом"
                                     >
                                         {flashcard.correct_modes?.length ?? 0}/

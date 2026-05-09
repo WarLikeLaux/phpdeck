@@ -69,41 +69,36 @@ export default function LearnIndex({
         <>
             <Head title="Изучение" />
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 pt-4 pb-6 sm:px-6 sm:pt-6">
-                <div className="flex flex-col gap-3 rounded-2xl border border-violet-500/30 bg-violet-500/10 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-background/80 text-violet-600 ring-1 ring-violet-500/40 dark:text-violet-300">
-                            <BookOpen className="size-5" />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-sm leading-tight font-semibold">
-                                Изучение
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                                Сначала запомни карточку — потом проверь себя.
-                            </span>
-                        </div>
+                <div className="flex items-center gap-2 rounded-2xl border border-violet-500/30 bg-violet-500/10 px-3 py-2 sm:px-4 sm:py-2.5">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background/80 text-violet-600 ring-1 ring-violet-500/40 dark:text-violet-300">
+                        <BookOpen className="size-4" />
                     </div>
+                    <span className="text-sm font-semibold">Изучение</span>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground sm:justify-end">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Badge
-                                variant="outline"
-                                className="bg-background/60 tabular-nums"
-                                title="Не изучено / всего"
-                            >
-                                {stats.unstudied}/{stats.total} осталось
-                            </Badge>
-                            <Badge
-                                variant="outline"
-                                className="bg-background/60 tabular-nums"
-                                title="Готово к проверке"
-                            >
-                                {stats.studied} к проверке
-                            </Badge>
-                        </div>
+                    <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                        <Badge
+                            variant="outline"
+                            className="bg-background/60 tabular-nums"
+                            title="Не изучено / всего"
+                        >
+                            {stats.unstudied}/{stats.total}
+                        </Badge>
+                        <Badge
+                            variant="outline"
+                            className="hidden bg-background/60 tabular-nums sm:inline-flex"
+                            title="Готово к проверке"
+                        >
+                            {stats.studied} к проверке
+                        </Badge>
                         <Button asChild size="sm" variant="outline">
-                            <Link href={study.show().url}>
-                                <GraduationCap />К проверке
+                            <Link
+                                href={study.show().url}
+                                aria-label="К проверке"
+                            >
+                                <GraduationCap />
+                                <span className="hidden sm:inline">
+                                    К проверке
+                                </span>
                             </Link>
                         </Button>
                     </div>
