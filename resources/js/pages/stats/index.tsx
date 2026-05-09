@@ -124,7 +124,7 @@ export default function StatsIndex({
                     </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     <KpiCard
                         label="Стрик"
                         value={streak}
@@ -248,25 +248,25 @@ function KpiCard({
 }) {
     return (
         <Card className={cn('overflow-hidden bg-gradient-to-br', accent)}>
-            <CardContent className="flex flex-col gap-2 p-4">
-                <div className="flex items-center justify-between">
-                    <span className="text-[11px] tracking-wide text-muted-foreground uppercase">
+            <CardContent className="flex flex-col gap-2 p-3 sm:p-4">
+                <div className="flex items-center justify-between gap-1">
+                    <span className="text-[11px] tracking-wide text-muted-foreground uppercase truncate">
                         {label}
                     </span>
-                    {icon}
+                    <span className="shrink-0">{icon}</span>
                 </div>
-                <div className="flex items-baseline gap-1.5">
-                    <span className="text-2xl font-semibold tabular-nums">
+                <div className="flex flex-wrap items-baseline gap-x-1.5">
+                    <span className="text-xl font-semibold tabular-nums sm:text-2xl">
                         {value}
                     </span>
                     {suffix && (
-                        <span className="text-sm text-muted-foreground">
+                        <span className="text-xs text-muted-foreground sm:text-sm">
                             {suffix}
                         </span>
                     )}
                 </div>
                 {hint && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-[11px] text-muted-foreground sm:text-xs">
                         {hint}
                     </span>
                 )}
@@ -284,7 +284,7 @@ function DailyChart({
 }) {
     return (
         <div className="flex items-end gap-1.5 sm:gap-2">
-            {entries.map((d) => {
+            {entries.map((d, idx) => {
                 const total = entryTotal(d);
                 const heightPct =
                     total === 0 ? 4 : Math.max(8, (total / maxValue) * 100);
@@ -297,6 +297,8 @@ function DailyChart({
                     `Повторено: ${d.remembered}`,
                     `Забыто: ${d.forgot}`,
                 ].join('\n');
+                const isLast = idx === entries.length - 1;
+                const showLabelMobile = idx % 3 === 0 || isLast;
 
                 return (
                     <div
@@ -317,7 +319,12 @@ function DailyChart({
                                 style={{ height: `${heightPct}%` }}
                             />
                         </div>
-                        <span className="text-[10px] text-muted-foreground tabular-nums sm:text-xs">
+                        <span
+                            className={cn(
+                                'text-[10px] text-muted-foreground tabular-nums sm:text-xs sm:inline',
+                                showLabelMobile ? 'inline' : 'hidden',
+                            )}
+                        >
                             {formatDayLabel(d.date)}
                         </span>
                     </div>

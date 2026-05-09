@@ -33,7 +33,6 @@ export function NavMain({ items = [] }: { items: NavItem[] }) {
                         >
                             <Link
                                 href={item.href}
-                                prefetch
                                 onClick={handleNavigate}
                             >
                                 {item.icon && <item.icon />}
