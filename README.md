@@ -13,7 +13,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Inertia](https://img.shields.io/badge/Inertia-3.0-9553E9?logo=inertia&logoColor=white)](https://inertiajs.com)
 [![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
-[![Tests](https://img.shields.io/badge/tests-103%20passing-22c55e?logo=pest&logoColor=white)](#)
+[![Tests](https://img.shields.io/badge/tests-81%20passing-22c55e?logo=pest&logoColor=white)](#)
+[![Cards](https://img.shields.io/badge/cards-1433-9553E9)](#)
 
 </div>
 
@@ -23,7 +24,7 @@
 
 Готовиться к PHP-собесам по «прочитай 100 вопросов и ответов» неэффективно — глаза скользят, мозг не закрепляет. **phpdeck** заставляет тебя реально вытаскивать ответ: то по памяти, то выбором, то заполнением пропусков, то сборкой кода из блоков. Карточка считается выученной, только когда ты ответил правильно в **трёх разных режимах** — это убивает иллюзию «я это знаю», которая возникает когда видишь ответ глазами.
 
-В колоде 1093 вопроса по реальным middle/senior собеседованиям. Прогресс свой — много пользователей не мешают друг другу.
+В колоде **1433 вопроса** по 120 топикам — от junior-базы до middle/senior собеседований. Прогресс свой — много пользователей не мешают друг другу.
 
 ## Что внутри
 
@@ -51,27 +52,34 @@
 
 ## Колода
 
-1093 карточки по 101 топику, по реальным middle/senior собеседованиям:
+1433 карточки по 120 топикам, из них ~500 на уровне «base» (difficulty 1-2) — ровная подготовка от junior-фундамента до middle/senior нюансов:
 
 | Категория | Карточек | Топиков |
 |---|---|---|
-| PHP | 314 | 27 |
-| Laravel | 239 | 27 |
-| Архитектура систем | 212 | 9 |
-| Базы данных | 193 | 17 |
-| ООП | 135 | 22 |
+| PHP | 368 | 27 |
+| Laravel | 283 | 27 |
+| Архитектура систем | 265 | 11 |
+| Базы данных | 223 | 17 |
+| ООП | 165 | 22 |
+| Сети | 70 | 7 |
+| Безопасность | 34 | 6 |
+| Тестирование | 25 | 4 |
 
-Карточки добавляются **строго через сидеры** — UI только учит. Это сделано осознанно: контент рецензируется через PR-ы, а не накручивается на лету. Структура: `database/seeders/Data/Categories/{Php,Oop,Laravel,Database,SystemDesign}/<Topic>.php`.
+Карточки добавляются **строго через сидеры** — UI только учит. Это сделано осознанно: контент рецензируется через PR-ы, а не накручивается на лету. Структура: `database/seeders/Data/Categories/{Php,Oop,Laravel,Database,SystemDesign,Networking,Security,Testing}/<Topic>.php`.
+
+Сидер **идемпотентен**: каждая карточка имеет стабильный `slug` (sha256 от `category|question`), при повторном запуске `task seed` или `task deploy` карточки сверяются по slug — новые добавляются, изменённые ответы обновляются, удалённые из сидеров вычищаются, прогресс пользователей не теряется.
 
 ## Установка
 
+Проект работает через [Taskfile](https://taskfile.dev/) (`brew install go-task` / `scoop install task` / `curl -sL https://taskfile.dev/install.sh | sh`).
+
 ```bash
-make install     # composer + npm + .env + key + sqlite + миграции
-make seed        # 1093 карточки
-make dev         # server + queue + logs + vite одной командой
+task install     # composer + npm + .env + key + sqlite + миграции
+task seed        # сидеры с карточками (идемпотентно через slug)
+task up          # server + queue + logs + vite одной командой (алиас task dev)
 ```
 
-Откроется на `http://localhost:8000`. Зарегистрируйся — у каждого пользователя свой прогресс.
+Откроется на `http://localhost:8000`. Зарегистрируйся — у каждого пользователя свой прогресс. Полный список задач — `task` без аргументов.
 
 ## Шорткаты
 
@@ -165,8 +173,24 @@ Laravel 13 · Inertia 3 · React 19 · TypeScript 5.7 · Tailwind 4 · shadcn/ui
 ## Команды
 
 ```bash
-make test        # pest, 103 теста
-make lint        # pint + eslint --fix + prettier
-make lint-check  # без правок (pint + eslint + prettier + tsc)
-make ci          # полный пайплайн
+task test        # pest
+task lint        # pint + eslint --fix + prettier
+task lint-check  # без правок (pint + eslint + prettier + tsc)
+task ci          # полный пайплайн (lint-check + test)
+task fresh       # migrate:fresh --seed локально
+task seed-cards  # идемпотентный sync карточек без сброса БД
+task deploy      # rsync + composer + migrate + sync карточек + cache на VPS
+task down        # остановить локальный dev-стенд
 ```
+
+Все таски — `task` без аргументов.
+
+---
+
+## Кредиты и лицензия
+
+- **Логотип elePHPant** ([`public/elephpant.svg`](public/elephpant.svg)) — Webysther Nunes, 2016. Источник: [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Webysther_20160423_-_Elephpant.svg). Лицензия: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Оригинальный персонаж elePHPant — [Vincent Pontier](http://www.elephpant.com/) (1998).
+- **Код проекта** — MIT.
+- **Контент карточек** (база вопросов в `database/seeders/Data/Categories/`) — MIT, но если используешь как часть тренажёра/курса, ссылка на репозиторий приветствуется.
+
+Стек: Laravel 13 (MIT) · Inertia (MIT) · React (MIT) · Tailwind (MIT) · shadcn/ui (MIT) · Pest (MIT) · Lucide icons (ISC).

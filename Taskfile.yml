@@ -1,0 +1,299 @@
+version: '3'
+
+# Запустить: task <target> либо просто task (покажет список)
+# Установка: brew install go-task / scoop install task / curl -sL https://taskfile.dev/install.sh | sh
+
+vars:
+  PHP: php
+  COMPOSER: composer
+  NPM: npm
+  ARTISAN: php artisan
+  SQLITE_DB: database/database.sqlite
+  REPOMIX_HEADER: >-
+    Это банк вопросов для подготовки к собеседованию PHP/Laravel-разработчика middle/senior уровня.
+    Каждый вопрос лежит в поле 'question', эталонный ответ — в поле 'answer', опционально есть 'code_example'.
+    Обсуждай вопросы по существу, как ведущие технического подкаста для разработчиков.
+    Не комментируй структуру файла, формат хранения, PHP-массивы, сидеры или способ упаковки —
+    это всё технические детали хранилища, а не предмет обсуждения.
+
+tasks:
+  default:
+    desc: Показать список доступных задач
+    cmds:
+      - task --list
+
+  # ── Setup ──────────────────────────────────────────────────────────────
+
+  install:
+    desc: Поставить зависимости (composer + npm) + .env + key + БД + миграции
+    deps: [env, key, db, migrate]
+    cmds:
+      - '{{.COMPOSER}} install --no-interaction --prefer-dist'
+      - '{{.NPM}} ci'
+
+  setup:
+    desc: Полная установка с production-сборкой ассетов
+    deps: [install]
+    cmds:
+      - task: build
+
+  env:
+    desc: Создать .env из .env.example при отсутствии
+    cmds:
+      - test -f .env || cp .env.example .env
+    status:
+      - test -f .env
+
+  key:
+    desc: Сгенерировать APP_KEY если пустой
+    cmds:
+      - '{{.ARTISAN}} key:generate'
+    status:
+      - grep -q '^APP_KEY=base64:' .env
+
+  db:
+    desc: Создать sqlite-файл если отсутствует
+    cmds:
+      - mkdir -p $(dirname {{.SQLITE_DB}})
+      - touch {{.SQLITE_DB}}
+    status:
+      - test -f {{.SQLITE_DB}}
+
+  storage-link:
+    desc: Слинковать storage в public
+    cmds:
+      - '{{.ARTISAN}} storage:link'
+
+  # ── Development ─────────────────────────────────────────────────────────
+
+  up:
+    desc: Поднять локально (server + queue + logs + vite параллельно), алиас для dev
+    cmds:
+      - task: dev
+
+  dev:
+    desc: Запустить server + queue + logs + vite одной командой
+    cmds:
+      - '{{.COMPOSER}} run dev'
+
+  down:
+    desc: Убить процессы локального dev-стенда (artisan serve, queue, pail, vite)
+    cmds:
+      - pkill -f "artisan serve" 2>/dev/null || true
+      - pkill -f "artisan queue:listen" 2>/dev/null || true
+      - pkill -f "artisan pail" 2>/dev/null || true
+      - pkill -f "vite" 2>/dev/null || true
+      - echo "dev stack stopped"
+
+  serve:
+    desc: Только PHP-сервер
+    cmds:
+      - '{{.ARTISAN}} serve'
+
+  queue:
+    desc: Воркер очередей
+    cmds:
+      - '{{.ARTISAN}} queue:listen --tries=1 --timeout=0'
+
+  logs:
+    desc: Стрим логов через pail
+    cmds:
+      - '{{.ARTISAN}} pail --timeout=0'
+
+  vite:
+    desc: Vite dev-сервер
+    cmds:
+      - '{{.NPM}} run dev'
+
+  tinker:
+    desc: Интерактивный REPL
+    cmds:
+      - '{{.ARTISAN}} tinker'
+
+  # ── Database ────────────────────────────────────────────────────────────
+
+  migrate:
+    desc: Прогнать миграции (graceful)
+    cmds:
+      - '{{.ARTISAN}} migrate --graceful'
+
+  migrate-fresh:
+    desc: Сбросить и пересоздать БД
+    cmds:
+      - '{{.ARTISAN}} migrate:fresh'
+
+  seed:
+    desc: Запустить все сидеры
+    cmds:
+      - '{{.ARTISAN}} db:seed'
+
+  seed-cards:
+    desc: Идемпотентный sync карточек (upsert по slug, удаляет осиротевших)
+    cmds:
+      - '{{.ARTISAN}} db:seed --class=FlashcardSeeder --force'
+
+  rollback:
+    desc: Откатить последнюю миграцию
+    cmds:
+      - '{{.ARTISAN}} migrate:rollback'
+
+  fresh:
+    desc: migrate:fresh --seed (быстрый локальный сброс с пересевом)
+    cmds:
+      - '{{.ARTISAN}} migrate:fresh --seed --force'
+
+  # ── Build ───────────────────────────────────────────────────────────────
+
+  build:
+    desc: Собрать фронт для production
+    cmds:
+      - '{{.NPM}} run build'
+
+  build-ssr:
+    desc: Собрать SSR-бандл
+    cmds:
+      - '{{.NPM}} run build:ssr'
+
+  # ── Tests ───────────────────────────────────────────────────────────────
+
+  test:
+    desc: Запустить тесты
+    cmds:
+      - '{{.ARTISAN}} config:clear'
+      - '{{.ARTISAN}} test'
+
+  test-filter:
+    desc: task test-filter -- Foo — отфильтровать тесты по имени
+    cmds:
+      - '{{.ARTISAN}} test --filter={{.CLI_ARGS}}'
+
+  test-coverage:
+    desc: Тесты с покрытием
+    cmds:
+      - '{{.ARTISAN}} test --coverage'
+
+  # ── Quality ─────────────────────────────────────────────────────────────
+
+  lint:
+    desc: Прогнать все автофиксы (Pint + Prettier + ESLint)
+    deps: [pint, format]
+    cmds:
+      - '{{.NPM}} run lint'
+
+  lint-check:
+    desc: Только проверка без правок
+    deps: [pint-check]
+    cmds:
+      - '{{.NPM}} run lint:check'
+      - '{{.NPM}} run format:check'
+      - '{{.NPM}} run types:check'
+
+  format:
+    desc: Prettier для resources/
+    cmds:
+      - '{{.NPM}} run format'
+
+  format-check:
+    desc: Проверка форматирования
+    cmds:
+      - '{{.NPM}} run format:check'
+
+  types-check:
+    desc: TypeScript проверка типов
+    cmds:
+      - '{{.NPM}} run types:check'
+
+  pint:
+    desc: Laravel Pint автоформат
+    cmds:
+      - '{{.COMPOSER}} run lint'
+
+  pint-check:
+    desc: Pint в режиме проверки
+    cmds:
+      - '{{.COMPOSER}} run lint:check'
+
+  ci:
+    desc: Полный CI-пайплайн локально (lint-check + test)
+    cmds:
+      - task: lint-check
+      - task: test
+
+  # ── Maintenance ─────────────────────────────────────────────────────────
+
+  optimize:
+    desc: Прогрев кэша конфига/роутов/вьюх
+    cmds:
+      - '{{.ARTISAN}} optimize'
+
+  cache-clear:
+    desc: Сбросить все кэши Laravel
+    cmds:
+      - '{{.ARTISAN}} optimize:clear'
+
+  route-list:
+    desc: Показать все маршруты
+    cmds:
+      - '{{.ARTISAN}} route:list'
+
+  update:
+    desc: Обновить зависимости (composer + npm)
+    cmds:
+      - '{{.COMPOSER}} update'
+      - '{{.NPM}} update'
+
+  upgrade:
+    desc: Композер upgrade с разрешением конфликтов
+    cmds:
+      - '{{.COMPOSER}} update -W'
+
+  clean:
+    desc: Удалить vendor, node_modules, build артефакты
+    cmds:
+      - rm -rf vendor node_modules public/build public/hot bootstrap/cache/*.php
+      - '{{.ARTISAN}} cache:clear || true'
+
+  reset:
+    desc: 'Полный сброс: clean + удалить .env и БД'
+    cmds:
+      - rm -rf vendor node_modules public/build public/hot bootstrap/cache/*.php
+      - rm -f .env {{.SQLITE_DB}}
+
+  fresh-install:
+    desc: Удалить артефакты и переустановить с нуля
+    cmds:
+      - task: clean
+      - task: install
+
+  # ── Deploy ──────────────────────────────────────────────────────────────
+
+  deploy:
+    desc: Деплой на VPS (rsync + composer + migrate + sync карточек + cache)
+    cmds:
+      - ./bin/deploy.sh
+
+  env-sync:
+    desc: Синхронизировать .env с .env.example (порядок + недостающие ключи)
+    cmds:
+      - ./bin/env-sync.sh
+
+  # ── Export ──────────────────────────────────────────────────────────────
+
+  repomix:
+    desc: Перепаковать сидеры в repomix-<category>.md по категориям (для NotebookLM)
+    cmds:
+      - |
+        for pair in php=Php oop=Oop laravel=Laravel database=Database system-design=SystemDesign networking=Networking security=Security testing=Testing; do
+          out=${pair%=*}
+          src=${pair#*=}
+          echo "→ repomix-$out.md ($src)"
+          npx -y repomix \
+            --include "database/seeders/Data/Categories/$src/**/*.php" \
+            --style markdown \
+            --no-file-summary \
+            --no-directory-structure \
+            --header-text "{{.REPOMIX_HEADER}}" \
+            -o repomix-$out.md \
+            --no-security-check >/dev/null
+        done
+        ls -lh repomix-*.md
