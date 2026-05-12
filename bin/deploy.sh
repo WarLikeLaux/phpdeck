@@ -82,6 +82,7 @@ SSHPASS="$DEPLOY_SSH_PASSWORD" sshpass -e rsync -az --delete \
     --exclude 'storage/app/private/*' \
     --exclude 'storage/app/public/*' \
     --exclude 'database/database.sqlite' \
+    --exclude 'public/hot' \
     --exclude '*.md' \
     --exclude 'docs' \
     --exclude 'repomix-*' \
