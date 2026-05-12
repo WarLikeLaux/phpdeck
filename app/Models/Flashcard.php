@@ -14,6 +14,7 @@ class Flashcard extends Model
     use HasFactory;
 
     protected $fillable = [
+        'slug',
         'category',
         'topic',
         'difficulty',
@@ -25,6 +26,20 @@ class Flashcard extends Model
         'short_answer',
         'assemble_chunks',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Flashcard $card) {
+            if (empty($card->slug) && $card->category && $card->question) {
+                $card->slug = hash('sha256', $card->category.'|'.$card->question);
+            }
+        });
+    }
+
+    public static function slugFor(string $category, string $question): string
+    {
+        return hash('sha256', $category.'|'.$question);
+    }
 
     protected $casts = [
         'assemble_chunks' => 'array',

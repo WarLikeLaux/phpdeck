@@ -28,8 +28,34 @@ class FlashcardSeeder extends Seeder
             ...TestingQuestions::all(),
         ];
 
+        $seenSlugs = [];
+        $created = 0;
+        $updated = 0;
+
         foreach ($cards as $card) {
-            Flashcard::query()->create($card);
+            $slug = Flashcard::slugFor($card['category'], $card['question']);
+
+            if (isset($seenSlugs[$slug])) {
+                // Дубль внутри сидера — пропускаем, чтобы upsert не натыкался на дубли в одной пачке.
+                continue;
+            }
+            $seenSlugs[$slug] = true;
+
+            $existing = Flashcard::query()->where('slug', $slug)->first();
+            if ($existing) {
+                $existing->fill($card)->save();
+                $updated++;
+            } else {
+                Flashcard::query()->create(['slug' => $slug] + $card);
+                $created++;
+            }
         }
+
+        // Удаляем «осиротевшие» карточки — те, что были в БД, но больше не описаны в сидерах.
+        // Прогресс юзеров по ним удалится каскадно (FK cascadeOnDelete) — это ожидаемо,
+        // потому что карточки больше нет.
+        $deleted = Flashcard::query()->whereNotIn('slug', array_keys($seenSlugs))->delete();
+
+        $this->command?->info("FlashcardSeeder: created=$created, updated=$updated, deleted=$deleted, total=".count($seenSlugs));
     }
 }

@@ -122,12 +122,17 @@ remote_exec "cd $DEPLOY_PATH && \
 ok "composer install done"
 
 # ---------- 5. migrations (no-op if up-to-date) ----------
-log "[5/7] Running migrations"
+log "[5/8] Running migrations"
 remote_exec "cd $DEPLOY_PATH && sudo -u www-data php artisan migrate --force 2>&1 | tail -5"
 ok "migrations done"
 
-# ---------- 6. caches ----------
-log "[6/7] Rebuilding config/route/view caches"
+# ---------- 6. sync flashcards (idempotent: создаёт/обновляет/удаляет по slug, прогресс юзеров сохраняется) ----------
+log "[6/8] Syncing flashcards"
+remote_exec "cd $DEPLOY_PATH && sudo -u www-data php artisan db:seed --class=FlashcardSeeder --force 2>&1 | tail -5"
+ok "flashcards synced"
+
+# ---------- 7. caches ----------
+log "[7/8] Rebuilding config/route/view caches"
 remote_exec "cd $DEPLOY_PATH && \
     sudo -u www-data php artisan optimize:clear 2>&1 | tail -3 && \
     sudo -u www-data php artisan config:cache 2>&1 | tail -1 && \
@@ -135,8 +140,8 @@ remote_exec "cd $DEPLOY_PATH && \
     sudo -u www-data php artisan view:cache 2>&1 | tail -1"
 ok "caches rebuilt"
 
-# ---------- 7. reload php-fpm (clear opcache) ----------
-log "[7/7] Reloading php-fpm"
+# ---------- 8. reload php-fpm (clear opcache) ----------
+log "[8/8] Reloading php-fpm"
 remote_exec "systemctl reload php8.4-fpm"
 ok "php-fpm reloaded"
 
