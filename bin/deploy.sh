@@ -55,12 +55,12 @@ remote_exec() {
 }
 
 # ---------- 1. local build ----------
-log "[1/7] Building frontend assets locally"
+log "[1/8] Building frontend assets locally"
 npm run build >/tmp/phpdeck-build.log 2>&1 || { cat /tmp/phpdeck-build.log; die "npm run build failed"; }
 ok "build done ($(du -sh public/build 2>/dev/null | awk '{print $1}'))"
 
 # ---------- 2. rsync ----------
-log "[2/7] Rsyncing code → $DEPLOY_SSH_HOST:$DEPLOY_PATH"
+log "[2/8] Rsyncing code → $DEPLOY_SSH_HOST:$DEPLOY_PATH"
 SSHPASS="$DEPLOY_SSH_PASSWORD" sshpass -e rsync -az --delete \
     --exclude '.git' \
     --exclude '.github' \
@@ -102,7 +102,7 @@ SSHPASS="$DEPLOY_SSH_PASSWORD" sshpass -e rsync -az --delete \
 ok "rsync done"
 
 # ---------- 3. fix perms (storage/db/cache writable for www-data) ----------
-log "[3/7] Fixing permissions"
+log "[3/8] Fixing permissions"
 remote_exec "
     chown -R www-data:www-data $DEPLOY_PATH
     chmod -R 775 $DEPLOY_PATH/storage $DEPLOY_PATH/bootstrap/cache $DEPLOY_PATH/database
@@ -113,7 +113,7 @@ remote_exec "
 ok "perms set"
 
 # ---------- 4. composer install (no-op if lock unchanged) ----------
-log "[4/7] Installing PHP dependencies (no-dev)"
+log "[4/8] Installing PHP dependencies (no-dev)"
 remote_exec "cd $DEPLOY_PATH && \
     COMPOSER_ALLOW_SUPERUSER=1 COMPOSER_MEMORY_LIMIT=-1 \
     composer install --no-dev --optimize-autoloader --no-interaction --no-progress 2>&1 \
