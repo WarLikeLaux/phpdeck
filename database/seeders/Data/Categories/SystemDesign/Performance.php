@@ -149,6 +149,13 @@ Model::preventLazyLoading(! app()->isProduction());',
                 'difficulty' => 4,
                 'topic' => 'system_design.performance',
             ],
+            [
+                'category' => 'Архитектура систем',
+                'question' => 'Что такое Prometheus и как он устроен на верхнем уровне?',
+                'answer' => 'Prometheus — система мониторинга с pull-моделью и собственной time-series базой. Архитектура: сервер опрашивает (scrape) HTTP-эндпоинт /metrics целевых сервисов раз в N секунд, ответ — текстовый формат с метриками и labels (http_requests_total{method="GET",code="200"} 12345). Каждая метрика — отдельный временной ряд, идентифицируемый именем + комбинацией labels; высокая кардинальность labels (например, user_id) убивает Prometheus, поэтому туда кладут только конечные размерности. Типы метрик: counter (только растёт — запросы, ошибки), gauge (текущее значение — память, очередь), histogram (распределение — latency по buckets), summary (квантили на клиенте). Запросы пишутся на PromQL: rate(http_requests_total[5m]) считает RPS, histogram_quantile(0.95, ...) — p95. Сверху: Grafana для визуализации, Alertmanager для уведомлений (Slack/PagerDuty/email), service discovery (Kubernetes, Consul) для динамических таргетов. Для коротких задач/cron, которые не дотерпят до scrape, есть pushgateway. Сильные стороны: простота, экосистема экспортеров (node_exporter, mysqld_exporter, redis_exporter, blackbox). Слабые: одиночный сервер не реплицируется горизонтально из коробки — для долгого хранения и multi-tenant ставят Thanos, Cortex или Mimir.',
+                'difficulty' => 3,
+                'topic' => 'system_design.performance',
+            ],
         ];
     }
 }

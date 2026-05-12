@@ -125,7 +125,7 @@ php artisan migrate
 
 // доступ /telescope',
                 'code_language' => 'bash',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
@@ -138,7 +138,7 @@ php artisan migrate
 
 // доступ /pulse',
                 'code_language' => 'bash',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
@@ -557,14 +557,14 @@ Feature::for($user)->forget("new-checkout");',
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Sail и зачем он нужен, если уже есть Docker?',
                 'answer' => 'Sail — лёгкий CLI-обёртка над docker compose с готовым набором сервисов (PHP, MySQL/PostgreSQL, Redis, MeiliSearch, MailHog/Mailpit, Selenium). Даёт команды вида sail up, sail artisan, sail composer без необходимости писать собственный docker-compose.yml. Подходит как стандартное dev-окружение, в продакшен напрямую не предназначен.',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Pint и чем он отличается от php-cs-fixer?',
                 'answer' => 'Pint — официальный фиксер стиля кода Laravel, построенный поверх PHP-CS-Fixer. Идёт с готовыми пресетами (laravel, psr12, per, symfony) и нулевой конфигурацией: достаточно запустить vendor/bin/pint. Под капотом тот же php-cs-fixer, но с дефолтами под Laravel и удобным CLI; кастомные правила задаются через pint.json.',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
@@ -607,6 +607,27 @@ Feature::for($user)->forget("new-checkout");',
                 'question' => 'Что такое Laravel Nova и чем она отличается от бесплатных админок (Filament, Backpack)?',
                 'answer' => 'Nova — официальная платная админка Laravel: Resource-классы описывают CRUD-страницы, фильтры, lenses, actions и метрики. Filament и Backpack — open-source конкуренты с похожей моделью и часто более активным комьюнити. Nova даёт официальную поддержку и интеграцию с экосистемой (Scout, Sanctum), Filament — современный TALL-стек и плагины, Backpack — наиболее зрелое решение из бесплатных.',
                 'difficulty' => 3,
+                'topic' => 'laravel.misc',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Какие основные helper-функции Laravel часто используются?',
+                'answer' => 'route(\'users.show\', $id) — URL по имени маршрута. url(\'/foo\') — URL от base. asset(\'css/app.css\') — URL статики из public. old(\'email\') — старое значение формы после ошибки. now() — Carbon::now(). config(\'app.name\') — значение из config. env(\'KEY\') — переменная .env (только в config-файлах).',
+                'difficulty' => 1,
+                'topic' => 'laravel.misc',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Какие способы вернуть ответ из контроллера в Laravel?',
+                'answer' => 'return view(\'users.show\', [\'user\'=>$user]) — HTML-страница. return redirect(\'/login\') или redirect()->route(\'home\') — редирект. return response()->json([\'ok\'=>true]) — JSON. return response()->download($path) — файл на скачивание. return back() — назад. return abort(404) — прервать 404.',
+                'difficulty' => 1,
+                'topic' => 'laravel.misc',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'В чём разница между env() и config() в Laravel?',
+                'answer' => 'env(\'KEY\') читает переменную напрямую из .env — работает только во время загрузки конфигурации. config(\'app.key\') читает через закэшированный config (если был запущен config:cache). В коде приложения всегда используй config(), env() — только в config/*.php файлах. После config:cache env() в коде вернёт null!',
+                'difficulty' => 2,
                 'topic' => 'laravel.misc',
             ],
         ];

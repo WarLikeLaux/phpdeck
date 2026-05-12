@@ -25,7 +25,7 @@ CREATE INDEX idx_events_data ON events USING gin(data);
 SELECT * FROM events WHERE data @> \'{"type": "click"}\';
 SELECT data->>\'user_id\' FROM events;',
                 'code_language' => 'sql',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'database.postgresql',
             ],
             [
@@ -45,7 +45,7 @@ SELECT * FROM posts WHERE tags @> ARRAY[\'laravel\'];
 
 CREATE INDEX idx_posts_tags ON posts USING gin(tags);',
                 'code_language' => 'sql',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'database.postgresql',
             ],
             [
@@ -79,32 +79,6 @@ REFRESH MATERIALIZED VIEW daily_sales;
 REFRESH MATERIALIZED VIEW CONCURRENTLY daily_sales;  -- без локa',
                 'code_language' => 'sql',
                 'difficulty' => 3,
-                'topic' => 'database.postgresql',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое оконные функции (window functions)?',
-                'answer' => 'Оконные функции - вычисления над набором строк "окна", связанных с текущей, БЕЗ группировки. В отличие от GROUP BY, не схлопывают строки. Используются с OVER(...). Самые популярные: ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD, SUM/AVG OVER. Можно делить на группы через PARTITION BY и сортировать через ORDER BY.',
-                'code_example' => '-- Топ-3 заказа в каждом городе
-SELECT *
-FROM (
-    SELECT
-        city,
-        user_id,
-        amount,
-        ROW_NUMBER() OVER (PARTITION BY city ORDER BY amount DESC) AS rn
-    FROM orders
-) t
-WHERE rn <= 3;
-
--- Скользящая сумма
-SELECT
-    day,
-    sales,
-    SUM(sales) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS rolling_7d
-FROM daily_sales;',
-                'code_language' => 'sql',
-                'difficulty' => 4,
                 'topic' => 'database.postgresql',
             ],
             [
@@ -308,7 +282,7 @@ DB::raw("SELECT pg_advisory_lock(?)"); // session-level lock протекает 
                 'category' => 'Базы данных',
                 'question' => 'Какие сетевые типы и UUID есть в PostgreSQL и зачем они отдельно?',
                 'answer' => 'inet хранит IPv4/IPv6 адрес с опциональной маской подсети, cidr — сеть с обязательной маской, macaddr/macaddr8 — MAC-адреса. По сравнению с TEXT они занимают меньше места, валидируют формат на входе и поддерживают операторы вроде <<= (входит ли адрес в сеть). Тип uuid хранит 128-битный идентификатор в 16 байтах вместо 36-байтной строки, имеет генераторы (gen_random_uuid() из pgcrypto) и быстрее индексируется, чем TEXT-представление.',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'database.postgresql',
             ],
             [

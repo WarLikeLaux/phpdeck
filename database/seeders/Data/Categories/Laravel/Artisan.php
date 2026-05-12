@@ -102,6 +102,34 @@ Schedule::call(fn() => DB::table(\'sessions\')->delete())
                 'difficulty' => 3,
                 'topic' => 'laravel.artisan',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что делает php artisan route:list?',
+                'answer' => 'Выводит таблицу всех зарегистрированных маршрутов: HTTP-метод, URL, имя, действие (контроллер@метод). Полезно для понимания «какие endpoints есть в приложении». Фильтры: --path=user (только содержащие user), --method=POST, --name=admin.*.',
+                'difficulty' => 1,
+                'topic' => 'laravel.artisan',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Какие команды artisan для создания файлов самые частые?',
+                'answer' => 'make:controller, make:model (с опцией -mfsc создаёт и migration/factory/seeder/controller), make:migration, make:seeder, make:factory, make:request, make:job, make:event, make:listener, make:middleware, make:command, make:resource, make:test.',
+                'difficulty' => 1,
+                'topic' => 'laravel.artisan',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что делает php artisan serve?',
+                'answer' => 'Поднимает встроенный PHP-сервер для разработки на localhost:8000. Удобно для быстрого тестирования без настройки nginx/apache. Только для dev! В проде используется FPM/Octane.',
+                'difficulty' => 1,
+                'topic' => 'laravel.artisan',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что делает php artisan migrate:fresh --seed?',
+                'answer' => 'fresh — дропает ВСЕ таблицы и заново выполняет миграции (полностью свежая схема). --seed — после миграций запускает сидеры. Используется на dev для сброса БД к нулевому состоянию. В проде запускать НЕЛЬЗЯ — потеряются все данные.',
+                'difficulty' => 2,
+                'topic' => 'laravel.artisan',
+            ],
         ];
     }
 }

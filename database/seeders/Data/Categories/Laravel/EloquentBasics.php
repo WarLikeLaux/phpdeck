@@ -383,6 +383,41 @@ class UserObserver {
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_basics',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'В чём разница между ORM и сырыми SQL-запросами?',
+                'answer' => 'ORM (Object-Relational Mapper) — это слой, который маппит строки таблиц на объекты PHP и даёт работать с БД через объектный API: $user = User::find(1); $user->name = "Иван"; $user->save(). Eloquent (Laravel), Doctrine (Symfony), Yii AR — всё это ORM. Сырой SQL — текст запроса напрямую через PDO/DB::select/DB::statement, который ORM не интерпретирует. Ключевые отличия: 1) Уровень абстракции — ORM прячет SQL, диалект, кавычки, экранирование; raw — полный контроль над запросом. 2) Кросс-СУБД — ORM генерирует SQL под текущий драйвер (MySQL/PG/SQLite), raw нужно переписать при смене БД. 3) Безопасность — ORM по умолчанию использует bindings, raw легко уронить в SQL-injection, если конкатенировать ввод. 4) Производительность — ORM добавляет накладные расходы (hydration в объекты, события модели, ленивая загрузка → N+1); raw близок к нулевому overhead. 5) Удобство сложного SQL — оконные функции, CTE с UNION, hint-ы оптимизатора, экзотические агрегаты проще написать на raw. 6) Поддержка моделей — ORM даёт связи (hasMany, belongsTo), события, soft delete, casts, accessors; raw возвращает stdClass/array, всё это придётся писать руками.',
+                'difficulty' => 3,
+                'topic' => 'laravel.eloquent_basics',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Когда выгодно использовать ORM, а когда — сырые SQL-запросы?',
+                'answer' => 'Используй ORM (Eloquent), когда: 1) Обычный CRUD-код приложения — 90% запросов это find/where/save/delete, тут ORM даёт огромный выигрыш в скорости разработки и читаемости. 2) Доменная логика крутится вокруг моделей со связями, событиями, валидацией. 3) Команда большая и важна единообразность стиля — ORM дисциплинирует. 4) Нужны Resources/API — Eloquent отлично интегрируется с API Resources, Sanctum, policies. 5) Безопасность — bindings из коробки. Переходи на raw (DB::select, DB::statement, Query Builder с DB::raw) когда: 1) Тяжёлая аналитика — оконные функции, рекурсивные CTE, сложные GROUP BY с агрегатами, которые в ORM выглядят уродливо. 2) Bulk-операции — UPDATE/DELETE миллионов строк, COPY/LOAD DATA INFILE — ORM-events на каждую запись положат прод. 3) Узкие места по производительности после профилирования — конкретный hot path хочется иметь оптимальный план запроса с index hint-ами. 4) Миграции, ETL, отчёты, разовые скрипты — где модели только мешают. 5) Используешь специфичные фичи СУБД (PG: jsonb-операторы @>, GIN-индексы; MySQL: SQL_CALC_FOUND_ROWS; FULLTEXT MATCH AGAINST). Компромисс: Query Builder без модели ($db->table("users")->where(...)) — синтаксис ORM-стиля без overhead на hydration модели, часто лучшая золотая середина для read-heavy кода.',
+                'difficulty' => 3,
+                'topic' => 'laravel.eloquent_basics',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое $table и $primaryKey в Eloquent-модели?',
+                'answer' => '$table — имя таблицы в БД, если оно отличается от автогена (по умолчанию имя модели в snake_case + множественное число: User → users). $primaryKey — имя поля PK, если не id. $incrementing = false — если PK не auto-increment. $keyType = \'string\' — если PK строка (например, UUID).',
+                'difficulty' => 1,
+                'topic' => 'laravel.eloquent_basics',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как отключить timestamps у модели Eloquent?',
+                'answer' => 'По умолчанию Eloquent ожидает в таблице колонки created_at и updated_at. Чтобы их не было: public $timestamps = false; в модели. Также эти поля автоматически устанавливаются при save() и update().',
+                'difficulty' => 2,
+                'topic' => 'laravel.eloquent_basics',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как создать модель Laravel через artisan?',
+                'answer' => 'php artisan make:model User — только модель. С опциями: -m создаёт миграцию, -f — factory, -s — seeder, -c — контроллер, -r — resource-контроллер. Всё сразу: php artisan make:model User -mfsc.',
+                'difficulty' => 1,
+                'topic' => 'laravel.eloquent_basics',
+            ],
         ];
     }
 }

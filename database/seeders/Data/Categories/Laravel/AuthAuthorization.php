@@ -170,6 +170,27 @@ axios.defaults.headers.common[\'X-CSRF-TOKEN\'] =
                 'difficulty' => 3,
                 'topic' => 'laravel.auth_authorization',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как получить текущего залогиненного пользователя в Laravel?',
+                'answer' => 'Auth::user() или auth()->user() — модель текущего юзера или null. Auth::id() — только id. Auth::check() — true/false проверка. В контроллерах ещё $request->user(). Везде доступен глобально, потому что AuthMiddleware биндит в контейнер при старте запроса.',
+                'difficulty' => 1,
+                'topic' => 'laravel.auth_authorization',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как защитить маршрут от неавторизованных пользователей?',
+                'answer' => 'Назначь middleware \'auth\' на route: Route::get(\'/profile\', ...)->middleware(\'auth\'). Или на group: Route::middleware(\'auth\')->group(function () {...}). Без логина юзера редиректит на /login. В контроллере: $this->middleware(\'auth\') в конструкторе.',
+                'difficulty' => 1,
+                'topic' => 'laravel.auth_authorization',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое guards в Laravel простыми словами?',
+                'answer' => 'Способ задать «как проверить, что юзер залогинен». Дефолтный guard \'web\' — через сессию и куки (для браузерных приложений). Guard \'api\' — через токен (Sanctum/Passport). Используется когда нужно несколько разных типов входа: например, отдельная авторизация для админки и API. Auth::guard(\'api\')->user().',
+                'difficulty' => 2,
+                'topic' => 'laravel.auth_authorization',
+            ],
         ];
     }
 }

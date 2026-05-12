@@ -98,6 +98,34 @@ public function run(): void {
                 'difficulty' => 3,
                 'topic' => 'laravel.migrations_seeders',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Какие основные типы колонок в миграции Laravel?',
+                'answer' => '$table->id() — BIGINT auto-increment PK. $table->string(\'name\', 255) — VARCHAR. $table->text(\'description\') — TEXT. $table->integer(\'age\'), $table->boolean(\'active\'), $table->decimal(\'price\', 8, 2). $table->timestamp(\'created_at\'), $table->json(\'meta\'). $table->foreignId(\'user_id\')->constrained() — FK на users.id.',
+                'difficulty' => 1,
+                'topic' => 'laravel.migrations_seeders',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что делают модификаторы nullable(), default(), unique() в миграции?',
+                'answer' => 'nullable() — колонка может быть NULL. default(\'value\') — значение по умолчанию. unique() — UNIQUE-индекс. index() — обычный индекс. Цепочка: $table->string(\'email\')->unique()->nullable()->default(null). primary() — PK на нескольких колонках: $table->primary([\'a\',\'b\']).',
+                'difficulty' => 2,
+                'topic' => 'laravel.migrations_seeders',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'В чём разница между Schema::create и Schema::table?',
+                'answer' => 'Schema::create(\'users\', fn($t) => ...) — СОЗДАЁТ новую таблицу. Schema::table(\'users\', fn($t) => ...) — ИЗМЕНЯЕТ существующую (добавить колонку, индекс, переименовать). Внутри Blueprint-callback одинаковые методы, но семантика разная — для add используют $table->string(\'phone\')->after(\'email\').',
+                'difficulty' => 2,
+                'topic' => 'laravel.migrations_seeders',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое factory и как ей пользоваться?',
+                'answer' => 'Класс-генератор тестовых моделей. User::factory()->create() — создаст одного юзера в БД со случайными данными. ->count(10) — десять. ->make() — без сохранения. ->state([\'role\' => \'admin\']) — переопределить поля. В классе UserFactory метод definition() возвращает дефолтные значения через fake().',
+                'difficulty' => 2,
+                'topic' => 'laravel.migrations_seeders',
+            ],
         ];
     }
 }

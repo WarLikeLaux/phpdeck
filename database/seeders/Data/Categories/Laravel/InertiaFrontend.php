@@ -77,7 +77,7 @@ return Inertia::render(\'Users/Index\', [
 defineProps({ users: Array })
 </script>',
                 'code_language' => 'php',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'laravel.inertia_frontend',
             ],
             [
@@ -115,6 +115,27 @@ defineProps({ users: Array })
                 'question' => 'Что такое Laravel Volt и как он связан с Livewire?',
                 'answer' => 'Volt — single-file API для Livewire-компонентов: класс компонента и Blade-шаблон описываются в одном .blade.php-файле через функции state(), computed(), mount(). Это синтаксический сахар поверх обычного Livewire — рендерится тот же компонент. Удобен для небольших страниц и связки с Folio, для крупных компонентов часто оставляют классический class-based подход.',
                 'difficulty' => 3,
+                'topic' => 'laravel.inertia_frontend',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Какие основные директивы Blade?',
+                'answer' => '@if/@elseif/@else/@endif — условия. @foreach($items as $i)...@endforeach — циклы. @extends(\'layout\') / @yield(\'content\') / @section(\'content\') — наследование шаблонов. @include(\'partial\') — вставка частичного шаблона. @csrf — CSRF-токен для форм. @auth/@guest — проверка авторизации.',
+                'difficulty' => 1,
+                'topic' => 'laravel.inertia_frontend',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'В чём разница между {{ $var }} и {!! $var !!} в Blade?',
+                'answer' => '{{ $var }} — автоматически экранирует HTML (защита от XSS). Если в $var есть <script>, отобразится как текст, не как код. {!! $var !!} — выводит как есть, без экранирования. Использовать только когда уверен в безопасности данных (например, отрендеренный markdown).',
+                'difficulty' => 1,
+                'topic' => 'laravel.inertia_frontend',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое @csrf и зачем он нужен?',
+                'answer' => 'Директива Blade, вставляющая в форму скрытое поле _token с CSRF-токеном текущей сессии. Без неё Laravel вернёт 419 на POST/PUT/DELETE. Защищает от Cross-Site Request Forgery — другой сайт не сможет отправить запрос от имени твоего залогиненного юзера.',
+                'difficulty' => 1,
                 'topic' => 'laravel.inertia_frontend',
             ],
         ];

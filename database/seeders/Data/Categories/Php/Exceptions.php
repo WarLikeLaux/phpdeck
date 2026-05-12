@@ -151,6 +151,49 @@ set_error_handler(function ($severity, $msg, $file, $line) {
                 'difficulty' => 4,
                 'topic' => 'php.exceptions',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое исключение (exception) простыми словами?',
+                'answer' => 'Объект, описывающий ошибочную ситуацию в коде. Когда что-то идёт не так (нет файла, неверный ввод, упала БД), вместо «тихого» return false выбрасывается исключение, которое прерывает обычный поток выполнения, пока его не поймают через try/catch.',
+                'difficulty' => 1,
+                'topic' => 'php.exceptions',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как работает try/catch в PHP простыми словами?',
+                'answer' => 'try — блок «пробуем выполнить рискованный код». catch — блок «если бросилось исключение, обработай его»: catch (Exception $e). finally — выполнится в любом случае (и при успехе, и при ошибке), удобно для закрытия ресурсов.',
+                'code_example' => 'try {
+    $data = json_decode($input, true, flags: JSON_THROW_ON_ERROR);
+} catch (JsonException $e) {
+    echo "Кривой JSON: " . $e->getMessage();
+} finally {
+    cleanup();
+}',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'php.exceptions',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делает оператор throw в PHP?',
+                'answer' => 'Бросает исключение: throw new RuntimeException("файл не найден"). Прерывает текущий код и поднимается вверх по стеку вызовов, пока не встретит подходящий catch. Если catch не нашёлся — программа упадёт с Uncaught Exception.',
+                'difficulty' => 1,
+                'topic' => 'php.exceptions',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Можно ли ловить несколько типов исключений в одном catch?',
+                'answer' => 'Да, через | (PHP 8+): catch (TypeError | ValueError $e). До 8.0 нужно было писать отдельные блоки catch для каждого типа. Если catch (Exception $e) — ловит и все наследники Exception, так что обычно конкретные ловят выше, общий — последним.',
+                'difficulty' => 2,
+                'topic' => 'php.exceptions',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'В чём разница между Exception, Error и Throwable простыми словами?',
+                'answer' => 'Throwable — самый верхний интерфейс, всё, что можно бросить через throw. От него наследуются Exception (ошибки бизнес-логики и приложения — InvalidArgumentException, RuntimeException) и Error (ошибки уровня PHP — TypeError, ParseError, DivisionByZeroError). Раньше Error было фатально, с PHP 7 их тоже можно ловить. catch (Throwable $e) ловит и Exception, и Error.',
+                'difficulty' => 2,
+                'topic' => 'php.exceptions',
+            ],
         ];
     }
 }

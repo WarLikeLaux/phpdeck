@@ -504,6 +504,13 @@ class CheckoutController {
                 'difficulty' => 4,
                 'topic' => 'oop.gof_behavioral',
             ],
+            [
+                'category' => 'ООП',
+                'question' => 'Что такое Strategy (стратегия) простыми словами?',
+                'answer' => 'Паттерн: алгоритм выбирается во время выполнения через подмену объекта-стратегии. Вместо if/else по типу платежа: $checkout->pay(new StripePayment()), $checkout->pay(new PayPalPayment()). Все стратегии реализуют один интерфейс PaymentMethod. Новый способ оплаты — новый класс, без правки checkout.',
+                'difficulty' => 2,
+                'topic' => 'oop.gof_behavioral',
+            ],
         ];
     }
 }

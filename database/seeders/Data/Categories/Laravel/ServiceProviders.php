@@ -75,6 +75,20 @@ class WrongDeferredProvider extends ServiceProvider implements DeferrableProvide
                 'difficulty' => 4,
                 'topic' => 'laravel.service_providers',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Service Provider простыми словами?',
+                'answer' => 'Класс, описывающий, как фреймворку поднять и связать сервисы при старте приложения. Лежит в app/Providers, регистрируется в config/app.php (или bootstrap/providers.php в Laravel 11). Стандартные: AppServiceProvider, AuthServiceProvider, EventServiceProvider, RouteServiceProvider — каждый отвечает за свою часть инфраструктуры.',
+                'difficulty' => 1,
+                'topic' => 'laravel.service_providers',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'В чём разница между register() и boot() в Service Provider?',
+                'answer' => 'register() — для биндингов в контейнер ($this->app->bind(...), singleton). Здесь НЕЛЬЗЯ обращаться к другим сервисам — они могут быть ещё не зарегистрированы. boot() — вызывается ПОСЛЕ register() всех провайдеров. Здесь можно дергать другие сервисы: подписаться на event, зарегистрировать macros, view composer, валидационные правила.',
+                'difficulty' => 2,
+                'topic' => 'laravel.service_providers',
+            ],
         ];
     }
 }

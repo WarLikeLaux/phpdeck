@@ -112,6 +112,27 @@ class Psr
                 'difficulty' => 3,
                 'topic' => 'php.psr',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое PSR простыми словами?',
+                'answer' => 'PHP Standards Recommendations — набор стандартов от PHP-FIG (Framework Interop Group), которые принимают крупные фреймворки и библиотеки. Цель — чтобы код от разных авторов мог работать вместе: одинаковая автозагрузка, одинаковые интерфейсы для логирования, кэша, HTTP.',
+                'difficulty' => 1,
+                'topic' => 'php.psr',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое namespace простыми словами?',
+                'answer' => 'Пространство имён — способ группировки классов, чтобы избежать конфликтов имён. namespace App\\Http\\Controllers; делает класс User полным именем App\\Http\\Controllers\\User. Чтобы использовать сокращённо — пишут use в начале файла.',
+                'difficulty' => 1,
+                'topic' => 'php.psr',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делает PSR-4 простыми словами?',
+                'answer' => 'Описывает правила автозагрузки классов: namespace → путь к файлу. Например, App\\Http\\Controllers\\UserController должен лежать в app/Http/Controllers/UserController.php. Composer читает раздел autoload.psr-4 в composer.json и автоматически находит классы.',
+                'difficulty' => 2,
+                'topic' => 'php.psr',
+            ],
         ];
     }
 }

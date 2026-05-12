@@ -54,6 +54,27 @@ var_dump(B::createSelf());   // object(A)
 var_dump(B::createStatic()); // object(B)',
                 'code_language' => 'php',
             ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.static_members',
+                'difficulty' => 1,
+                'question' => 'Что такое static простыми словами?',
+                'answer' => 'Метод или свойство, которые принадлежат самому КЛАССУ, а не объекту. Доступ — через имя класса: Counter::$count, Counter::increment(). Объект не нужен, $this внутри static недоступен. Используется для утилитарных функций без состояния.',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.static_members',
+                'difficulty' => 2,
+                'question' => 'Когда использовать static, а когда — нет?',
+                'answer' => 'Стоит: чистые утилиты без состояния (StringHelper::slugify), константы-фабрики (UserId::generate), счётчики класса. Не стоит: всё, что требует тестирования с моком — статика трудно подменяется. Антипаттерн — Singleton через приватный static $instance: скрытый глобальный state, мешает тестам.',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.static_members',
+                'difficulty' => 2,
+                'question' => 'Что такое late static binding (static::) простыми словами?',
+                'answer' => 'self:: всегда ссылается на класс, ГДЕ объявлен код. static:: — на класс, ОТ которого реально вызвали (с учётом наследования). Если у Parent есть метод create() с new self() — он всегда создаст Parent, даже из Child::create(). С new static() — создаст тот класс, через который вызвали (Child::create() → Child). Полезно для фабрик в иерархии.',
+            ],
         ];
     }
 }

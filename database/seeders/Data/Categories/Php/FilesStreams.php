@@ -63,6 +63,25 @@ $res = file_get_contents($url, false, $context);',
                 'difficulty' => 4,
                 'topic' => 'php.files_streams',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как в PHP получить тело HTTP-запроса (raw body)?',
+                'answer' => 'Через стрим php://input: $raw = file_get_contents("php://input") или построчно через fopen("php://input","r"). Это сырое, ещё не распарсенное тело запроса. Что важно знать: 1) Работает для любого Content-Type, кроме multipart/form-data — там тело уже разобрано в $_POST и $_FILES, php://input будет пустым. 2) $_POST автоматически парсится только для application/x-www-form-urlencoded и multipart/form-data; для application/json (типовой случай API) $_POST = [], нужно читать php://input и делать json_decode($raw, true). 3) Стрим можно перечитывать (в PHP 5.6+), но один раз — лучше сохранить в переменную. 4) Размер тела ограничен post_max_size в php.ini (даже для не-form-data в PHP 8.1+ оно работает как глобальный лимит на тело запроса); превышение даёт пустой $_POST и $_SERVER["CONTENT_LENGTH"] больше реально прочитанного. 5) В фреймворках работают абстракции: Laravel — $request->getContent(), Symfony — $request->getContent(), PSR-7 — $request->getBody()->getContents(); все они в итоге читают тот же php://input.',
+                'code_example' => '<?php
+// API получает JSON
+$raw = file_get_contents("php://input");
+$data = json_decode($raw, true, flags: JSON_THROW_ON_ERROR);
+
+// Laravel/Symfony
+$body = $request->getContent();    // строка
+$json = $request->json()->all();   // уже массив, Laravel
+
+// PSR-7
+$body = (string) $request->getBody();',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'php.files_streams',
+            ],
         ];
     }
 }

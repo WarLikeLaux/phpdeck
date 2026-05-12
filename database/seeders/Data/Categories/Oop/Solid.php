@@ -305,6 +305,41 @@ final class EloquentUserRepository implements \App\Domain\Users\UserRepository {
 }',
                 'code_language' => 'php',
             ],
+            [
+                'category' => 'ООП',
+                'question' => 'Что такое S в SOLID (Single Responsibility) простыми словами?',
+                'answer' => 'Single Responsibility Principle: у класса должна быть ОДНА причина для изменения. Если класс делает «загрузить юзера + отправить email + посчитать налог» — это три ответственности, три причины меняться. Каждую — в свой класс. Меньше связности, проще тестировать и менять.',
+                'difficulty' => 1,
+                'topic' => 'oop.solid',
+            ],
+            [
+                'category' => 'ООП',
+                'question' => 'Что такое O в SOLID (Open/Closed) простыми словами?',
+                'answer' => 'Open for extension, closed for modification: код должен быть открыт для расширения (можно добавить новое поведение), но закрыт для изменения (не трогать существующий). Достигается полиморфизмом: вместо if/elseif/elseif по типу — добавь новый класс, реализующий интерфейс. Старый код не меняется.',
+                'difficulty' => 2,
+                'topic' => 'oop.solid',
+            ],
+            [
+                'category' => 'ООП',
+                'question' => 'Что такое L в SOLID (Liskov Substitution) простыми словами?',
+                'answer' => 'Liskov Substitution: объект подкласса должен быть СОВМЕСТИМ с объектом родителя — можно подменить и всё продолжит работать. Классический пример нарушения: Square extends Rectangle. У Rectangle есть setWidth/setHeight независимо; у Square ширина = высота, и подмена сломает код, ожидающий Rectangle. Решение — не наследовать там, где is-a нарушает контракт.',
+                'difficulty' => 2,
+                'topic' => 'oop.solid',
+            ],
+            [
+                'category' => 'ООП',
+                'question' => 'Что такое I в SOLID (Interface Segregation) простыми словами?',
+                'answer' => 'Interface Segregation: лучше много маленьких интерфейсов с конкретной ролью, чем один «жирный». Класс не должен зависеть от методов, которые ему не нужны. Вместо одного MultiPrinter с print/scan/fax — три интерфейса: Printer, Scanner, Faxable. Класс реализует только то, что реально умеет.',
+                'difficulty' => 2,
+                'topic' => 'oop.solid',
+            ],
+            [
+                'category' => 'ООП',
+                'question' => 'Что такое D в SOLID (Dependency Inversion) простыми словами?',
+                'answer' => 'Dependency Inversion: высокоуровневые модули не зависят от низкоуровневых; оба зависят от АБСТРАКЦИЙ. То есть в OrderService зависимость должна быть от интерфейса PaymentGateway, а не от StripeGateway напрямую. Тогда StripeGateway легко поменять на PayPalGateway без правки OrderService. DI (Dependency Injection) — техника реализации DIP.',
+                'difficulty' => 2,
+                'topic' => 'oop.solid',
+            ],
         ];
     }
 }

@@ -105,6 +105,34 @@ $user->teams->first()->pivot->isOwner();',
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_relations',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое hasMany простыми словами?',
+                'answer' => 'Отношение «один-ко-многим». У User много Post — в модели User: posts() { return $this->hasMany(Post::class); }. Доступ: $user->posts вернёт коллекцию постов. FK в таблице posts должен называться user_id (или явно указать второй аргумент hasMany).',
+                'difficulty' => 1,
+                'topic' => 'laravel.eloquent_relations',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое belongsTo простыми словами?',
+                'answer' => 'Обратная сторона hasOne/hasMany. У Post один User — в модели Post: user() { return $this->belongsTo(User::class); }. Доступ: $post->user. FK хранится у этой же таблицы (posts.user_id).',
+                'difficulty' => 1,
+                'topic' => 'laravel.eloquent_relations',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое belongsToMany простыми словами?',
+                'answer' => 'Отношение «многие-ко-многим». У User много Role и Role у многих User. Нужна промежуточная таблица role_user с user_id и role_id. В модели: roles() { return $this->belongsToMany(Role::class); }. Доступ: $user->roles, $user->roles()->attach($id) — добавить связь.',
+                'difficulty' => 2,
+                'topic' => 'laravel.eloquent_relations',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое eager loading через with() в Eloquent?',
+                'answer' => 'Способ заранее подгрузить связанные модели одним запросом, чтобы избежать N+1. Без with: User::all() + в цикле $user->posts → N+1 запросов. С with: User::with(\'posts\')->get() — 2 запроса всего. load() — то же на уже загруженной коллекции: $users->load(\'posts\').',
+                'difficulty' => 2,
+                'topic' => 'laravel.eloquent_relations',
+            ],
         ];
     }
 }

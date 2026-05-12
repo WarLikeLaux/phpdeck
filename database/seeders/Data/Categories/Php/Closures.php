@@ -111,6 +111,67 @@ $mock = new class extends BaseRepo implements Storable {
                 'difficulty' => 3,
                 'topic' => 'php.closures',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'В чём разница между обычным и static-замыканием? Влияет ли static на производительность?',
+                'answer' => 'Обычное замыкание, созданное внутри метода класса, неявно захватывает $this — текущий объект и его scope. Это позволяет внутри closure обращаться к $this->property и приватным членам класса, и предотвращает GC объекта до тех пор, пока жив closure. static-замыкание (static function() use (...) {...} или static fn() => ...) НЕ привязывается к $this и не привязывается к scope создавшего класса — попытка обратиться к $this внутри даст Error. Зачем нужно: 1) Утечки памяти — если closure хранится долго (в очереди, кэше, длинной коллекции), не-static версия удерживает объект-родителя; static освобождает его сразу. 2) Безопасность — если closure уходит в чужой код, static гарантирует, что внутри не утечёт состояние объекта. 3) Семантическая ясность — функция, которой не нужен объект, должна быть static. Производительность: на отдельный вызов разница микроскопическая (десятки наносекунд) — JIT и opcache всё равно оптимизируют. Заметная экономия проявляется не на скорости вызова, а на ПАМЯТИ и работе GC, когда closures массово создаются/хранятся — например, в Laravel-pipeline, обработчиках событий, генераторах. Также для closure, передаваемого в Closure::bind/bindTo, static — единственный способ сказать «не привязывайся ни к чему».',
+                'code_example' => '<?php
+class Service {
+    public function __construct(private Logger $logger) {}
+
+    public function tasks(): array {
+        // Утечёт $this в очередь
+        $a = function(int $x) { $this->logger->log($x); return $x * 2; };
+
+        // Лучше: явный static и захват только нужного
+        $logger = $this->logger;
+        $b = static function(int $x) use ($logger) {
+            $logger->log($x);
+            return $x * 2;
+        };
+
+        return [$a, $b];
+    }
+}',
+                'code_language' => 'php',
+                'difficulty' => 4,
+                'topic' => 'php.closures',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое анонимная функция простыми словами?',
+                'answer' => 'Функция без имени, которую можно положить в переменную или передать как аргумент: $fn = function($x) { return $x * 2; };. Удобно, когда нужна короткая логика «на лету» (например, для array_map), без объявления отдельной именованной функции.',
+                'difficulty' => 1,
+                'topic' => 'php.closures',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Зачем нужен use в анонимной функции?',
+                'answer' => 'Чтобы «затащить» переменную из окружения внутрь функции — по умолчанию анонимка их не видит. function($x) use ($mult) { return $x * $mult; }. use ($v) — копия, use (&$v) — по ссылке. В arrow function (fn) переменные затягиваются автоматически.',
+                'code_example' => '$mult = 3;
+$fn = function($x) use ($mult) { return $x * $mult; };
+echo $fn(5); // 15
+
+// arrow function — короче
+$fn2 = fn($x) => $x * $mult;',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'php.closures',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое callable в PHP простыми словами?',
+                'answer' => 'Тип «всё, что можно вызвать»: имя функции «strlen», метод объекта [$obj, "method"], статический метод [Class::class, "method"], анонимная функция, объект с __invoke. Используется типом параметра: function apply(callable $fn) {...}.',
+                'difficulty' => 2,
+                'topic' => 'php.closures',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое arrow function (fn) и чем отличается от обычной анонимной?',
+                'answer' => 'Короткий синтаксис анонимной функции (PHP 7.4+): fn($x) => $x * 2. Главное отличие — переменные из окружения захватываются АВТОМАТИЧЕСКИ (без use). Только одно выражение, без блока с {}. Идеально для array_map/filter/reduce.',
+                'difficulty' => 2,
+                'topic' => 'php.closures',
+            ],
         ];
     }
 }

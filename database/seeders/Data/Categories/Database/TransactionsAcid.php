@@ -346,6 +346,27 @@ COMMIT;',
                 'difficulty' => 5,
                 'topic' => 'database.transactions_acid',
             ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Как работают BEGIN, COMMIT, ROLLBACK?',
+                'answer' => 'BEGIN (или START TRANSACTION) — начать транзакцию. Все последующие изменения временные. COMMIT — зафиксировать всё, что сделано, в БД. ROLLBACK — отменить всё, что сделано после BEGIN. До COMMIT другие сессии не видят твоих изменений (зависит от уровня изоляции).',
+                'difficulty' => 2,
+                'topic' => 'database.transactions_acid',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что такое уровень изоляции транзакций простыми словами?',
+                'answer' => 'Правила, что одна транзакция видит из других одновременных. Чем выше изоляция, тем меньше «гонок данных», но тем больше блокировок (медленнее). Уровни: READ UNCOMMITTED (грязное чтение), READ COMMITTED (видишь только закоммиченное), REPEATABLE READ (повторное чтение даёт то же), SERIALIZABLE (как будто транзакции выполнились по очереди).',
+                'difficulty' => 2,
+                'topic' => 'database.transactions_acid',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что значит буква I в ACID (Isolation) простыми словами?',
+                'answer' => 'Isolation (изоляция) — параллельно выполняемые транзакции не должны мешать друг другу. То есть результат должен быть таким, как если бы они выполнялись по очереди. На практике реализуется через уровни изоляции (READ COMMITTED, REPEATABLE READ, SERIALIZABLE) с компромиссом между «честностью» и производительностью.',
+                'difficulty' => 2,
+                'topic' => 'database.transactions_acid',
+            ],
         ];
     }
 }

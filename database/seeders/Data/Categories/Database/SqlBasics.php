@@ -111,8 +111,8 @@ LEFT JOIN employees m ON e.manager_id = m.id;',
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'В чём разница между LEFT JOIN и INNER JOIN на практике?',
-                'answer' => 'INNER JOIN отбросит строки из левой таблицы, для которых нет совпадений справа. LEFT JOIN сохранит все строки слева, заполнив правую часть NULL-ами. Используй LEFT JOIN, когда важно сохранить все левые записи (например, "все пользователи, даже те, у кого нет заказов").',
+                'question' => 'Как найти строки слева, у которых НЕТ совпадений справа?',
+                'answer' => 'Через LEFT JOIN + WHERE правая часть IS NULL. Пример: «все пользователи без заказов» — LEFT JOIN orders по user_id, потом WHERE orders.id IS NULL. Антипаттерн: NOT IN с подзапросом часто медленнее и ведёт себя неожиданно при NULL в подзапросе.',
                 'code_example' => '-- Найти пользователей БЕЗ заказов
 SELECT u.id, u.name
 FROM users u
@@ -403,14 +403,67 @@ DB::select(\'SELECT * FROM users LIMIT ? OFFSET ?\', [20, 100]); // OK',
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'Чем отличаются Nested Loop, Hash Join и Merge Join?',
-                'answer' => 'Nested Loop: для каждой строки внешней таблицы ищет совпадения во внутренней; эффективен, если внешняя маленькая, а на внутренней есть индекс по ключу. Hash Join: строит хеш-таблицу по меньшей стороне в памяти, потом сканирует большую и ищет совпадения; хорош для больших равенств без индексов. Merge Join: обе стороны отсортированы по ключу - идёт двусторонний слиянием; быстро, если данные уже отсортированы (или есть подходящий индекс).',
-                'code_example' => '-- форсируем тип join для теста
-SET enable_hashjoin = off;
-SET enable_mergejoin = off;
-EXPLAIN ANALYZE SELECT * FROM a JOIN b USING (id);',
+                'question' => 'Что такое оконные функции (window functions) в SQL и чем они отличаются от GROUP BY?',
+                'answer' => 'Оконная функция считает агрегат или ранжирование над «окном» строк, но НЕ схлопывает их в одну, как GROUP BY — каждая строка результата сохраняется, рядом появляется колонка с вычислением. Синтаксис: func() OVER (PARTITION BY ... ORDER BY ... ROWS/RANGE BETWEEN ...). PARTITION BY — на какие группы разбить (внутри партиции считается окно), ORDER BY — порядок внутри партиции (важен для running totals и ранжирования), frame — какие именно строки в текущем окне (по умолчанию для агрегатных без ORDER BY — вся партиция, c ORDER BY — RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW). Категории функций: 1) Агрегатные как окно — SUM/AVG/COUNT OVER (...) для running totals, скользящего среднего. 2) Ранжирование — ROW_NUMBER() (уникальный номер), RANK() (одинаковые значения = одинаковый ранг, пропуски), DENSE_RANK() (без пропусков), NTILE(n) (разбиение на n квантилей). 3) Навигация — LAG(col, n)/LEAD(col, n) (значение из предыдущей/следующей строки — для расчёта дельт), FIRST_VALUE/LAST_VALUE/NTH_VALUE. Типовые задачи: топ-N по группе (ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) <= 3), running balance, скользящее среднее 7 дней, разница с предыдущей строкой. GROUP BY теряет детали (одна строка на группу), window сохраняет все строки и доступ к контексту вокруг. Поддерживаются в PG (давно), MySQL 8.0+, SQLite 3.25+, MariaDB 10.2+.',
+                'code_example' => '-- топ-3 заказа на каждого юзера + сумма всех его заказов
+SELECT user_id, order_id, amount,
+       SUM(amount) OVER (PARTITION BY user_id) AS user_total,
+       ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rn,
+       LAG(amount) OVER (PARTITION BY user_id ORDER BY created_at) AS prev_amount
+FROM orders
+QUALIFY rn <= 3; -- или WHERE в подзапросе',
                 'code_language' => 'sql',
                 'difficulty' => 4,
+                'topic' => 'database.sql_basics',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Как создать таблицу через SQL?',
+                'answer' => 'CREATE TABLE users (id BIGINT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(255) NOT NULL, email VARCHAR(255) UNIQUE, age INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP). Указываются: имя таблицы, список колонок с типами и ограничениями (NOT NULL, UNIQUE, PRIMARY KEY, DEFAULT, CHECK, FOREIGN KEY).',
+                'code_example' => 'CREATE TABLE orders (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    total DECIMAL(10,2) NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL CHECK (status IN (\'new\',\'paid\',\'shipped\')),
+    created_at TIMESTAMP DEFAULT NOW()
+);',
+                'code_language' => 'sql',
+                'difficulty' => 2,
+                'topic' => 'database.sql_basics',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что делает ALTER TABLE простыми словами?',
+                'answer' => 'Изменяет существующую таблицу. ALTER TABLE users ADD COLUMN phone VARCHAR(20). ALTER TABLE users DROP COLUMN phone. ALTER TABLE users RENAME COLUMN name TO full_name. ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email). На больших таблицах под нагрузкой может быть медленно — нужно делать осторожно.',
+                'difficulty' => 2,
+                'topic' => 'database.sql_basics',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что такое DROP TABLE и в чём опасность?',
+                'answer' => 'DROP TABLE users — УДАЛЯЕТ таблицу со всеми данными. Нет «корзины», нет undo (только из бэкапа). Запускать в проде — только сознательно. Безопаснее DROP TABLE IF EXISTS — не упадёт если таблицы нет. Удалить только данные, оставив структуру — TRUNCATE TABLE.',
+                'difficulty' => 1,
+                'topic' => 'database.sql_basics',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что делают операторы IN и BETWEEN в WHERE?',
+                'answer' => 'IN — проверка вхождения в список: WHERE status IN (\'new\', \'paid\') — короче чем status = \'new\' OR status = \'paid\'. BETWEEN — проверка диапазона: WHERE age BETWEEN 18 AND 65 — включая границы. Работают со столбцами любых сравнимых типов (числа, даты, строки).',
+                'difficulty' => 1,
+                'topic' => 'database.sql_basics',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что делает LIKE и какие в нём шаблоны?',
+                'answer' => 'LIKE — поиск по шаблону в строке. % — любая последовательность символов (включая пустую). _ — ровно один любой символ. WHERE email LIKE \'%@gmail.com\' — все, кто на gmail. WHERE name LIKE \'И_ан\' — Иван, Игнан и т.д. Регистр зависит от collation. Для case-insensitive в Postgres — ILIKE. С ведущим % индекс не работает.',
+                'difficulty' => 1,
+                'topic' => 'database.sql_basics',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что такое подзапрос в SQL простыми словами?',
+                'answer' => 'SELECT внутри другого SELECT. Пример: SELECT * FROM users WHERE id IN (SELECT user_id FROM orders WHERE total > 1000). Внутренний запрос выполняется первым, его результат используется внешним. Бывают коррелированные (зависят от внешней строки) и некоррелированные. Часто переписываются через JOIN для скорости.',
+                'difficulty' => 2,
                 'topic' => 'database.sql_basics',
             ],
         ];

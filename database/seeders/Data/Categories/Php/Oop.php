@@ -41,35 +41,6 @@ echo $user->name;      // Аня !',
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Какие модификаторы видимости есть в PHP?',
-                'answer' => 'public - доступно отовсюду. protected - доступно из самого класса и наследников. private - только из самого класса (не из наследников!). PHP 7.1 - private/protected константы класса. PHP 8.1 - модификатор final для констант (запрет переопределения в наследниках; в интерфейсах константы по-прежнему только public). В PHP 8.4 (вышел в ноябре 2024) появились две крупные фичи для свойств: 1) asymmetric visibility - раздельная видимость на чтение и запись (public private(set) int $id - читать всем, писать только внутри класса), убирает необходимость в паре приватного поля + публичного геттера. 2) Property hooks - встроенный get/set прямо в свойстве (public string $email { get => strtolower($this->email); set => trim($value); }), без перехода на отдельные методы и __get/__set. Хорошая практика: по умолчанию private, повышать видимость только по необходимости.',
-                'code_example' => '<?php
-class Animal {
-    public string $name;
-    protected int $age;
-    private string $secret = "shh";
-
-    private function privateMethod() {}
-    protected function protectedMethod() {}
-}
-
-class Dog extends Animal {
-    public function showAge() {
-        return $this->age;     // OK (protected)
-        // return $this->secret; // Error (private)
-    }
-}
-
-$dog = new Dog();
-echo $dog->name;     // OK
-// echo $dog->age;   // Error
-// echo $dog->secret;// Error',
-                'code_language' => 'php',
-                'difficulty' => 2,
-                'topic' => 'php.oop',
-            ],
-            [
-                'category' => 'PHP',
                 'question' => 'Что такое наследование и как использовать?',
                 'answer' => 'Наследование позволяет создать класс на базе другого, переиспользуя его свойства и методы. Используется ключевое слово extends. PHP поддерживает только одиночное наследование (один родитель). Метод родителя можно вызвать через parent::method(). Конструктор родителя НЕ вызывается автоматически - нужно явно parent::__construct(). Для запрета переопределения используется final.',
                 'code_example' => '<?php
@@ -652,6 +623,48 @@ class PermissionCacheGood
                 'question' => 'Что произойдёт при new ClassName(...) для класса с конструктором, объявленным как private?',
                 'answer' => 'Получите Error: Call to private ClassName::__construct(). Такой паттерн используется для именованных конструкторов и Singleton: класс предоставляет статические фабричные методы (fromArray, fromString), которые внутри вызывают new self(). Это позволяет инкапсулировать инвариант построения и иметь несколько способов создания с осмысленными именами.',
                 'difficulty' => 3,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как объявить класс в PHP и создать его объект?',
+                'answer' => 'class User { public string $name; }. Создание объекта — через new: $u = new User(). Доступ к свойствам/методам через ->: $u->name = "Иван". Класс может иметь конструктор public function __construct(...) {}, который вызывается автоматически при new.',
+                'difficulty' => 1,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как работает наследование в PHP (extends)?',
+                'answer' => 'class Admin extends User {} — Admin получает все public/protected свойства и методы User. Доступ к родительскому методу через parent::method(). Если переопределяешь метод родителя — это override. PHP поддерживает только одиночное наследование (один родитель), множественное — только через интерфейсы или трейты.',
+                'difficulty' => 2,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как работает abstract class в PHP?',
+                'answer' => 'abstract class Animal { abstract public function makeSound(): string; }. Сам класс нельзя создать через new — только наследоваться. abstract-метод не имеет тела, наследник обязан его реализовать. Может содержать обычные методы и свойства — общая основа для группы классов.',
+                'difficulty' => 2,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как работает interface в PHP?',
+                'answer' => 'interface Sendable { public function send(): void; }. Описывает «контракт» — какие методы должен иметь класс. Класс реализует через implements: class Email implements Sendable {}. Можно реализовывать несколько интерфейсов: implements A, B, C. Все методы интерфейса должны быть public.',
+                'difficulty' => 2,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как работает trait в PHP?',
+                'answer' => 'trait Loggable { public function log($msg) {...} }. Подключается в класс через use Loggable; — методы трейта становятся методами класса. Решает проблему отсутствия множественного наследования: можно подмешать поведение из нескольких трейтов в один класс.',
+                'difficulty' => 2,
+                'topic' => 'php.oop',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое static-метод и как его вызывать?',
+                'answer' => 'Метод, принадлежащий КЛАССУ, а не объекту. Объявляется static public function generateId() {}. Вызов через ::: User::generateId() — без создания объекта. Внутри static-метода $this недоступен, есть только self/static. Часто используются для фабрик и утилит без состояния.',
+                'difficulty' => 1,
                 'topic' => 'php.oop',
             ],
         ];

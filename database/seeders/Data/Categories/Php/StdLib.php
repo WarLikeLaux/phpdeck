@@ -100,6 +100,34 @@ $obj = unserialize($str, ["allowed_classes" => [User::class]]);',
                 'difficulty' => 4,
                 'topic' => 'php.std_lib',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как прочитать файл целиком в строку в PHP?',
+                'answer' => 'file_get_contents($path) — простейший способ. Возвращает содержимое или false при ошибке. Для построчного чтения больших файлов — fopen + fgets в цикле (экономит память). Для записи — file_put_contents($path, $data).',
+                'difficulty' => 1,
+                'topic' => 'php.std_lib',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делает fopen и какие основные режимы?',
+                'answer' => 'Открывает файл для чтения/записи, возвращает дескриптор. Режимы: "r" — чтение, "w" — запись (перезаписывает), "a" — дозапись, "r+" — чтение+запись, "x" — создать новый. Обязательно fclose() в конце. Для простых случаев лучше file_get_contents/file_put_contents.',
+                'difficulty' => 2,
+                'topic' => 'php.std_lib',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как работать с датой в PHP простыми словами?',
+                'answer' => 'Простые задачи: date("Y-m-d H:i:s") — отформатировать текущее время; time() — Unix timestamp; strtotime("+1 day") — строка в timestamp. Для сложного (часовые пояса, арифметика дат) — класс DateTime / DateTimeImmutable. В Laravel поверх него Carbon с удобным API.',
+                'difficulty' => 1,
+                'topic' => 'php.std_lib',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делают json_encode и json_decode?',
+                'answer' => 'json_encode($data) — превращает массив/объект в JSON-строку. json_decode($json, true) — обратно из JSON в массив (true) или объект stdClass (false). С PHP 7.3 можно передать JSON_THROW_ON_ERROR — невалидный JSON бросит JsonException вместо тихого null/false.',
+                'difficulty' => 1,
+                'topic' => 'php.std_lib',
+            ],
         ];
     }
 }

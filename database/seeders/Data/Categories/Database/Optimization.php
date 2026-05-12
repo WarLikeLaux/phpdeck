@@ -9,21 +9,6 @@ class Optimization
         return [
             [
                 'category' => 'Базы данных',
-                'question' => 'Что такое EXPLAIN и EXPLAIN ANALYZE?',
-                'answer' => 'EXPLAIN показывает план выполнения запроса - как БД будет его выполнять (какие индексы, JOIN-ы, сортировки). EXPLAIN ANALYZE дополнительно реально выполняет запрос и показывает фактическое время и количество строк. Главное смотреть: тип scan (Seq/Index), оценочные vs реальные строки, самые дорогие узлы.',
-                'code_example' => 'EXPLAIN SELECT * FROM users WHERE email = \'ivan@mail.ru\';
-
-EXPLAIN ANALYZE
-SELECT u.name, COUNT(o.id)
-FROM users u
-LEFT JOIN orders o ON o.user_id = u.id
-GROUP BY u.name;',
-                'code_language' => 'sql',
-                'difficulty' => 4,
-                'topic' => 'database.optimization',
-            ],
-            [
-                'category' => 'Базы данных',
                 'question' => 'Что такое Nested Loop, Hash Join, Merge Join?',
                 'answer' => 'Это три алгоритма JOIN. Nested Loop: для каждой строки слева ищем подходящие справа (хорошо когда слева мало строк и есть индекс справа). Hash Join: строим хэш-таблицу из правой стороны и для каждой левой ищем в хэше O(1) (хорошо для больших таблиц без индексов). Merge Join: обе стороны должны быть отсортированы по ключу JOIN, идём слиянием как при merge sort (хорошо для уже отсортированных данных). Планировщик сам выбирает.',
                 'difficulty' => 4,
@@ -226,6 +211,34 @@ ORDER BY created_at DESC, id DESC
 LIMIT 20;',
                 'code_language' => 'sql',
                 'difficulty' => 3,
+                'topic' => 'database.optimization',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что такое медленный запрос простыми словами?',
+                'answer' => 'SQL-запрос, выполняющийся дольше «нормы» (обычно > 100-500 мс). Причины: нет нужного индекса, сложный JOIN большой таблицы, GROUP BY без индекса, ORDER BY с filesort, sequential scan вместо index scan. В MySQL/Postgres настраивают slow_query_log — все долгие запросы пишутся в файл для анализа.',
+                'difficulty' => 1,
+                'topic' => 'database.optimization',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что такое EXPLAIN простыми словами?',
+                'answer' => 'Команда, показывающая, КАК база собирается выполнить запрос: какие индексы использует, сколько строк примерно прочтёт, в каком порядке. Используется для понимания, почему запрос медленный. Синтаксис: EXPLAIN SELECT ... — план без выполнения; EXPLAIN ANALYZE — план + реальные времена.',
+                'difficulty' => 2,
+                'topic' => 'database.optimization',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Что такое N+1 запрос простыми словами?',
+                'answer' => 'Антипаттерн: чтобы загрузить N объектов с их связями, делается 1 запрос на основной список + ещё N запросов (по одному на связь каждого) = N+1 запрос вместо одного-двух. Пример: $users = User::all(); затем в цикле $user->posts — каждый раз новый запрос. Решение в Laravel — eager loading: User::with("posts")->get().',
+                'difficulty' => 1,
+                'topic' => 'database.optimization',
+            ],
+            [
+                'category' => 'Базы данных',
+                'question' => 'Как понять, что запрос медленный простыми словами?',
+                'answer' => '1) Включить slow query log в БД — все долгие запросы будут писаться в файл. 2) Использовать APM (Laravel Telescope, Datadog, Sentry) — увидишь топ медленных запросов. 3) Локально — Debugbar/Telescope покажет время каждого запроса. 4) EXPLAIN на подозрительном запросе — посмотреть план.',
+                'difficulty' => 2,
                 'topic' => 'database.optimization',
             ],
         ];

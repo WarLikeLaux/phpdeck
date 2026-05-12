@@ -38,6 +38,20 @@ class Car
 $car = new Car(new Engine());',
                 'code_language' => 'php',
             ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.composition_vs_inheritance',
+                'difficulty' => 1,
+                'question' => 'Что такое композиция объектов простыми словами?',
+                'answer' => 'Когда один объект СОДЕРЖИТ другие объекты как свои поля и пользуется ими. Car содержит Engine: $car = new Car(new Engine()). Отношение «has-a» (имеет). Гибче наследования: легко заменить двигатель, не трогая Car.',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.composition_vs_inheritance',
+                'difficulty' => 1,
+                'question' => 'Когда выбирать композицию, а когда наследование простыми словами?',
+                'answer' => 'Наследование — для отношения «является» (is-a): Admin — это User. Композиция — для «имеет» (has-a): Car имеет Engine. Правило «composition over inheritance»: если сомневаешься — выбирай композицию. Наследование жёстко связывает, потомок зависит от деталей родителя, и менять родителя страшно.',
+            ],
         ];
     }
 }

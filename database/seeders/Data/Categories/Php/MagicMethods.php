@@ -112,6 +112,49 @@ class UserDeep {
                 'difficulty' => 3,
                 'topic' => 'php.magic_methods',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делает __destruct()?',
+                'answer' => 'Специальный метод, который PHP вызывает АВТОМАТИЧЕСКИ когда объект удаляется (последняя ссылка ушла или скрипт закончился). Используется для очистки: закрыть файл, отвязать соединение. На практике редко нужен — обычно вместо него используют try/finally.',
+                'difficulty' => 2,
+                'topic' => 'php.magic_methods',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делает __toString() в PHP?',
+                'answer' => 'Позволяет объекту вести себя как строка: echo $obj автоматически вызовет $obj->__toString(). Удобно для классов вроде Money, Email, Url — превратить объект в человекочитаемое представление. С PHP 8 объект автоматически реализует Stringable, если есть __toString.',
+                'code_example' => 'class Money {
+    public function __construct(public int $amount, public string $currency) {}
+    public function __toString(): string {
+        return "{$this->amount} {$this->currency}";
+    }
+}
+echo new Money(100, "USD"); // "100 USD"',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'php.magic_methods',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делают __get и __set в PHP простыми словами?',
+                'answer' => '__get($name) вызывается при чтении НЕСУЩЕСТВУЮЩЕГО свойства: echo $obj->unknown — PHP вместо ошибки вызовет __get("unknown"). __set($name, $value) — при записи. Используется для динамических свойств (контейнеры, прокси), но усложняет анализ кода — обычно лучше явные свойства.',
+                'difficulty' => 2,
+                'topic' => 'php.magic_methods',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делает __construct() простыми словами?',
+                'answer' => 'Магический метод, который PHP АВТОМАТИЧЕСКИ вызывает при создании объекта через new. В нём обычно инициализируют свойства объекта из переданных аргументов. С PHP 8 можно использовать constructor property promotion: public function __construct(public string $name, public int $age) {} — параметры сразу становятся свойствами.',
+                'difficulty' => 1,
+                'topic' => 'php.magic_methods',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делает __invoke() и зачем он нужен?',
+                'answer' => 'Магический метод, позволяющий вызывать объект КАК ФУНКЦИЮ: $obj(). Если у класса есть __invoke(), можно сделать $handler = new Handler(); $handler($request); — PHP вызовет $handler->__invoke($request). Используется для invokable-контроллеров в Laravel, для callable-объектов, single-action классов.',
+                'difficulty' => 2,
+                'topic' => 'php.magic_methods',
+            ],
         ];
     }
 }

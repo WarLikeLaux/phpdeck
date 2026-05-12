@@ -69,6 +69,20 @@ class FileLogger
 }',
                 'code_language' => 'php',
             ],
+            [
+                'category' => 'ООП',
+                'question' => 'Зачем нужен constructor property promotion простыми словами?',
+                'answer' => 'Сокращённый синтаксис: параметры конструктора с модификатором видимости становятся свойствами автоматически. Вместо: public string $name; function __construct(string $name) { $this->name = $name; } — пишешь public function __construct(public string $name) {}. Меньше шаблонного кода для DTO и Value Objects.',
+                'difficulty' => 2,
+                'topic' => 'oop.constructor_destructor',
+            ],
+            [
+                'category' => 'ООП',
+                'question' => 'Зачем вызывать parent::__construct() в конструкторе наследника?',
+                'answer' => 'PHP НЕ вызывает родительский конструктор автоматически. Если у родителя в конструкторе инициализируются важные свойства (например, в Eloquent\\Model задаются атрибуты), а ты не позвал parent::__construct() — объект будет в неполном состоянии. Правило: в конструкторе ребёнка вызывай parent::__construct(...) первой строкой.',
+                'difficulty' => 2,
+                'topic' => 'oop.constructor_destructor',
+            ],
         ];
     }
 }

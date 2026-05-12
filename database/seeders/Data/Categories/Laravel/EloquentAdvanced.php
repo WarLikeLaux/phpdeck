@@ -637,7 +637,7 @@ foreach (User::query()->where(...)->toBase()->cursor() as $row) {
                 'category' => 'Laravel',
                 'question' => 'Что делает withTrashed, onlyTrashed и restore при использовании SoftDeletes?',
                 'answer' => 'По умолчанию глобальный scope SoftDeletingScope скрывает записи с непустым deleted_at. withTrashed() включает их в выборку, onlyTrashed() возвращает только удалённые. restore() обнуляет deleted_at и стреляет событиями restoring/restored. forceDelete() удаляет физически, минуя soft delete и вызывая событие forceDeleted.',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'laravel.eloquent_advanced',
             ],
             [

@@ -282,7 +282,7 @@ class TokenTest extends TestCase
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Debugbar и стоит ли использовать его в продакшене?',
                 'answer' => 'Debugbar (barryvdh/laravel-debugbar) — community-пакет, выводящий панель внизу страницы со временем запросов, SQL, route-инфой, view-данными, событиями. Используется в локальной разработке: его подключают через app.debug=true и APP_ENV=local. На продакшене включать нельзя — он замедляет приложение, раскрывает структуру и может выдать SQL и переменные окружения наружу.',
-                'difficulty' => 2,
+                'difficulty' => 3,
                 'topic' => 'laravel.testing',
             ],
         ];

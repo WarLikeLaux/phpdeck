@@ -106,6 +106,27 @@ class OrderServiceGood
 }',
                 'code_language' => 'php',
             ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.dependency_injection',
+                'difficulty' => 1,
+                'question' => 'Что такое Dependency Injection простыми словами?',
+                'answer' => 'Принцип: класс НЕ создаёт зависимости сам (new OrderRepo()), а получает их СНАРУЖИ — через конструктор или метод. Это как «передать готовый чайник», а не «найти и купить чайник самому». Делает код тестируемым (можно подсунуть mock) и гибким.',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.dependency_injection',
+                'difficulty' => 1,
+                'question' => 'Зачем нужен Dependency Injection простыми словами?',
+                'answer' => '1) Тестирование: можно подменить зависимость mock-ом в юнит-тесте. 2) Гибкость: можно подменить реализацию (StripePayment → PayPalPayment) без правки кода клиента. 3) Явность: видно в конструкторе, от чего класс зависит. 4) Меньше связанности — классы не «прибиты гвоздями» друг к другу.',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.dependency_injection',
+                'difficulty' => 2,
+                'question' => 'Что такое DI-контейнер простыми словами?',
+                'answer' => 'Объект, который умеет создавать другие объекты, автоматически разбираясь, что им нужно. Ты говоришь $container->make(OrderService::class) — он смотрит на конструктор, видит «нужен OrderRepository», создаёт его, и вручает тебе готовый OrderService. В Laravel — это Service Container, фундамент всего фреймворка.',
+            ],
         ];
     }
 }

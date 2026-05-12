@@ -102,6 +102,31 @@ $this->app->when(AdminController::class)
                 'category' => 'Laravel',
                 'question' => 'В чём разница между app(Foo::class), resolve(Foo::class) и App::make(Foo::class)?',
                 'answer' => 'Все три в итоге зовут Container::make и эквивалентны по результату — возвращают разрешённый из контейнера экземпляр. resolve() — это просто хелпер-обёртка над app(), а App — фасад того же контейнера. Разница чисто стилистическая; для передачи параметров в конструктор используется второй аргумент: app(Foo::class, ["id" => 5]).',
+                'difficulty' => 3,
+                'topic' => 'laravel.service_container',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Service Container в Laravel простыми словами?',
+                'answer' => 'Большой реестр объектов и правил, КАК их создавать. Когда нужен OrderService — контейнер смотрит конструктор, рекурсивно создаёт зависимости (OrderRepo → DB-соединение → ...) и собирает готовый объект. Доступ — app(OrderService::class) или type-hint в конструкторе/методе.',
+                'difficulty' => 1,
+                'topic' => 'laravel.service_container',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что делает app()->bind() и app()->singleton()?',
+                'answer' => 'bind(Abstract::class, Concrete::class) — говорит контейнеру «когда попросят Abstract, создай Concrete». Каждый вызов app() создаёт НОВЫЙ объект. singleton() — то же, но объект создаётся ОДИН раз и переиспользуется (на весь жизненный цикл запроса).',
+                'code_example' => '// в AppServiceProvider::register()
+$this->app->bind(PaymentGateway::class, StripeGateway::class);
+$this->app->singleton(Logger::class, fn() => new FileLogger("/var/log/app.log"));',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'laravel.service_container',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое автоматический resolve в Laravel?',
+                'answer' => 'Контейнер сам разбирается, как создать класс, если его конструктор принимает другие классы. Не нужно регистрировать каждый класс — Laravel читает type-hints и подставляет. Это работает «из коробки» в контроллерах: public function show(UserRepository $repo) — Laravel создаст репозиторий и передаст.',
                 'difficulty' => 2,
                 'topic' => 'laravel.service_container',
             ],

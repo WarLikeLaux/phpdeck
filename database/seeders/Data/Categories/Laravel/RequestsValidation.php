@@ -145,6 +145,27 @@ class StoreOrderRequest extends FormRequest {
                 'difficulty' => 3,
                 'topic' => 'laravel.requests_validation',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Какие самые частые validation rules в Laravel?',
+                'answer' => 'required (обязательное), email (формат email), integer/numeric (число), string (строка), min:N / max:N (диапазон), unique:users,email (уникальность в БД), exists:users,id (существование в БД), confirmed (нужно поле email_confirmation), in:foo,bar (одно из), nullable (разрешён null).',
+                'difficulty' => 1,
+                'topic' => 'laravel.requests_validation',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как вывести ошибки валидации в Blade-шаблоне?',
+                'answer' => 'Laravel передаёт $errors в view при редиректе обратно. Для одного поля: @error(\'email\') {{ $message }} @enderror. Все: @if($errors->any()) @foreach($errors->all() as $err) ... @endforeach @endif. old(\'email\') — старое значение для авто-заполнения формы.',
+                'difficulty' => 2,
+                'topic' => 'laravel.requests_validation',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое Form Request и зачем он нужен?',
+                'answer' => 'Отдельный класс-обёртка над Request с валидацией и авторизацией. Создаётся через php artisan make:request StoreUserRequest. Метод rules() — правила, authorize() — кто может. Type-hint в методе контроллера: function store(StoreUserRequest $req) — валидация запустится автоматически до контроллера.',
+                'difficulty' => 2,
+                'topic' => 'laravel.requests_validation',
+            ],
         ];
     }
 }

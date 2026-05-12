@@ -258,6 +258,28 @@ php artisan queue:restart // воркеры грейсфул-завершатс�
                 'difficulty' => 5,
                 'topic' => 'laravel.queues_jobs',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое job в Laravel?',
+                'answer' => 'Класс с методом handle(), описывающий одну задачу для очереди. Реализует интерфейс ShouldQueue. Запуск: SendEmail::dispatch($user). Задача сериализуется, попадает в хранилище (Redis/database) и ждёт, пока worker её возьмёт.',
+                'code_example' => 'class SendWelcomeEmail implements ShouldQueue {
+    public function __construct(public User $user) {}
+    public function handle(): void {
+        Mail::to($this->user)->send(new WelcomeMail());
+    }
+}
+SendWelcomeEmail::dispatch($user);',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'laravel.queues_jobs',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое worker и зачем он нужен?',
+                'answer' => 'Процесс PHP, запущенный командой php artisan queue:work — он постоянно опрашивает очередь и выполняет задачи. Один worker обрабатывает задачи последовательно. Чтобы параллельно — запускают несколько worker-процессов (через Supervisor / systemd на проде).',
+                'difficulty' => 2,
+                'topic' => 'laravel.queues_jobs',
+            ],
         ];
     }
 }
