@@ -15,6 +15,7 @@
 [![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Tests](https://img.shields.io/badge/tests-81%20passing-22c55e?logo=pest&logoColor=white)](#)
 [![Cards](https://img.shields.io/badge/cards-1433-9553E9)](#)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 </div>
 
@@ -68,6 +69,8 @@
 Карточки добавляются **строго через сидеры** — UI только учит. Это сделано осознанно: контент рецензируется через PR-ы, а не накручивается на лету. Структура: `database/seeders/Data/Categories/{Php,Oop,Laravel,Database,SystemDesign,Networking,Security,Testing}/<Topic>.php`.
 
 Сидер **идемпотентен**: каждая карточка имеет стабильный `slug` (sha256 от `category|question`), при повторном запуске `task seed` или `task deploy` карточки сверяются по slug — новые добавляются, изменённые ответы обновляются, удалённые из сидеров вычищаются, прогресс пользователей не теряется.
+
+> **Источник контента.** Часть вопросов и ответов заимствована и переформулирована из проекта [`jauhenis/php-interview-ultimate`](https://github.com/jauhenis/php-interview-ultimate). Подробнее — в разделе [Кредиты и лицензия](#кредиты-и-лицензия).
 
 ## Установка
 
@@ -189,8 +192,13 @@ task down        # остановить локальный dev-стенд
 
 ## Кредиты и лицензия
 
-- **Логотип elePHPant** ([`public/elephpant.svg`](public/elephpant.svg)) — Webysther Nunes, 2016. Источник: [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Webysther_20160423_-_Elephpant.svg). Лицензия: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Оригинальный персонаж elePHPant — [Vincent Pontier](http://www.elephpant.com/) (1998).
-- **Код проекта** — MIT.
-- **Контент карточек** (база вопросов в `database/seeders/Data/Categories/`) — MIT, но если используешь как часть тренажёра/курса, ссылка на репозиторий приветствуется.
+Проект распространяется под **[GNU GPL-3.0](LICENSE)**. Это значит: можешь использовать, изучать, модифицировать, распространять — но любой производный проект (форк, репост, встраивание контента в свой сборник) тоже должен быть под GPL-3.0-совместимой лицензией и с открытыми исходниками.
 
-Стек: Laravel 13 (MIT) · Inertia (MIT) · React (MIT) · Tailwind (MIT) · shadcn/ui (MIT) · Pest (MIT) · Lucide icons (ISC).
+**Источники, на которых построен проект:**
+
+- **Контент карточек** в `database/seeders/Data/Categories/` — частично заимствован и переформулирован из [`jauhenis/php-interview-ultimate`](https://github.com/jauhenis/php-interview-ultimate) (© jauhenis, GPL-3.0). По условиям copyleft весь проект распространяется на тех же условиях.
+- **Логотип elePHPant** ([`public/elephpant.svg`](public/elephpant.svg)) — Webysther Nunes, 2016. Источник: [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Webysther_20160423_-_Elephpant.svg). Лицензия: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Оригинальный персонаж — [Vincent Pontier](http://www.elephpant.com/) (1998). На этот файл распространяется CC BY-SA 4.0 (модификации — под той же лицензией, с сохранением атрибуции).
+
+Полный текст лицензии и атрибуций — в файле [`LICENSE`](LICENSE).
+
+Стек: Laravel 13 (MIT) · Inertia (MIT) · React (MIT) · Tailwind (MIT) · shadcn/ui (MIT) · Pest (MIT) · Lucide icons (ISC) · Taskfile (MIT). Все они permissive-лицензии, совместимые с GPL-3.0 для конечного дистрибутива.
