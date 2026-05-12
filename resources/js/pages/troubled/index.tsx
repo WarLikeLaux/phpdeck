@@ -65,7 +65,7 @@ export default function TroubledIndex({
     return (
         <>
             <Head title="Проблемные" />
-            <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 pt-4 pb-6 sm:px-6 sm:pt-6">
+            <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4 px-4 pt-4 pb-6 sm:px-6 sm:pt-6">
                 <Header total={pagination.total} windowDays={window_days} />
 
                 {rows.length === 0 ? (
@@ -134,13 +134,13 @@ function TroubledRow({ row }: { row: Row }) {
                     )}
                     <ErrorRateBadge percent={errorPct} />
                 </div>
-                <CardTitle className="text-base leading-snug">
+                <CardTitle className="text-base leading-snug break-words">
                     {flashcard.question}
                 </CardTitle>
                 <MetricsRow metrics={metrics} />
             </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-                <p className="text-sm whitespace-pre-line text-muted-foreground">
+            <CardContent className="flex min-w-0 flex-col gap-4">
+                <p className="text-sm break-words whitespace-pre-line text-muted-foreground">
                     {flashcard.answer}
                 </p>
                 {flashcard.code_example && (
