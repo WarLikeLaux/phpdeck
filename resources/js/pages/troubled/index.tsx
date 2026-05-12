@@ -65,7 +65,7 @@ export default function TroubledIndex({
     return (
         <>
             <Head title="Проблемные" />
-            <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4 px-4 pt-4 pb-6 sm:px-6 sm:pt-6">
+            <div className="mx-auto flex w-full max-w-2xl min-w-0 flex-col gap-4 px-4 pt-4 pb-6 sm:px-6 sm:pt-6">
                 <Header total={pagination.total} windowDays={window_days} />
 
                 {rows.length === 0 ? (
