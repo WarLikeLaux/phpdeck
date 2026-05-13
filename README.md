@@ -197,6 +197,7 @@ task down        # остановить локальный dev-стенд
 **Источники, на которых построен проект:**
 
 - **Контент карточек** в `database/seeders/Data/Categories/` — частично заимствован и переформулирован из [`jauhenis/php-interview-ultimate`](https://github.com/jauhenis/php-interview-ultimate) (© jauhenis, GPL-3.0). По условиям copyleft весь проект распространяется на тех же условиях.
+- **Чеклист тем для собеседований** — также вдохновлён [`Hexlet/ru-interview-questions`](https://github.com/Hexlet/ru-interview-questions) (© Hexlet, AGPL-3.0). Из этого репозитория заимствованы только *идеи* — какие темы спрашивают junior/middle-разработчиков. Формулировки вопросов и все ответы в phpdeck написаны с нуля независимо, дословный текст не копировался, поэтому проект не считается производным от AGPL-источника и остаётся под GPL-3.0.
 - **Логотип elePHPant** ([`public/elephpant.svg`](public/elephpant.svg)) — Webysther Nunes, 2016. Источник: [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Webysther_20160423_-_Elephpant.svg). Лицензия: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Оригинальный персонаж — [Vincent Pontier](http://www.elephpant.com/) (1998). На этот файл распространяется CC BY-SA 4.0 (модификации — под той же лицензией, с сохранением атрибуции).
 
 Полный текст лицензии и атрибуций — в файле [`LICENSE`](LICENSE).

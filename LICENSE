@@ -33,6 +33,17 @@ in this repository is © 2026 WarLikeLaux under GPL-3.0 as stated above.
   the resulting collection remains under GPL-3.0 to honor upstream
   copyleft.
 
+* Flashcard content additionally uses, as a *topic checklist only*,
+  the question list from "ru-interview-questions" by Hexlet
+  Source: https://github.com/Hexlet/ru-interview-questions
+  Upstream license: AGPL-3.0
+  Only topic ideas (which are facts, not copyrightable) were borrowed;
+  the resulting question wording and all answers in this project were
+  written independently from scratch. No textual content from that
+  repository is copied verbatim into this project, so phpdeck is not
+  considered a derivative work of it and remains under GPL-3.0.
+  Attribution is provided here in good faith.
+
 * public/elephpant.svg
   "Webysther 20160423 - Elephpant.svg" by Webysther Nunes, 2016.
   Source: https://commons.wikimedia.org/wiki/File:Webysther_20160423_-_Elephpant.svg

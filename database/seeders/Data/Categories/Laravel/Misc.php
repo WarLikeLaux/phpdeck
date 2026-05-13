@@ -623,13 +623,6 @@ Feature::for($user)->forget("new-checkout");',
                 'difficulty' => 1,
                 'topic' => 'laravel.misc',
             ],
-            [
-                'category' => 'Laravel',
-                'question' => 'В чём разница между env() и config() в Laravel?',
-                'answer' => 'env(\'KEY\') читает переменную напрямую из .env — работает только во время загрузки конфигурации. config(\'app.key\') читает через закэшированный config (если был запущен config:cache). В коде приложения всегда используй config(), env() — только в config/*.php файлах. После config:cache env() в коде вернёт null!',
-                'difficulty' => 2,
-                'topic' => 'laravel.misc',
-            ],
         ];
     }
 }

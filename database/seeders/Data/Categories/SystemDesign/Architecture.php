@@ -282,6 +282,13 @@ location /     { proxy_pass http://monolith; }   # последние 5% - repor
                 'difficulty' => 4,
                 'topic' => 'system_design.architecture',
             ],
+            [
+                'category' => 'Архитектура систем',
+                'question' => 'Что такое MVC простыми словами?',
+                'answer' => 'Model-View-Controller — паттерн разделения приложения на 3 слоя. Model — данные и бизнес-логика (юзер, заказ, как они сохраняются и считаются). View — представление, что видит пользователь (HTML-страница, JSON-ответ). Controller — связующее звено: принимает HTTP-запрос, дёргает Model, отдаёт View. Идея — каждый слой отвечает за своё, можно менять UI не трогая логику и наоборот. Большинство веб-фреймворков (Laravel, Symfony, Rails) построены вокруг MVC.',
+                'difficulty' => 1,
+                'topic' => 'system_design.architecture',
+            ],
         ];
     }
 }

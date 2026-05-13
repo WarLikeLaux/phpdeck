@@ -133,6 +133,13 @@ class Psr
                 'difficulty' => 2,
                 'topic' => 'php.psr',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Какие соглашения по именованию приняты в PHP (PSR-1/PSR-12)?',
+                'answer' => 'Классы — PascalCase (UpperCamelCase): UserController, OrderRepository. Методы — camelCase: getUserName(), saveOrder(). Свойства — camelCase: $firstName. Константы — UPPER_SNAKE_CASE: MAX_USERS, API_KEY. Переменные — camelCase: $userId, $orderTotal. Имена в snake_case в PHP считаются устаревшим стилем (наследие PHP 4). Тестовые методы в PHPUnit допускают snake_case: test_user_can_login.',
+                'difficulty' => 1,
+                'topic' => 'php.psr',
+            ],
         ];
     }
 }
