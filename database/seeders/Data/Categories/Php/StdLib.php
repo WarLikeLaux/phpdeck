@@ -128,6 +128,21 @@ $obj = unserialize($str, ["allowed_classes" => [User::class]]);',
                 'difficulty' => 1,
                 'topic' => 'php.std_lib',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Какие функции в PHP применяют для математики простыми словами?',
+                'answer' => 'Базовые: abs($n) — модуль; round($n, $precision) — округление, floor/ceil — вниз/вверх; min(...$args) и max(...$args) — минимум и максимум (принимают и список аргументов, и массив); pow($base, $exp) или ** — степень; sqrt($n) — квадратный корень; intval/floatval — приведение к числу. Для случайных чисел общего назначения — rand / mt_rand, для криптостойких — random_int / random_bytes.',
+                'code_example' => '<?php
+echo abs(-5);          // 5
+echo round(3.7);       // 4
+echo round(3.14159, 2);// 3.14
+echo max(1, 5, 3);     // 5
+echo min([4, 2, 7]);   // 2
+echo sqrt(16);         // 4',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'php.std_lib',
+            ],
         ];
     }
 }

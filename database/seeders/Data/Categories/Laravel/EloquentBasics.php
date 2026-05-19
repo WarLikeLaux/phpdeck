@@ -418,6 +418,39 @@ class UserObserver {
                 'difficulty' => 1,
                 'topic' => 'laravel.eloquent_basics',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как Eloquent определяет имя таблицы для модели?',
+                'answer' => 'По умолчанию: имя класса в snake_case + множественное число. Post → posts, OrderItem → order_items, User → users. Если нужно другое имя — задай protected $table = \'my_table\'. Множественное число выбирает Str::plural() (учитывает английские правила: child → children, person → people). Для русскоязычных таблиц всегда указывай $table вручную.',
+                'code_example' => 'class Post extends Model {} // → posts
+class OrderItem extends Model {} // → order_items
+
+class News extends Model {
+    protected $table = \'news\'; // не "news" автоматически, лучше явно
+}',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'laravel.eloquent_basics',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'В чём разница между find() и findOrFail()?',
+                'answer' => 'User::find(5) — возвращает модель или null, если запись не найдена. User::findOrFail(5) — возвращает модель или бросает ModelNotFoundException, который Laravel автоматически превращает в HTTP 404. В контроллерах почти всегда используют findOrFail(), чтобы не писать if (!$user) abort(404). find() удобен, когда null — валидный сценарий (например, проверка существования).',
+                'code_example' => '// Так писать не нужно
+$user = User::find($id);
+if (! $user) {
+    abort(404);
+}
+
+// Достаточно
+$user = User::findOrFail($id); // 404 если не найден
+
+// findOrFail с массивом id - бросит, если найдено меньше, чем запрошено
+$users = User::findOrFail([1, 2, 3]);',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'laravel.eloquent_basics',
+            ],
         ];
     }
 }

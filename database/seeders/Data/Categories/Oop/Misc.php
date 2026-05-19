@@ -64,7 +64,7 @@ echo $c(\'foo\'); // __invoke',
                 'topic' => 'oop.misc',
                 'difficulty' => 3,
                 'question' => 'Что такое late static binding (позднее статическое связывание)?',
-                'answer' => 'Late Static Binding (LSB) - механизм PHP, позволяющий ссылаться на фактический класс, по которому идёт вызов (а не на класс, где код написан). Реализуется через ключевое слово static. self ссылается на класс, где написан код (раннее связывание), static - на класс, на котором был сделан вызов (позднее связывание). LSB - именно про static-контекст: для нестатических вызовов через $this всегда работает обычное виртуальное связывание, и static:: там обычно не нужен. Важен для фабричных методов, Active Record и любых "наследуемых" фабрик. С PHP 8.0 есть возвращаемый тип static - гарантирует, что фактический тип совпадёт с классом-наследником.',
+                'answer' => 'Механизм, позволяющий внутри родительского кода ссылаться на ФАКТИЧЕСКИЙ класс, через который сделан вызов. self:: указывает на класс, ГДЕ написан код (раннее связывание); static:: — на класс, ОТ которого вызвали (с учётом наследования). Нужен для фабричных методов в иерархии: Model::create() с new static() вернёт User, если вызвали User::create(). С PHP 8.0 для этого есть возвращаемый тип static.',
                 'code_example' => '<?php
 class Model
 {
@@ -187,7 +187,7 @@ class UserController
                 'topic' => 'oop.misc',
                 'difficulty' => 4,
                 'question' => 'Что такое covariance и contravariance в PHP?',
-                'answer' => 'Covariance (ковариантность) - возможность переопределить метод в потомке так, чтобы он возвращал более специфичный тип, чем метод родителя. Contravariance (контравариантность) - возможность принимать в потомке более общий тип параметра, чем в родителе. Поддержаны в PHP 7.4+. Это делает систему типов более гибкой и помогает соблюдать LSP. Правила в PHP: параметры методов - КОНТРАВАРИАНТНЫ (можно расширить), возвращаемые типы - КОВАРИАНТНЫ (можно сузить). А вот СВОЙСТВА (типизированные поля) ИНВАРИАНТНЫ - в наследнике нельзя переопределить тип свойства (даже сузить или расширить nullability). Попытка дать Fatal error "Type of X::$prop must be Y (as in class Z)". Это удивляет тех, кто привык к Hack или некоторым языкам с ковариантными полями. Причина - read/write свойства симметричны: если бы поле было ковариантным на чтение, то на запись бы ломалось (записать Animal туда, где наследник ждёт Dog), а если контравариантным на запись - на чтение бы ломалось. Поэтому единственный sound вариант для свойств - инвариантность. Обходной путь - публичный typed accessor через геттер/сеттер (или с PHP 8.4 - property hooks с разными типами на get/set, но это уже не само свойство, а виртуальное).',
+                'answer' => 'Это правила, как наследник может менять типы параметров и возврата у переопределяемого метода (PHP 7.4+). Covariance — возвращаемый тип можно СУЗИТЬ (Animal → Dog). Contravariance — тип параметра можно РАСШИРИТЬ (Dog → Animal). Цель — соблюсти LSP: код, написанный против родителя, должен корректно работать с любым наследником. Типы свойств — инвариантны: переопределить тип поля в наследнике нельзя (Fatal error). Если нужно — используют геттер/сеттер вместо публичного поля.',
                 'code_example' => '<?php
 class Animal {}
 class Dog extends Animal {}
@@ -209,7 +209,7 @@ class DogShelter extends Shelter
                 'topic' => 'oop.misc',
                 'difficulty' => 3,
                 'question' => 'Что такое перегрузка методов (method overloading) и есть ли она в PHP?',
-                'answer' => 'ВАЖНЫЙ терминологический парадокс PHP, на котором часто ловят на собеседованиях. Слово "Overloading" в C++/Java и в документации PHP означает РАЗНЫЕ вещи. В классическом ООП-смысле (C++/Java) перегрузка - возможность объявить в одном классе несколько методов с одинаковым именем, но разными сигнатурами. В этом смысле в PHP перегрузки НЕТ - нельзя объявить два метода с одним именем (Cannot redeclare method). А вот в официальной документации PHP "Overloading" - это СОВСЕМ ДРУГОЕ: динамическое создание/обращение к несуществующим свойствам и методам через магические методы. __get, __set, __isset, __unset - "property overloading"; __call, __callStatic - "method overloading". По сути это интерсепторы для отсутствующих свойств/методов, а не классическая перегрузка. Если на интервью спросили про "перегрузку в PHP" - сначала уточните, какой смысл имеется в виду. Имитировать классическую перегрузку: 1) variadic параметры (...$args) с проверкой типов внутри. 2) Union types и match по типу. 3) __call. 4) Именованные аргументы (PHP 8.0) с дефолтами. Лучшее решение - именованные конструкторы (статические фабрики): fromString(), fromArray() вместо нескольких __construct.',
+                'answer' => 'Терминологическая ловушка PHP. В C++/Java перегрузка — несколько методов с одним именем и разными сигнатурами. В этом смысле в PHP перегрузки НЕТ: два метода с одним именем — fatal error «Cannot redeclare method». А в документации PHP «overloading» — это совсем другое: магические методы __get/__set/__call/__callStatic, которые перехватывают обращения к несуществующим свойствам и методам. Если на собесе спросили про перегрузку — сначала уточни, какой смысл. Имитировать классическую перегрузку лучше через именованные фабрики: Money::fromCents(), Money::fromDollars().',
                 'code_example' => '<?php
 class Money
 {
@@ -232,7 +232,7 @@ class Money
                 'topic' => 'oop.misc',
                 'difficulty' => 4,
                 'question' => 'Что такое Open Recursion и проблема fragile base class?',
-                'answer' => 'Open recursion - когда метод родительского класса вызывает другой метод того же объекта (через $this), и потомок может переопределить этот метод, изменив поведение базового. Это даёт гибкость, но порождает проблему fragile base class (хрупкий базовый класс): изменения в родителе могут сломать потомков, потому что они зависят от внутренних вызовов методов. Снижает инкапсуляцию. Решения: помечать "хук-методы" final или выносить через композицию (Strategy/Template Method с явными шагами).',
+                'answer' => 'Open recursion — когда метод родителя через $this вызывает другой метод того же объекта, а потомок переопределяет этот метод. Гибко, но опасно: изменения в родителе ломают потомков (fragile base class). Решения: помечать «хук-методы» final, либо выносить расширяемость через композицию (Strategy) с явным контрактом — а не через наследование.',
                 'code_example' => '<?php
 class Counter
 {
@@ -269,8 +269,8 @@ class LoggingCounter extends Counter
                 'category' => 'ООП',
                 'topic' => 'oop.misc',
                 'difficulty' => 3,
-                'question' => 'Что такое typed properties и какие есть типы в PHP?',
-                'answer' => 'С PHP 7.4 свойства класса можно типизировать. Поддерживаются: скаляры (int, float, string, bool), массивы (array), объекты (классы и интерфейсы), iterable, nullable (?string), self и parent (валидны как тип свойства, параметра и return), union types (int|string, PHP 8.0), mixed (PHP 8.0), intersection types (Foo&Bar, PHP 8.1), DNF-типы ((Foo&Bar)|null, PHP 8.2), true/false/null как самостоятельные типы (PHP 8.2). ТОЛЬКО return type: static (всегда; как тип свойства/параметра запрещён - PHP пишет syntax error) и never (PHP 8.1+). callable тоже только для параметров/return, не для свойств. Типизированное свойство без значения по умолчанию находится в состоянии uninitialized - чтение до инициализации бросит Error.',
+                'question' => 'Что такое typed properties (типизированные свойства)?',
+                'answer' => 'С PHP 7.4 у свойств можно объявить тип: public string $name; public ?int $age = null. PHP проверяет тип при записи. Поддерживаются скаляры, объекты, array, iterable, nullable (?T), self/parent, union (int|string, PHP 8.0), intersection (Foo&Bar, PHP 8.1), mixed. Типы static/never — только для возврата метода, не для свойства. Если у типизированного свойства нет дефолта и его не инициализировали — чтение бросит Error «uninitialized».',
                 'code_example' => '<?php
 class Profile
 {
@@ -409,26 +409,30 @@ class Mailer2
             [
                 'category' => 'ООП',
                 'topic' => 'oop.misc',
-                'difficulty' => 4,
-                'question' => 'В чём суть паттерна Specification и зачем он нужен в репозиториях?',
-                'answer' => 'Specification инкапсулирует условие выборки/проверки в виде объекта. Спецификации комбинируются через and/or/not, переиспользуются между фильтрацией коллекций и SQL-выборкой. В репозиториях это избавляет от десятков методов вроде findActiveUsersOlderThan(). В Eloquent аналог - query scopes; для сложных фильтров со множеством параметров Specification читаемее.',
+                'difficulty' => 3,
+                'question' => 'Что такое паттерн Specification?',
+                'answer' => 'Условие выборки или проверки оформлено как объект с методом isSatisfiedBy($entity). Спецификации можно комбинировать через AndSpec, OrSpec, NotSpec. Зачем: избавиться от десятков методов вроде findActiveUsersOlderThan() в репозитории — клиент сам собирает нужное условие из кирпичиков. В Eloquent похожая роль у query scopes.',
                 'code_example' => '<?php
 interface Spec { public function isSatisfiedBy(User $u): bool; }
+
 class IsActive implements Spec {
-    public function isSatisfiedBy(User $u): bool { return !$u->bannedAt; }
+    public function isSatisfiedBy(User $u): bool { return $u->bannedAt === null; }
 }
+
 class AndSpec implements Spec {
     public function __construct(private Spec $a, private Spec $b) {}
-    public function isSatisfiedBy(User $u): bool { return $this->a->isSatisfiedBy($u) && $this->b->isSatisfiedBy($u); }
+    public function isSatisfiedBy(User $u): bool {
+        return $this->a->isSatisfiedBy($u) && $this->b->isSatisfiedBy($u);
+    }
 }',
                 'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'topic' => 'oop.misc',
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'question' => 'Что такое анти-паттерн Primitive Obsession и как с ним бороться?',
-                'answer' => 'Primitive Obsession (одержимость примитивами) - использование базовых типов (string, int, float, array) для представления доменных концепций, у которых есть собственные правила. Симптомы: string $email, string $phone, string $currency, int $userId, int $orderStatus, array $address. Проблемы: 1) Логика валидации размазана - валидация email повторяется в десятке мест, легко забыть. 2) Нет защиты от подмены - функция charge(int $userId, int $amount) принимает в любом порядке, опечатка charge($amount, $userId) пройдёт типизацию. 3) Невозможно различить домены - "USD" и "RUR" обе строки, можно сложить рубли с долларами и получить осмысленное число без ошибки. 4) Бизнес-правила утекают в utility-функции (Helpers::formatPhone, Helpers::isValidEmail) вместо того, чтобы жить в самом типе. Решение - Value Objects: классы, инкапсулирующие примитив + правила. Email с валидацией в конструкторе, Money с currency и операциями (add бросает если разные валюты), UserId с приватным __construct и фабриками. Они immutable, сравниваются по значению через явный метод equals($other) (магического __equals в PHP нет, а === для объектов проверяет идентичность инстанса, не значения; == сравнивает класс и свойства - но полагаться на него обычно не стоит, лучше явный equals), легко сериализуемы. PHP 8.1+ readonly properties + конструктор-промоушен + enums делают это дёшево писать. Бонус: тип в сигнатуре сразу документирует контракт - charge(UserId $u, Money $amount) невозможно вызвать неправильно.',
+                'answer' => 'Primitive Obsession — использование базовых типов (string, int, array) там, где у домена есть собственные правила: string $email, int $userId, int $cents. Проблемы: валидация размазана по коду, легко перепутать порядок аргументов (charge($amount, $userId)), нельзя различить рубли и доллары — обе int. Решение — Value Objects: класс Email валидирует e-mail в конструкторе, Money хранит сумму и валюту, UserId — числовой id. Тип в сигнатуре сразу гарантирует контракт.',
                 'code_example' => '<?php
 // ❌ Primitive obsession
 class OrderService
@@ -490,68 +494,22 @@ class OrderService
             [
                 'category' => 'ООП',
                 'topic' => 'oop.misc',
-                'difficulty' => 4,
+                'difficulty' => 3,
                 'question' => 'Чем паттерн Registry отличается от Service Locator?',
-                'answer' => 'Оба паттерна - формы глобального доступа к объектам, оба обычно считаются анти-паттернами по одной причине: глобальное состояние и скрытые зависимости. Но семантически отличаются. REGISTRY (реестр) - простое глобальное хранилище объектов. По сути typed/named ассоциативный массив: положили объект под ключом, потом достали. Сам ничего не создаёт, не знает, как создавать - это работа того, кто туда кладёт. Применение: глобальное состояние, общая шина, in-memory кеш одиночек. SERVICE LOCATOR (локатор сервисов) - умный, знает КАК создать каждую зависимость: содержит фабрики/биндинги (вроде "AuthService → new AuthServiceImpl(new TokenStorage(...))"). Клиент спрашивает $locator->get(AuthService::class) - локатор резолвит весь граф зависимостей и возвращает готовый объект. По сути это DI-контейнер, который сам себя предоставляет глобально (или передаётся через конструктор - тогда уже не локатор, а контейнер). Главное отличие: Registry - дамб (что положили, то и достанете), Service Locator - смарт (умеет создавать). Почему оба анти-паттерны: класс, использующий $locator->get(X), скрывает свои зависимости от компилятора и от читающего код - чтобы понять, что нужно классу, нужно прочитать его реализацию, а не сигнатуры. Тесты ломаются, рефакторинг труднее. Правильное решение - Dependency Injection (constructor injection): зависимости в сигнатуре конструктора, никакой "глобальной точки доступа". DI-контейнер - инструмент, который собирает граф объектов в одном месте (composition root) и больше не используется в коде. В Laravel: app(Foo::class) внутри сервиса - service locator (плохо), а type-hint в конструкторе - DI (хорошо).',
+                'answer' => 'Оба — формы глобального доступа к объектам и считаются анти-паттернами из-за скрытых зависимостей. Registry — тупое хранилище: положили объект под ключом, забрали по ключу. Сам ничего не создаёт. Service Locator — умное хранилище: знает фабрики/биндинги, при запросе сам собирает объект и его зависимости. Главная проблема обоих: класс, дёргающий $locator->get(X), прячет зависимости от сигнатуры конструктора. Альтернатива — Dependency Injection: зависимости в параметрах конструктора, никакой «глобальной точки доступа».',
                 'code_example' => '<?php
-// REGISTRY - тупое хранилище
-final class Registry
-{
+// Registry — просто хранилище
+final class Registry {
     private static array $items = [];
-
-    public static function set(string $key, object $value): void
-    {
-        self::$items[$key] = $value;
-    }
-
-    public static function get(string $key): object
-    {
-        return self::$items[$key] ?? throw new \\RuntimeException("not in registry: $key");
-    }
+    public static function set(string $key, object $v): void { self::$items[$key] = $v; }
+    public static function get(string $key): object { return self::$items[$key]; }
 }
 
-// клиент должен сам положить, прежде чем доставать
-Registry::set("logger", new FileLogger("/var/log/app.log"));
-Registry::get("logger")->info("hi");
-
-// SERVICE LOCATOR - умное хранилище с фабриками
-final class ServiceLocator
-{
+// Service Locator — умеет создавать
+final class ServiceLocator {
     private array $factories = [];
-    private array $instances = [];
-
-    public function bind(string $name, \\Closure $factory): void
-    {
-        $this->factories[$name] = $factory;
-    }
-
-    public function get(string $name): object
-    {
-        return $this->instances[$name] ??= ($this->factories[$name])($this);
-    }
-}
-
-$locator = new ServiceLocator();
-$locator->bind("db",     fn() => new PDO("mysql:..."));
-$locator->bind("logger", fn() => new FileLogger("/var/log/app.log"));
-$locator->bind("repo",   fn($l) => new UserRepo($l->get("db")));
-
-// ❌ Service locator анти-паттерн (зависимости скрыты)
-class OrderServiceBad
-{
-    public function place(): void
-    {
-        $repo = ServiceLocator::get("repo"); // как узнать что нужно?
-    }
-}
-
-// ✅ Constructor injection - зависимости явные
-class OrderServiceGood
-{
-    public function __construct(
-        private UserRepo $repo,
-        private Logger $logger,
-    ) {}
+    public function bind(string $name, \Closure $f): void { $this->factories[$name] = $f; }
+    public function get(string $name): object { return ($this->factories[$name])($this); }
 }',
                 'code_language' => 'php',
             ],

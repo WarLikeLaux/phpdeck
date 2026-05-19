@@ -26,13 +26,6 @@ class BasicQa
             ],
             [
                 'category' => 'Laravel',
-                'question' => 'Что такое N+1 проблема и как её решать в Eloquent?',
-                'answer' => 'N+1 - N дополнительных запросов на связанные записи при итерации. Решается eager loading через with(), withCount() или предзагрузкой через load().',
-                'difficulty' => 3,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
                 'question' => 'Чем отличаются queue jobs от events?',
                 'answer' => 'Job - единица фоновой работы, ставится в очередь и выполняется воркером. Event - объект, описывающий факт/сигнал; на него подписаны N listener-ов. По умолчанию listener выполняется СИНХРОННО в том же запросе; для асинхронности listener должен реализовать ShouldQueue - тогда сам listener становится job-ом и уходит в очередь.',
                 'difficulty' => 2,
@@ -40,65 +33,9 @@ class BasicQa
             ],
             [
                 'category' => 'Laravel',
-                'question' => 'Что делает middleware throttle?',
-                'answer' => 'Ограничивает число запросов с одного клиента за период (rate limiting), используя кэш для счётчиков. Например, throttle:60,1 - 60 запросов в минуту.',
-                'difficulty' => 2,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Чем отличается Request от FormRequest?',
-                'answer' => 'FormRequest - наследник Request с валидацией и авторизацией в отдельном классе. Валидация запускается до контроллера, ошибки автоматически возвращаются.',
-                'difficulty' => 2,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Что такое Policy и Gate?',
-                'answer' => 'Gate - замыкание для проверки права действия. Policy - класс, группирующий правила доступа для конкретной модели. Используются через can()/authorize().',
-                'difficulty' => 2,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Чем отличается soft delete от обычного delete?',
-                'answer' => 'Soft delete устанавливает deleted_at вместо физического удаления. Записи скрываются из выборок, восстанавливаются через restore(), удаляются окончательно через forceDelete().',
-                'difficulty' => 2,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Что такое observers в Eloquent?',
-                'answer' => 'Класс с обработчиками событий жизненного цикла модели (creating, created, updating, deleted и т.д.). Регистрируется через ObservedBy-атрибут или Model::observe.',
-                'difficulty' => 3,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Зачем нужен php artisan optimize?',
-                'answer' => 'Связка из четырёх команд: config:cache + route:cache + view:cache + event:cache. Кэширует конфиг, роуты, события и вьюхи в одиночные файлы для production - ускоряет загрузку фреймворка, исключая парсинг при каждом запросе. Сбрасывается через optimize:clear.',
-                'difficulty' => 2,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Что такое database transaction и как использовать в Laravel?',
-                'answer' => 'Атомарная группа SQL-операций, либо все коммитятся, либо все откатываются. В Laravel - DB::transaction(closure) или явные beginTransaction/commit/rollBack.',
-                'difficulty' => 3,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
                 'question' => 'Чем отличаются session, cookie и cache в Laravel?',
                 'answer' => 'Cookie - данные у клиента. Session - серверное состояние пользователя, обычно идентифицируется cookie. Cache - общее key-value-хранилище без привязки к пользователю.',
                 'difficulty' => 2,
-                'topic' => 'laravel.basic_qa',
-            ],
-            [
-                'category' => 'Laravel',
-                'question' => 'Что такое Laravel простыми словами?',
-                'answer' => 'PHP-фреймворк для веб-приложений. Даёт готовые решения для маршрутизации, работы с БД, шаблонов, авторизации, валидации, очередей. Стандарт для современной PHP-разработки.',
-                'difficulty' => 1,
                 'topic' => 'laravel.basic_qa',
             ],
             [
@@ -134,6 +71,81 @@ class BasicQa
                 'question' => 'Что такое .env в Laravel и зачем он?',
                 'answer' => 'Файл с переменными окружения для конкретного окружения (dev/staging/prod): креды БД, ключи API, debug. Не коммитится (.env.example — шаблон, коммитится). Читай через config()-обёртки, не env() напрямую: в проде config кэшируется.',
                 'difficulty' => 2,
+                'topic' => 'laravel.basic_qa',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как связаны route, controller, model и view в Laravel?',
+                'answer' => 'Это четыре главных слоя обычного запроса. Route принимает URL и направляет в Controller. Controller — оркестратор: дёргает Model для работы с БД и возвращает результат как View (HTML) или JSON. Model — данные (Eloquent). View — шаблон Blade. Маршрут указывает на метод контроллера, контроллер вызывает модель, потом отдаёт данные во view.',
+                'code_example' => '// routes/web.php
+Route::get(\'/users/{id}\', [UserController::class, \'show\']);
+
+// app/Http/Controllers/UserController.php
+class UserController extends Controller {
+    public function show(int $id) {
+        $user = User::findOrFail($id); // Model
+        return view(\'users.show\', [\'user\' => $user]); // View
+    }
+}',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'laravel.basic_qa',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое route() helper и зачем нужны имена маршрутов?',
+                'answer' => 'route(\'users.show\', [\'user\' => 5]) генерирует URL по имени маршрута. Если в коде используется route(\'home\'), а не URL руками, то при изменении пути в routes/web.php все ссылки автоматически обновятся. Имя маршрута задаётся через ->name(\'users.show\'). Использовать имена — стандарт в Laravel.',
+                'code_example' => 'Route::get(\'/users/{user}\', [UserController::class, \'show\'])->name(\'users.show\');
+
+// в Blade
+<a href="{{ route(\'users.show\', $user) }}">Профиль</a>
+
+// в контроллере
+return redirect()->route(\'users.show\', $user);',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'laravel.basic_qa',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Какие способы редиректа в Laravel?',
+                'answer' => 'redirect(\'/login\') — по URL. redirect()->route(\'home\') — по имени маршрута. redirect()->back() или back() — назад. redirect()->action([Ctrl::class, \'method\']) — на метод контроллера. С данными во flash-сессии: ->with(\'success\', \'Готово\'). С ошибками: ->withErrors($errors)->withInput().',
+                'code_example' => 'return redirect(\'/login\');
+return redirect()->route(\'profile\', $user);
+return back()->with(\'success\', \'Сохранено\');
+return redirect()->route(\'login\')->withInput()->withErrors([\'email\' => \'Неверный email\']);',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'laravel.basic_qa',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как создать новую запись через Eloquent простыми словами?',
+                'answer' => 'Два пути. Через create() — массово: User::create([\'name\' => \'A\', \'email\' => \'a@b.c\']) — требует $fillable на модели. Через new + save() — пошагово: $u = new User; $u->name = \'A\'; $u->email = \'a@b.c\'; $u->save(). create() возвращает уже сохранённую модель, удобно для одной строки кода.',
+                'code_example' => '// Способ 1: create
+$user = User::create([\'name\' => \'Anna\', \'email\' => \'a@b.c\']);
+
+// Способ 2: new + save
+$user = new User;
+$user->name = \'Anna\';
+$user->email = \'a@b.c\';
+$user->save();
+
+// Обновление
+$user->update([\'name\' => \'Bob\']);
+
+// или
+$user->name = \'Bob\';
+$user->save();',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'laravel.basic_qa',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Что такое middleware простыми словами?',
+                'answer' => 'Прослойка, через которую проходит каждый HTTP-запрос ДО контроллера. Стандартные задачи: проверить, что юзер залогинен (\'auth\'), проверить CSRF, ограничить число запросов (\'throttle\'), залогировать запрос. Если middleware что-то не нравится — оно отклоняет запрос (например, редирект на /login) и контроллер вообще не вызовется.',
+                'difficulty' => 1,
                 'topic' => 'laravel.basic_qa',
             ],
         ];

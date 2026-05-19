@@ -122,6 +122,41 @@ $shuffled = $randomizer->shuffleArray([1, 2, 3, 4]);',
                 'difficulty' => 3,
                 'topic' => 'php.security',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое SQL-инъекция и как от неё защищаться в PHP?',
+                'answer' => 'SQL-инъекция — атака, при которой пользовательский ввод подставляется прямо в SQL-запрос и меняет его смысл. Например, "SELECT * FROM users WHERE name = \'$name\'" при $name = "\' OR \'1\'=\'1" вернёт всех. Защита — параметризованные запросы (prepared statements) через PDO или mysqli: значения передаются отдельно от шаблона запроса и не интерпретируются как SQL. Никогда не строй SQL конкатенацией с пользовательским вводом. В Laravel Eloquent и Query Builder защищают автоматически.',
+                'code_example' => '<?php
+// ❌ Опасно
+$pdo->query("SELECT * FROM users WHERE name = \'$name\'");
+
+// ✅ Безопасно — prepared statement
+$stmt = $pdo->prepare("SELECT * FROM users WHERE name = ?");
+$stmt->execute([$name]);
+$user = $stmt->fetch();',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'php.security',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое htmlspecialchars и почему его важно использовать при выводе?',
+                'answer' => 'htmlspecialchars($s, ENT_QUOTES, "UTF-8") заменяет в строке HTML-метасимволы (<, >, &, ", \') на их безопасные сущности (&lt;, &gt; и т. д.). Это базовая защита от XSS: пользовательский ввод, отрендеренный в HTML без экранирования, может содержать <script>...</script> и выполнить вредоносный JS у других пользователей. В Blade {{ $var }} вызывает аналог htmlspecialchars автоматически; {!! $var !!} — нет, и поэтому используется только для уже доверенного HTML.',
+                'code_example' => '<?php
+$userInput = \'<script>alert(1)</script>\';
+echo htmlspecialchars($userInput, ENT_QUOTES, "UTF-8");
+// &lt;script&gt;alert(1)&lt;/script&gt; — браузер выведет как текст',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'php.security',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Почему нельзя хранить пароли в открытом виде или через md5/sha1?',
+                'answer' => 'Хранить пароли в открытом виде нельзя — при утечке БД злоумышленники сразу получат все аккаунты. md5/sha1/sha256 для паролей тоже не подходят: они спроектированы быть БЫСТРЫМИ, и современные GPU перебирают миллиарды хешей в секунду через rainbow tables и брутфорс. Для паролей нужен МЕДЛЕННЫЙ алгоритм с встроенной солью: bcrypt или Argon2id. В PHP — password_hash($pwd, PASSWORD_DEFAULT) для хеширования и password_verify($pwd, $hash) для проверки. Соль PHP генерирует сам и сохраняет внутри строки хеша.',
+                'difficulty' => 2,
+                'topic' => 'php.security',
+            ],
         ];
     }
 }

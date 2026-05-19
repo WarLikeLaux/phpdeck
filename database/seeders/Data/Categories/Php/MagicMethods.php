@@ -150,8 +150,17 @@ echo new Money(100, "USD"); // "100 USD"',
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Что делает __invoke() и зачем он нужен?',
-                'answer' => 'Магический метод, позволяющий вызывать объект КАК ФУНКЦИЮ: $obj(). Если у класса есть __invoke(), можно сделать $handler = new Handler(); $handler($request); — PHP вызовет $handler->__invoke($request). Используется для invokable-контроллеров в Laravel, для callable-объектов, single-action классов.',
+                'question' => 'Что делает __call() в PHP простыми словами?',
+                'answer' => 'Магический метод, который вызывается при попытке обратиться к НЕСУЩЕСТВУЮЩЕМУ или недоступному методу объекта: $obj->unknown($x) → $obj->__call("unknown", [$x]). Без __call PHP выбросит Error. Применяется для динамических прокси, фасадов, fluent-API: например, Eloquent через __call перехватывает where(), orderBy() и пересылает их в QueryBuilder. Есть и парный __callStatic для статических вызовов: ClassName::unknown() → ClassName::__callStatic("unknown", [...]).',
+                'code_example' => 'class Proxy {
+    public function __call(string $name, array $args): mixed {
+        echo "Вызван $name с " . count($args) . " аргументами";
+        return null;
+    }
+}
+$p = new Proxy();
+$p->doSomething(1, 2, 3); // "Вызван doSomething с 3 аргументами"',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.magic_methods',
             ],

@@ -418,6 +418,25 @@ QUALIFY rn <= 3; -- или WHERE в подзапросе',
             ],
             [
                 'category' => 'Базы данных',
+                'question' => 'Что такое UPSERT и как он пишется в MySQL и PostgreSQL?',
+                'answer' => 'UPSERT — "INSERT, а если такая строка уже есть — UPDATE". Нужен, когда нет смысла отдельно проверять SELECT-ом, существует ли запись, и можно из-за гонок получить дубль. В MySQL: INSERT ... ON DUPLICATE KEY UPDATE — срабатывает при конфликте по PRIMARY KEY или UNIQUE-индексу. В PostgreSQL: INSERT ... ON CONFLICT (col) DO UPDATE SET ... — синтаксис стандарта SQL:2003 (или DO NOTHING, если просто пропустить дубль). Конфликт ловится только по тому столбцу/индексу, который указан, поэтому он должен быть UNIQUE.',
+                'code_example' => '-- MySQL
+INSERT INTO counters (key, value) VALUES (\'pageviews\', 1)
+ON DUPLICATE KEY UPDATE value = value + 1;
+
+-- PostgreSQL
+INSERT INTO counters (key, value) VALUES (\'pageviews\', 1)
+ON CONFLICT (key) DO UPDATE SET value = counters.value + 1;
+
+-- Игнорировать дубли
+INSERT INTO users (email, name) VALUES (\'a@b.c\', \'Anna\')
+ON CONFLICT (email) DO NOTHING;',
+                'code_language' => 'sql',
+                'difficulty' => 3,
+                'topic' => 'database.sql_basics',
+            ],
+            [
+                'category' => 'Базы данных',
                 'question' => 'Как создать таблицу через SQL?',
                 'answer' => 'CREATE TABLE users (id BIGINT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(255) NOT NULL, email VARCHAR(255) UNIQUE, age INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP). Указываются: имя таблицы, список колонок с типами и ограничениями (NOT NULL, UNIQUE, PRIMARY KEY, DEFAULT, CHECK, FOREIGN KEY).',
                 'code_example' => 'CREATE TABLE orders (
@@ -443,45 +462,6 @@ QUALIFY rn <= 3; -- или WHERE в подзапросе',
                 'question' => 'Что такое DROP TABLE и в чём опасность?',
                 'answer' => 'DROP TABLE users — УДАЛЯЕТ таблицу со всеми данными. Нет «корзины», нет undo (только из бэкапа). Запускать в проде — только сознательно. Безопаснее DROP TABLE IF EXISTS — не упадёт если таблицы нет. Удалить только данные, оставив структуру — TRUNCATE TABLE.',
                 'difficulty' => 1,
-                'topic' => 'database.sql_basics',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что делают операторы IN и BETWEEN в WHERE?',
-                'answer' => 'IN — проверка вхождения в список: WHERE status IN (\'new\', \'paid\') — короче чем status = \'new\' OR status = \'paid\'. BETWEEN — проверка диапазона: WHERE age BETWEEN 18 AND 65 — включая границы. Работают со столбцами любых сравнимых типов (числа, даты, строки).',
-                'difficulty' => 1,
-                'topic' => 'database.sql_basics',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что делает LIKE и какие в нём шаблоны?',
-                'answer' => 'LIKE — поиск по шаблону в строке. % — любая последовательность символов (включая пустую). _ — ровно один любой символ. WHERE email LIKE \'%@gmail.com\' — все, кто на gmail. WHERE name LIKE \'И_ан\' — Иван, Игнан и т.д. Регистр зависит от collation. Для case-insensitive в Postgres — ILIKE. С ведущим % индекс не работает.',
-                'difficulty' => 1,
-                'topic' => 'database.sql_basics',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое подзапрос в SQL простыми словами?',
-                'answer' => 'SELECT внутри другого SELECT. Пример: SELECT * FROM users WHERE id IN (SELECT user_id FROM orders WHERE total > 1000). Внутренний запрос выполняется первым, его результат используется внешним. Бывают коррелированные (зависят от внешней строки) и некоррелированные. Часто переписываются через JOIN для скорости.',
-                'difficulty' => 2,
-                'topic' => 'database.sql_basics',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое SELF JOIN простыми словами?',
-                'answer' => 'Соединение таблицы С САМОЙ СОБОЙ. Используется, когда в одной таблице есть иерархия или ссылки на другие строки этой же таблицы. Классика — employees(id, name, manager_id), где manager_id ссылается на employees.id. Чтобы получить «сотрудник + его менеджер» — SELF JOIN. Технически просто JOIN с алиасами e1 и e2 для одной таблицы.',
-                'code_example' => 'SELECT e.name AS employee, m.name AS manager
-FROM employees e
-LEFT JOIN employees m ON e.manager_id = m.id;',
-                'code_language' => 'sql',
-                'difficulty' => 2,
-                'topic' => 'database.sql_basics',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'В чём разница между партиционированием и шардированием простыми словами?',
-                'answer' => 'Партиционирование (partitioning) — деление одной БОЛЬШОЙ таблицы внутри одного сервера на части (партиции) по правилу: range (по дате), list (по списку значений), hash (по хешу ключа). БД сама понимает, в какую партицию идти. Шардирование (sharding) — деление данных по РАЗНЫМ СЕРВЕРАМ (шардам). Каждый шард — отдельная БД. Приложение/прокси решает, на какой шард идти. Партиционирование — про размер таблицы, шардирование — про масштабирование за пределы одного железа.',
-                'difficulty' => 3,
                 'topic' => 'database.sql_basics',
             ],
         ];

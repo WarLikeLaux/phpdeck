@@ -70,6 +70,29 @@ class Dns
                 'difficulty' => 2,
                 'topic' => 'networking.dns',
             ],
+            [
+                'category' => 'Сети',
+                'question' => 'Как руками проверить DNS-запись домена?',
+                'answer' => 'Утилитой dig (Linux/Mac) или nslookup (Windows). dig example.com — покажет A-запись. dig example.com AAAA — IPv6. dig example.com MX — почту. dig +short example.com — только итог без шума. dig +trace example.com — полный путь резолва от корня без использования кэшей. Это must-have инструмент при отладке «почему сайт не открывается».',
+                'code_example' => "dig +short example.com\n# 93.184.216.34\ndig example.com MX +short\n# 0 .\nnslookup example.com",
+                'code_language' => 'bash',
+                'difficulty' => 2,
+                'topic' => 'networking.dns',
+            ],
+            [
+                'category' => 'Сети',
+                'question' => 'Что такое TTL DNS простыми словами?',
+                'answer' => 'Сколько секунд DNS-запись разрешено держать в кэше. Сервер выдал A-запись с TTL=3600 — значит ваш resolver и браузер будут использовать этот ответ час, не переспрашивая. Низкий TTL (60 сек) даёт быструю смену IP при миграции, но больше нагрузка на DNS. Высокий (24 часа) — наоборот. Перед переездом сервера TTL заранее снижают, после переезда возвращают.',
+                'difficulty' => 2,
+                'topic' => 'networking.dns',
+            ],
+            [
+                'category' => 'Сети',
+                'question' => 'Что такое DNS-резолвер простыми словами?',
+                'answer' => 'Сервер, который от имени клиента ищет ответ в DNS, опрашивая по очереди корень, TLD-серверы и authoritative-серверы домена, а потом кэширует. По умолчанию это DNS вашего провайдера. Популярные публичные: 1.1.1.1 (Cloudflare), 8.8.8.8 (Google), 9.9.9.9 (Quad9). Меняется в настройках сети или роутера. Authoritative DNS — это другое: там лежат сами записи зоны.',
+                'difficulty' => 2,
+                'topic' => 'networking.dns',
+            ],
         ];
     }
 }

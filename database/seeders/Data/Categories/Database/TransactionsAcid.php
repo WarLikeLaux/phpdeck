@@ -186,13 +186,6 @@ SELECT pg_advisory_xact_lock(42);',
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'Что такое MVCC простыми словами?',
-                'answer' => 'MVCC (Multi-Version Concurrency Control) - механизм, при котором при изменении строки в таблице создаётся её новая версия, а старая ещё какое-то время живёт для других транзакций. Простыми словами: вместо того чтобы переписывать строку поверх, БД оставляет старый вариант для тех, кто уже начал читать. Поэтому "читатели не блокируют писателей и наоборот". PostgreSQL и Oracle используют MVCC. Минус: накапливаются мёртвые версии (bloat), нужен VACUUM.',
-                'difficulty' => 4,
-                'topic' => 'database.transactions_acid',
-            ],
-            [
-                'category' => 'Базы данных',
                 'question' => 'Чем отличаются пессимистичные (FOR UPDATE) и оптимистичные блокировки? Когда какую применять?',
                 'answer' => 'Пессимистичная блокировка - "сначала запрещаю, потом меняю": SELECT ... FOR UPDATE ставит row-level X-lock на строки, и другие транзакции, попытавшиеся их прочитать с FOR UPDATE/UPDATE/DELETE, будут ждать (или упадут с lock timeout). Гарантирует отсутствие конфликта, но снижает concurrency и может привести к взаимоблокировкам (deadlock). Оптимистичная блокировка - "сначала меняю, на коммите проверяю": в таблицу добавляется поле version (или updated_at), при UPDATE сравнивается с прочитанной ранее версией; если кто-то успел изменить - 0 affected rows и приложение перезапускает операцию или показывает пользователю конфликт. Никаких блокировок в БД, высокий throughput, но при частых конфликтах теряется работа. Когда что использовать: PESSIMISTIC - короткие критические секции с высокой вероятностью конфликта (списание со счёта, резерв билета, инкремент счётчика); требуется явная транзакция, держать lock как можно меньше. OPTIMISTIC - длительные пользовательские операции (редактирование документа в форме, "вы открыли страницу 10 минут назад"), низкая вероятность одновременного изменения, нельзя удерживать транзакцию через сетевой round-trip. В Laravel: pessimistic - lockForUpdate() / sharedLock(); optimistic - вручную через колонку version и WHERE version = ? в UPDATE.',
                 'code_example' => '<?php
@@ -292,79 +285,6 @@ DB::update("UPDATE accounts SET balance = balance - ?
                 'question' => 'Когда стоит использовать Redis-локи вместо встроенных блокировок SQL?',
                 'answer' => 'Redis уместен для координационных задач, не связанных с консистентностью данных: rate limiting (счётчики с TTL), circuit breakers, выбор лидера для cron, дедупликация на короткое окно. SQL-блокировки выигрывают, когда речь о целостности данных в самой БД: уникальные ключи, FOR UPDATE на строке, CHECK-ограничения работают атомарно с COMMIT и не имеют проблем с истечением TTL посреди транзакции. Распределённый Redis-лок (Redlock) ещё и не даёт строгих гарантий при сбоях узлов. Принцип: защищать данные внутри БД средствами БД, а Redis использовать там, где БД нет (между сервисами) или где допустим eventual consistency.',
                 'difficulty' => 4,
-                'topic' => 'database.transactions_acid',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Объясните уровни изоляции и какие аномалии каждый предотвращает.',
-                'answer' => 'READ UNCOMMITTED - допускает dirty read. READ COMMITTED - нет dirty, но возможны non-repeatable read и phantom. REPEATABLE READ - устраняет non-repeatable; в PostgreSQL (snapshot isolation) фантомы тоже исключены - остаётся только write skew / serialization anomalies; в MySQL InnoDB фантомы исключены за счёт MVCC для consistent reads и за счёт next-key/gap locks для locking reads. SERIALIZABLE - полная сериализуемость, в Postgres через SSI с rollback при конфликте (serialization_failure 40001), в InnoDB - через range/gap locks. Write skew отлавливается только на Serializable.',
-                'code_example' => '-- write skew пример
-BEGIN ISOLATION LEVEL SERIALIZABLE;
-SELECT SUM(on_call) FROM doctors WHERE shift = \'night\';
--- если >=2, можно уйти
-UPDATE doctors SET on_call = false WHERE id = 1;
-COMMIT; -- может откатиться при serialization_failure',
-                'code_language' => 'sql',
-                'difficulty' => 5,
-                'topic' => 'database.transactions_acid',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Как работает MVCC в PostgreSQL и зачем нужен VACUUM?',
-                'answer' => 'MVCC: каждое UPDATE/DELETE не меняет строку, а создаёт новую версию с xmin (transaction id создания) и xmax (id удаления). Транзакции видят только версии с подходящим xmin/xmax относительно своего snapshot. Старые tuple остаются в таблице как "мертвые" - bloat. VACUUM маркирует их свободными для переиспользования; VACUUM FULL переписывает таблицу. Autovacuum триггерится по threshold; параметры autovacuum_vacuum_scale_factor нужно тюнить для горячих таблиц.',
-                'code_example' => '-- увидеть bloat
-SELECT relname, n_dead_tup, n_live_tup, last_autovacuum
-FROM pg_stat_user_tables
-ORDER BY n_dead_tup DESC LIMIT 10;',
-                'code_language' => 'sql',
-                'difficulty' => 5,
-                'topic' => 'database.transactions_acid',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое deadlock и как его диагностировать?',
-                'answer' => 'Deadlock - циклическое ожидание блокировок между транзакциями: T1 держит A, ждёт B; T2 держит B, ждёт A. БД детектирует цикл и убивает одну транзакцию (deadlock_timeout). Профилактика: блокировать ресурсы в одинаковом порядке (отсортировать ID), уменьшать длительность транзакций, использовать SELECT ... FOR UPDATE NOWAIT/SKIP LOCKED, индексировать колонки в WHERE при UPDATE. В Postgres логи показывают полные query обоих участников.',
-                'code_example' => '-- симметричный порядок блокировок
-SELECT * FROM accounts WHERE id IN (:a, :b)
-ORDER BY id FOR UPDATE;
--- теперь обе транзакции лочат A раньше B',
-                'code_language' => 'sql',
-                'difficulty' => 4,
-                'topic' => 'database.transactions_acid',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое write skew и приведите пример из реального приложения.',
-                'answer' => 'Write skew - две транзакции читают пересекающийся набор строк, принимают решение на основе snapshot и пишут разные строки, нарушая инвариант. Классический пример: дежурство врачей. Две транзакции видят, что дежурят 2 человека, и одновременно "уходят домой" - оба отметят off-call, нарушив правило "минимум один". REPEATABLE READ не ловит write skew, нужен SERIALIZABLE или SELECT FOR UPDATE на конфликтующие строки.',
-                'code_example' => '-- защита через SELECT FOR UPDATE
-BEGIN;
-SELECT count(*) FROM doctors WHERE on_call = true FOR UPDATE;
--- если > 1, можно отключиться
-UPDATE doctors SET on_call = false WHERE id = :me;
-COMMIT;',
-                'code_language' => 'sql',
-                'difficulty' => 5,
-                'topic' => 'database.transactions_acid',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Как работают BEGIN, COMMIT, ROLLBACK?',
-                'answer' => 'BEGIN (или START TRANSACTION) — начать транзакцию. Все последующие изменения временные. COMMIT — зафиксировать всё, что сделано, в БД. ROLLBACK — отменить всё, что сделано после BEGIN. До COMMIT другие сессии не видят твоих изменений (зависит от уровня изоляции).',
-                'difficulty' => 2,
-                'topic' => 'database.transactions_acid',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое уровень изоляции транзакций простыми словами?',
-                'answer' => 'Правила, что одна транзакция видит из других одновременных. Чем выше изоляция, тем меньше «гонок данных», но тем больше блокировок (медленнее). Уровни: READ UNCOMMITTED (грязное чтение), READ COMMITTED (видишь только закоммиченное), REPEATABLE READ (повторное чтение даёт то же), SERIALIZABLE (как будто транзакции выполнились по очереди).',
-                'difficulty' => 2,
-                'topic' => 'database.transactions_acid',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что значит буква I в ACID (Isolation) простыми словами?',
-                'answer' => 'Isolation (изоляция) — параллельно выполняемые транзакции не должны мешать друг другу. То есть результат должен быть таким, как если бы они выполнялись по очереди. На практике реализуется через уровни изоляции (READ COMMITTED, REPEATABLE READ, SERIALIZABLE) с компромиссом между «честностью» и производительностью.',
-                'difficulty' => 2,
                 'topic' => 'database.transactions_acid',
             ],
         ];

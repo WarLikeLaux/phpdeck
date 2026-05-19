@@ -173,7 +173,12 @@ axios.defaults.headers.common[\'X-CSRF-TOKEN\'] =
             [
                 'category' => 'Laravel',
                 'question' => 'Как получить текущего залогиненного пользователя в Laravel?',
-                'answer' => 'Auth::user() или auth()->user() — модель текущего юзера или null. Auth::id() — только id. Auth::check() — true/false проверка. В контроллерах ещё $request->user(). Везде доступен глобально, потому что AuthMiddleware биндит в контейнер при старте запроса.',
+                'answer' => 'Auth::user() или auth()->user() — модель текущего юзера или null. Auth::id() — только id. Auth::check() — true/false. В контроллерах удобно через $request->user(). Если юзер не залогинен — все эти методы вернут null/false, поэтому до защищённой логики ставят middleware \'auth\', которое сделает редирект на /login.',
+                'code_example' => 'public function index(Request $request) {
+    $user = $request->user(); // или auth()->user()
+    return view(\'dashboard\', compact(\'user\'));
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.auth_authorization',
             ],

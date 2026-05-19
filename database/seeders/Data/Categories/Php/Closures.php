@@ -167,8 +167,19 @@ $fn2 = fn($x) => $x * $mult;',
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Что такое arrow function (fn) и чем отличается от обычной анонимной?',
-                'answer' => 'Короткий синтаксис анонимной функции (PHP 7.4+): fn($x) => $x * 2. Главное отличие — переменные из окружения захватываются АВТОМАТИЧЕСКИ (без use). Только одно выражение, без блока с {}. Идеально для array_map/filter/reduce.',
+                'question' => 'Можно ли вернуть функцию из функции в PHP и зачем это нужно?',
+                'answer' => 'Да. Любая функция в PHP может вернуть замыкание, и его потом вызывают как обычную функцию. Это пригодится для частичного применения (запекаем один аргумент сейчас, остальные передаём позже), фабрик коллбэков и в DSL вроде маршрутизатора Laravel: function makeAdder($a) { return fn($b) => $a + $b; }; $add5 = makeAdder(5); echo $add5(10); // 15.',
+                'code_example' => '<?php
+function makeMultiplier(int $factor): Closure {
+    return fn(int $x) => $x * $factor;
+}
+
+$double = makeMultiplier(2);
+$triple = makeMultiplier(3);
+
+echo $double(10); // 20
+echo $triple(10); // 30',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.closures',
             ],

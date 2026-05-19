@@ -188,6 +188,46 @@ class WelcomeNotification extends Notification {
                 'difficulty' => 3,
                 'topic' => 'laravel.routing',
             ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Чем отличаются routes/web.php и routes/api.php?',
+                'answer' => 'web.php — для браузерных запросов: к нему применяется группа web middleware (сессии, cookies, CSRF, ShareErrorsFromSession), работает Auth через сессию. api.php — для API: stateless, без сессий и CSRF, применяется группа api middleware (часто throttle); URL автоматически с префиксом /api. В Laravel 11 для подключения api.php нужно один раз запустить php artisan install:api (создаёт routes/api.php и регистрирует группу в bootstrap/app.php).',
+                'code_example' => '// routes/web.php — браузер, сессии, CSRF
+Route::get(\'/dashboard\', [DashboardController::class, \'index\'])->middleware(\'auth\');
+
+// routes/api.php — API, без сессий, Bearer-токен
+Route::middleware(\'auth:sanctum\')->get(\'/user\', fn (Request $r) => $r->user());
+
+// Laravel 11
+php artisan install:api',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'laravel.routing',
+            ],
+            [
+                'category' => 'Laravel',
+                'question' => 'Как передать параметр из URL в контроллер?',
+                'answer' => 'В маршруте параметр в фигурных скобках: {id}. В методе контроллера параметр приходит как обычный аргумент. Имена должны совпадать (или использовать Route Model Binding). Можно сразу type-hint-ить модель: Laravel сам найдёт по id (или вернёт 404 через findOrFail).',
+                'code_example' => '// routes/web.php
+Route::get(\'/users/{id}\', [UserController::class, \'show\']);
+
+// UserController
+public function show(int $id) {
+    $user = User::findOrFail($id);
+    return view(\'users.show\', compact(\'user\'));
+}
+
+// С Route Model Binding (короче)
+Route::get(\'/users/{user}\', [UserController::class, \'show\']);
+
+public function show(User $user) {
+    // $user уже найден или 404
+    return view(\'users.show\', compact(\'user\'));
+}',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'laravel.routing',
+            ],
         ];
     }
 }

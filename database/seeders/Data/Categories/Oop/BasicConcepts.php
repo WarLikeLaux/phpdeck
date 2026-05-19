@@ -132,34 +132,6 @@ $p->price = 599.99;',
             ],
             [
                 'category' => 'ООП',
-                'question' => 'На какие три группы делятся GoF-паттерны и за что отвечает каждая?',
-                'answer' => 'GoF-каталог делят на порождающие, структурные и поведенческие паттерны. Порождающие отвечают за гибкое создание объектов и прячут конкретные классы за фабриками, билдерами, прототипами. Структурные описывают, как объекты и классы собираются в более крупные композиции — адаптеры, декораторы, прокси, фасады. Поведенческие описывают распределение обязанностей и протоколы взаимодействия между объектами — стратегии, наблюдатели, цепочки, итераторы.',
-                'difficulty' => 3,
-                'topic' => 'oop.basic_concepts',
-            ],
-            [
-                'category' => 'ООП',
-                'question' => 'Какую роль играет Front Controller в Symfony и Laravel?',
-                'answer' => 'Front Controller — архитектурный паттерн web-tier (каталог Фаулера PoEAA / Core J2EE, не GoF), при котором все HTTP-запросы приложения проходят через одну точку входа, например index.php или public/index.php. Этот единственный скрипт поднимает ядро фреймворка, прогоняет запрос через middleware и роутер и уже потом передаёт его в нужный контроллер. Так централизуются авторизация, логирование, обработка ошибок и инициализация DI-контейнера, а веб-сервер настраивается тривиальным rewrite-правилом на один файл.',
-                'difficulty' => 3,
-                'topic' => 'oop.basic_concepts',
-            ],
-            [
-                'category' => 'ООП',
-                'question' => 'Что такое Event Dispatcher и какой GoF-паттерн он реализует?',
-                'answer' => 'Event Dispatcher — это центральный диспетчер событий в Symfony и других фреймворках, по сути обобщённый Observer/Mediator. Код, инициирующий событие, не знает подписчиков: он отдаёт объект-событие диспетчеру, а тот вызывает все зарегистрированные слушатели по имени события. Это позволяет расширять ядро и сторонние бандлы без правки их кода и снижает связанность между модулями за счёт общения через события вместо прямых вызовов.',
-                'difficulty' => 3,
-                'topic' => 'oop.basic_concepts',
-            ],
-            [
-                'category' => 'ООП',
-                'question' => 'Что такое Unit of Work и как он реализован в Doctrine?',
-                'answer' => 'Unit of Work — это объект, который отслеживает все изменения сущностей в рамках одной бизнес-транзакции и откладывает запись в БД до момента flush. В Doctrine при persist, update или remove сущности попадают в карту identity map, а UoW считает их "грязными", "новыми" или "удалёнными". На flush он рассчитывает оптимальный порядок INSERT, UPDATE и DELETE с учётом зависимостей и выполняет их одной транзакцией, что снижает число запросов и предотвращает рассинхронизацию состояния объектов и базы.',
-                'difficulty' => 4,
-                'topic' => 'oop.basic_concepts',
-            ],
-            [
-                'category' => 'ООП',
                 'question' => 'Чем свойство отличается от метода?',
                 'answer' => 'Свойство — переменная объекта (данные): public string $name. Метод — функция объекта (действие): public function greet() {...}. Свойство хранит, метод делает.',
                 'difficulty' => 1,
@@ -213,6 +185,116 @@ $p->price = 599.99;',
                 'answer' => 'Ключевое слово, обозначающее реализацию интерфейса. class Email implements Sendable — класс Email обязан содержать все методы интерфейса Sendable. Можно реализовывать несколько: class Foo implements Sendable, Cacheable, Loggable. Любой класс, реализующий интерфейс, можно type-hint через имя интерфейса: function send(Sendable $s).',
                 'difficulty' => 2,
                 'topic' => 'oop.basic_concepts',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.basic_concepts',
+                'difficulty' => 1,
+                'question' => 'Что такое геттер и сеттер?',
+                'answer' => 'Геттер (getter) — метод, который возвращает значение свойства: getName(): string. Сеттер (setter) — метод, который меняет значение свойства: setName(string $name): void. Зачем: свойство объявляют приватным, а доступ дают через методы — так можно валидировать вход, логировать, скрыть детали хранения. По соглашению имена начинаются с get/set, но в PHP это просто методы — никакой магии.',
+                'code_example' => '<?php
+class User
+{
+    private string $name = \'\';
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function setName(string $name): void
+    {
+        if ($name === \'\') {
+            throw new \InvalidArgumentException(\'Имя не может быть пустым\');
+        }
+        $this->name = $name;
+    }
+}',
+                'code_language' => 'php',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.basic_concepts',
+                'difficulty' => 1,
+                'question' => 'Что такое наследование простыми словами?',
+                'answer' => 'Когда один класс (потомок) получает все public/protected свойства и методы другого класса (родителя). В PHP объявляется через extends: class Admin extends User. Потомок может добавить новые методы или переопределить родительские. PHP разрешает наследовать только ОДИН класс. Для нескольких контрактов — implements (интерфейсы), для шаринга методов — use (трейты).',
+                'code_example' => '<?php
+class User
+{
+    public function greet(): string { return \'Привет\'; }
+}
+
+class Admin extends User
+{
+    public function ban(): void { /* ... */ }
+}
+
+$a = new Admin();
+echo $a->greet(); // унаследовано от User
+$a->ban();        // своё',
+                'code_language' => 'php',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.basic_concepts',
+                'difficulty' => 2,
+                'question' => 'Что такое переопределение метода (override)?',
+                'answer' => 'Когда наследник заменяет реализацию метода родителя своей, сохраняя совместимую сигнатуру. Вызов через объект-наследник всегда идёт в его версию. К родительской реализации можно обратиться через parent::method(). С PHP 8.3 есть атрибут #[\\Override] — он не обязателен, но IDE и компилятор подскажут, если в имени опечатка и метода у родителя на самом деле нет.',
+                'code_example' => '<?php
+class Animal
+{
+    public function speak(): string { return \'звук\'; }
+}
+
+class Dog extends Animal
+{
+    #[\\Override]
+    public function speak(): string { return \'гав\'; }
+}
+
+echo (new Dog())->speak(); // гав',
+                'code_language' => 'php',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.basic_concepts',
+                'difficulty' => 1,
+                'question' => 'Зачем нужен интерфейс простыми словами?',
+                'answer' => 'Интерфейс — список методов без реализации. Класс, который его implements, обязан реализовать все эти методы. Это контракт: кто получает Logger $log, знает, что у объекта есть метод log() — независимо от того, FileLogger это или NullLogger. Зачем: 1) подменяемость реализаций (DI, тесты с моками); 2) полиморфизм; 3) разные иерархии могут реализовать один интерфейс.',
+                'code_example' => '<?php
+interface Logger
+{
+    public function log(string $message): void;
+}
+
+class FileLogger implements Logger
+{
+    public function log(string $message): void { /* в файл */ }
+}
+
+class NullLogger implements Logger
+{
+    public function log(string $message): void { /* ничего */ }
+}
+
+function run(Logger $log): void { $log->log(\'work\'); }',
+                'code_language' => 'php',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.basic_concepts',
+                'difficulty' => 1,
+                'question' => 'Что такое typehint (объявление типа) простыми словами?',
+                'answer' => 'Указание ожидаемого типа аргумента, возвращаемого значения или свойства: function save(User $user): void. PHP при вызове проверит, что передан именно объект User (или его наследник/реализация интерфейса) — иначе TypeError. Делает контракты явными, помогает IDE и статанализу, ловит баги раньше.',
+                'code_example' => '<?php
+function greet(string $name): string
+{
+    return \'Привет, \' . $name;
+}
+
+greet(\'Иван\'); // OK
+// greet(123);  // TypeError',
+                'code_language' => 'php',
             ],
         ];
     }

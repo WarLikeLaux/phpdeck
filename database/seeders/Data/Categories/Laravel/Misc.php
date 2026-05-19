@@ -161,24 +161,6 @@ $key = config(\'services.stripe.key\');',
             ],
             [
                 'category' => 'Laravel',
-                'question' => 'Что такое Pipeline pattern в Laravel?',
-                'answer' => 'Pipeline - это паттерн "конвейер": данные проходят через цепочку обработчиков. Laravel использует Pipeline внутри (middleware - это pipeline). Можно использовать самому через Pipeline фасад - удобно для последовательных трансформаций, фильтров, действий.',
-                'code_example' => 'use Illuminate\Pipeline\Pipeline;
-
-$result = app(Pipeline::class)
-    ->send($request)
-    ->through([
-        TrimStrings::class,
-        ConvertEmptyStringsToNull::class,
-        FilterByUser::class,
-    ])
-    ->thenReturn();',
-                'code_language' => 'php',
-                'difficulty' => 4,
-                'topic' => 'laravel.misc',
-            ],
-            [
-                'category' => 'Laravel',
                 'question' => 'Что такое Macroable trait?',
                 'answer' => 'Macroable - это трейт, позволяющий добавлять кастомные методы в классы Laravel runtime через ::macro(). Простыми словами: можно расширять Collection, Str, Request, Response своими методами. Регистрируется в Service Provider boot().',
                 'code_example' => 'use Illuminate\Support\Str;

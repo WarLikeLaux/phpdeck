@@ -190,13 +190,6 @@ CREATE TABLE products (
                 'difficulty' => 3,
                 'topic' => 'database.mysql',
             ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'В чём базовая разница между MySQL и PostgreSQL?',
-                'answer' => 'MySQL — простая, быстрая, проще в настройке, популярная в LAMP-стеке. PostgreSQL — более «правильная» реляционка: строже к стандарту SQL, богаче фичи (JSONB, массивы, оконные функции с давних версий, custom types, partial индексы). Postgres лучше для сложной аналитики и где важна целостность. MySQL — для классических CRUD-приложений. Для большинства задач сейчас рекомендуют Postgres.',
-                'difficulty' => 2,
-                'topic' => 'database.mysql',
-            ],
         ];
     }
 }

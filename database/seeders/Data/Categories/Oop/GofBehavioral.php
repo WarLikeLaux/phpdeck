@@ -395,9 +395,10 @@ class AreaCalculator implements Visitor
             ],
             [
                 'category' => 'ООП',
+                'topic' => 'oop.gof_behavioral',
                 'difficulty' => 4,
                 'question' => 'Strategy в реальном CRUD: как избавиться от switch по типу доставки (СДЭК / Почта России / курьер) в контроллере?',
-                'answer' => 'Канонический senior-пример Strategy - не сортировка, а реальный бизнес-кейс. Антипаттерн: контроллер switch-ит по строке "method" и сам считает стоимость каждого способа - нарушение SRP (контроллер про HTTP, не про калькуляцию), нарушение OCP (новый перевозчик = правка контроллера), невозможность изолированного unit-теста стратегии. Strategy: вынести каждый способ в отдельный класс с общим интерфейсом ShippingCalculator { supports(string $method): bool; calculate(Order $order): Money }, контроллер инжектит коллекцию или резолвер и просто делегирует. В Laravel это нативно через container tagging: $app->tag([CdekCalculator, PostCalculator, ...], "shipping") + $app->tagged("shipping"). Бонусы: новый перевозчик = новый класс, тестируешь каждую стратегию unit-тестом без HTTP, мок в тестах одной строкой; в проде можно динамически включать/выключать стратегии по фиче-флагу.',
+                'answer' => 'Антипаттерн: контроллер switch-ит по строке "method" и сам считает стоимость — нарушение SRP и OCP, новый перевозчик = правка контроллера. Strategy: каждый способ — отдельный класс с общим интерфейсом ShippingCalculator { supports(string $method): bool; calculate(Order $order): Money }. Контроллер инжектит резолвер и делегирует. В Laravel удобно через container tagging: $app->tag([CdekCalculator, PostCalculator], "shipping"), затем $app->tagged("shipping"). Новый перевозчик — новый класс, без правки старого кода. Каждую стратегию легко unit-тестировать без HTTP.',
                 'code_example' => '<?php
 // ❌ Антипаттерн - switch внутри контроллера
 class CheckoutController {

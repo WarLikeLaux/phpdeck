@@ -9,6 +9,20 @@ class Api
         return [
             [
                 'category' => 'Архитектура систем',
+                'question' => 'Что такое API простыми словами?',
+                'answer' => 'API (Application Programming Interface) — договор о том, как одна программа просит что-то у другой. Простыми словами: розетка в стене — ты не знаешь, как устроена электростанция, но знаешь форму вилки и напряжение, и этого хватает. Веб-API обычно работает по HTTP: клиент шлёт запрос на URL с методом GET/POST/..., сервер отвечает JSON-данными и статус-кодом. Бывает публичный (открытый всем), приватный (внутри компании), партнёрский (по договору).',
+                'difficulty' => 1,
+                'topic' => 'system_design.api',
+            ],
+            [
+                'category' => 'Архитектура систем',
+                'question' => 'Из чего состоит HTTP-запрос и ответ?',
+                'answer' => 'Запрос: 1) стартовая строка — метод + URL + версия (GET /users/42 HTTP/1.1), 2) заголовки (Host, Authorization, Content-Type, ...), 3) пустая строка, 4) тело (опциональное, для POST/PUT/PATCH). Ответ: 1) статусная строка (HTTP/1.1 200 OK), 2) заголовки (Content-Type, Cache-Control, Set-Cookie), 3) пустая строка, 4) тело с данными (JSON, HTML и т.п.). Это базовая структура — её видит браузер и любой HTTP-клиент.',
+                'difficulty' => 1,
+                'topic' => 'system_design.api',
+            ],
+            [
+                'category' => 'Архитектура систем',
                 'question' => 'Что такое REST и какие у него принципы?',
                 'answer' => 'REST (Representational State Transfer) - архитектурный стиль API. Принципы: 1) Stateless (сервер не хранит состояние клиента между запросами), 2) Client-Server разделение, 3) Cacheable (ответы можно кэшировать), 4) Uniform Interface (стандартные HTTP методы и URL), 5) Layered System (между клиентом и сервером могут быть прокси/CDN), 6) Code on Demand (опционально). Ресурсы - существительные (/users), действия - HTTP-методы.',
                 'code_example' => 'GET /api/users          - список
@@ -26,26 +40,6 @@ DELETE /api/users/42    - удалить',
                 'question' => 'В чём разница между REST, GraphQL и gRPC?',
                 'answer' => 'REST - HTTP + JSON, ресурсо-ориентированный, клиент берёт всё что отдаёт endpoint, кэшируется штатно через HTTP-кэш по URL. GraphQL - один POST-endpoint, клиент в запросе указывает какие поля нужны (нет over/under-fetching), сильная типизация через SDL; стандартный HTTP-кэш по умолчанию НЕ работает (запросы POST с телом-JSON), но через Persisted Queries / APQ можно превратить в GET /graphql?hash=... и кешировать по hash в CDN/Varnish/browser-cache (см. отдельную карточку про архитектурные проблемы GraphQL). gRPC - HTTP/2 + Protocol Buffers, бинарный, формально 4 типа RPC (unary + три стриминга: server-, client-, bidirectional), контракт через .proto, кодогенерация на 11+ языков. Выбор: REST - публичный API и CRUD, GraphQL - богатый UI с разными view, gRPC - межсервисное общение с низкой задержкой и стримингом.',
                 'difficulty' => 3,
-                'topic' => 'system_design.api',
-            ],
-            [
-                'category' => 'Архитектура систем',
-                'question' => 'Что такое GraphQL и проблема N+1 в нём?',
-                'answer' => 'GraphQL - язык запросов: клиент шлёт один запрос с описанием нужных полей и связей. Сервер возвращает ровно эти данные. Проблема N+1: запрос users { posts { author } } может породить N+1 SQL-запросов (1 на users, 1 на posts, N на authors). Решение: DataLoader - батчит и кэширует загрузки в рамках одного GraphQL-запроса. В Laravel есть пакеты типа lighthouse-php.',
-                'code_example' => 'query {
-  users(first: 10) {
-    id
-    name
-    posts(first: 5) {
-      title
-      comments {
-        body
-      }
-    }
-  }
-}',
-                'code_language' => 'json',
-                'difficulty' => 4,
                 'topic' => 'system_design.api',
             ],
             [

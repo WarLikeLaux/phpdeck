@@ -155,6 +155,63 @@ function stripPrefix(string $s, string $p): string {
                 'difficulty' => 3,
                 'topic' => 'php.strings',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как узнать длину строки в PHP и в чём подвох с UTF-8?',
+                'answer' => 'strlen($s) возвращает длину строки в БАЙТАХ. Для ASCII (только латиница, цифры, базовая пунктуация) это совпадает с числом символов. Для UTF-8 один кириллический символ — 2 байта, эмодзи — 4 байта, поэтому strlen("Привет") даёт 12, а не 6. Чтобы получить число символов в UTF-8, используют mb_strlen($s, "UTF-8") — она вернёт 6. Правило: для байтовой длины (например, для лимита в БД на TEXT-колонку) — strlen, для пользовательских ограничений ("логин не длиннее 20 символов") — mb_strlen.',
+                'code_example' => '<?php
+echo strlen("Hello");    // 5
+echo strlen("Привет");   // 12 (по 2 байта)
+echo mb_strlen("Привет"); // 6',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'php.strings',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как получить подстроку в PHP и что значат отрицательные индексы?',
+                'answer' => 'substr($string, $start, $length) — берёт кусок строки. $start — позиция начала (с 0). Отрицательный $start отсчитывается от конца: substr("hello", -2) даёт "lo". Если $length опущен — до конца строки; отрицательная длина — сколько символов отбросить с конца. ВАЖНО: substr режет ПО БАЙТАМ и ломает UTF-8 символы. Для UTF-8 используйте mb_substr с тем же интерфейсом.',
+                'code_example' => '<?php
+echo substr("hello world", 0, 5);  // "hello"
+echo substr("hello world", 6);     // "world"
+echo substr("hello world", -5);    // "world"
+echo mb_substr("Привет", 0, 3);    // "При"',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'php.strings',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Как изменить регистр строки в PHP?',
+                'answer' => 'strtolower / strtoupper — в нижний/верхний регистр. ucfirst — первую букву в верхний. lcfirst — первую в нижний. ucwords — каждое слово с заглавной. Все эти функции работают только с ASCII; для кириллицы используйте mb_strtolower / mb_strtoupper с указанием кодировки UTF-8.',
+                'code_example' => '<?php
+echo strtolower("HELLO");        // "hello"
+echo strtoupper("hello");        // "HELLO"
+echo ucfirst("hello world");     // "Hello world"
+echo ucwords("hello world");     // "Hello World"
+echo mb_strtoupper("привет");    // "ПРИВЕТ"',
+                'code_language' => 'php',
+                'difficulty' => 1,
+                'topic' => 'php.strings',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое heredoc и nowdoc в PHP?',
+                'answer' => 'Heredoc — синтаксис для многострочной строки с интерполяцией переменных, как в двойных кавычках: $s = <<<EOT\nПривет, $name\nEOT;. Nowdoc — то же, но БЕЗ интерполяции, как одинарные кавычки: $s = <<<\'EOT\'\nПривет, $name (тут $name буквально)\nEOT;. С PHP 7.3 ослаблены требования к закрывающему маркеру: его можно делать с отступом, и сам маркер не обязан стоять в первой колонке.',
+                'code_example' => '<?php
+$name = "Иван";
+$heredoc = <<<TXT
+Здравствуйте, $name!
+Сегодня хорошая погода.
+TXT;
+
+$nowdoc = <<<\'TXT\'
+Тут $name остаётся как есть.
+TXT;',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'php.strings',
+            ],
         ];
     }
 }

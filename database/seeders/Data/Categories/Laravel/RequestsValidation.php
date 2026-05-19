@@ -161,8 +161,24 @@ class StoreOrderRequest extends FormRequest {
             ],
             [
                 'category' => 'Laravel',
-                'question' => 'Что такое Form Request и зачем он нужен?',
-                'answer' => 'Отдельный класс-обёртка над Request с валидацией и авторизацией. Создаётся через php artisan make:request StoreUserRequest. Метод rules() — правила, authorize() — кто может. Type-hint в методе контроллера: function store(StoreUserRequest $req) — валидация запустится автоматически до контроллера.',
+                'question' => 'Как получить уже провалидированные данные из FormRequest?',
+                'answer' => '$request->validated() — массив только тех полей, что прошли валидацию (всё лишнее отброшено). $request->safe()->only([\'name\', \'email\']) — подмножество. $request->safe()->merge([\'user_id\' => auth()->id()]) — добавить вычисленные поля. Никогда не передавайте сырой $request->all() в Model::create() — это путь к mass-assignment-уязвимости.',
+                'code_example' => 'public function store(StoreUserRequest $request) {
+    // ВСЕ провалидированные поля
+    $data = $request->validated();
+
+    // Только нужные
+    $data = $request->safe()->only([\'name\', \'email\']);
+
+    // С добавлением вычисленных полей
+    $user = User::create([
+        ...$request->validated(),
+        \'created_by\' => auth()->id(),
+    ]);
+
+    return redirect()->route(\'users.show\', $user);
+}',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.requests_validation',
             ],

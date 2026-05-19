@@ -514,29 +514,34 @@ foreach ($ref->getMethods() as $method) {
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Как реализованы enum в PHP 8.1 и чем backed-enum отличается от pure?',
-                'answer' => 'Enum - это специальный объектный тип; кейсы - синглтоны, сравнение по === безопасно. Pure enum просто перечисление; backed enum имеет скалярный backing-тип (int|string), что даёт ::from()/::tryFrom() и автосериализацию. Enum может реализовывать интерфейсы, иметь методы и константы, но не имеет состояния (свойств). cases() возвращает все варианты в порядке объявления.',
-                'code_example' => '<?php
-enum Status: string {
-    case Active = "active";
-    case Banned = "banned";
-    public function label(): string {
-        return match($this) {
-            self::Active => "Активен",
-            self::Banned => "Забанен",
-        };
-    }
+                'question' => 'Что такое constructor property promotion в PHP 8 простыми словами?',
+                'answer' => 'Краткий синтаксис конструктора, который одной строкой объявляет свойство, принимает параметр и присваивает его. До PHP 8 для трёх свойств приходилось писать три объявления, три параметра и три строки $this->x = $x. С PHP 8 пишут public function __construct(public string $name, private int $age) {} — модификатор видимости в сигнатуре превращает параметр в свойство класса.',
+                'code_example' => 'class User {
+    public function __construct(
+        public string $name,
+        public int $age,
+    ) {}
 }
-Status::from("active");',
+$u = new User("Иван", 30);
+echo $u->name; // "Иван"',
                 'code_language' => 'php',
-                'difficulty' => 3,
+                'difficulty' => 2,
                 'topic' => 'php.php8_features',
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Что такое match-выражение и чем оно лучше switch?',
-                'answer' => 'match сравнивает строго (===), возвращает значение, требует исчерпывающего покрытия (бросает UnhandledMatchError), не имеет fallthrough - каждая ветка завершается неявно. switch использует == и требует break, легко поймать баг с числовым строковым ключом. match - выражение, поэтому удобно присваивать в переменную или возвращать.',
-                'difficulty' => 3,
+                'question' => 'Зачем нужен nullsafe-оператор ?-> и как он работает?',
+                'answer' => 'Оператор ?-> из PHP 8.0 безопасно обращается к свойству или методу через цепочку, в которой что-то может быть null. $user?->profile?->avatar->url вернёт null, если $user или $user->profile равны null, и не выбросит Error. Без него приходилось писать вложенные if или каскад из ??. На запись (?->prop = ...) и на статические вызовы (?::method) не работает.',
+                'code_example' => '// Старый стиль
+$avatar = null;
+if ($user !== null && $user->profile !== null) {
+    $avatar = $user->profile->avatar;
+}
+
+// PHP 8.0+
+$avatar = $user?->profile?->avatar;',
+                'code_language' => 'php',
+                'difficulty' => 2,
                 'topic' => 'php.php8_features',
             ],
             [

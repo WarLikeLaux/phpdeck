@@ -78,7 +78,7 @@ class WrongDeferredProvider extends ServiceProvider implements DeferrableProvide
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Service Provider простыми словами?',
-                'answer' => 'Класс, описывающий, как фреймворку поднять и связать сервисы при старте приложения. Лежит в app/Providers, регистрируется в config/app.php (или bootstrap/providers.php в Laravel 11). Стандартные: AppServiceProvider, AuthServiceProvider, EventServiceProvider, RouteServiceProvider — каждый отвечает за свою часть инфраструктуры.',
+                'answer' => 'Класс, описывающий, как фреймворку поднять и связать сервисы при старте приложения. Лежит в app/Providers, регистрируется в bootstrap/providers.php (Laravel 11+) или в config/app.php (Laravel 10 и старше). В Laravel 11 дефолтный скаффолд оставил только AppServiceProvider — задачи Auth/Route/Event/BroadcastServiceProvider перенесены в bootstrap/app.php и атрибуты/auto-discovery. Их можно вернуть руками, если нужно: php artisan make:provider FooServiceProvider.',
                 'difficulty' => 1,
                 'topic' => 'laravel.service_providers',
             ],

@@ -9,13 +9,6 @@ class Postgresql
         return [
             [
                 'category' => 'Базы данных',
-                'question' => 'Чем PostgreSQL отличается от MySQL?',
-                'answer' => 'PostgreSQL - объектно-реляционная СУБД с упором на стандарт SQL и расширяемость. Преимущества: продвинутые типы (jsonb, arrays, range, hstore, geo), CTE (включая рекурсивные), оконные функции с самого начала, partial/expression индексы, MVCC. MySQL - проще, исторически быстрее на простых OLTP, но в InnoDB меньше возможностей. PostgreSQL чаще выбирают для сложных приложений, MySQL - для веб (LAMP).',
-                'difficulty' => 3,
-                'topic' => 'database.postgresql',
-            ],
-            [
-                'category' => 'Базы данных',
                 'question' => 'jsonb vs json в PostgreSQL?',
                 'answer' => 'json - хранит JSON как текст, сохраняя пробелы и порядок ключей. Парсится при каждом обращении. jsonb - бинарный формат, преобразуется при вставке. Минус: чуть медленнее запись, есть преобразование. Плюсы: быстрее операции, поддержка GIN-индекса, операторы @>, ?, #>>. На практике: используй jsonb всегда, если не нужно сохранить сырое представление.',
                 'code_example' => 'CREATE TABLE events (id BIGSERIAL PRIMARY KEY, data JSONB);

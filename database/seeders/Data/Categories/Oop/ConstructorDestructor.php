@@ -83,6 +83,51 @@ class FileLogger
                 'difficulty' => 2,
                 'topic' => 'oop.constructor_destructor',
             ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.constructor_destructor',
+                'difficulty' => 2,
+                'question' => 'Что такое readonly-свойство (PHP 8.1)?',
+                'answer' => 'Свойство, которое можно записать ТОЛЬКО один раз — в конструкторе того же класса. После этого любая попытка записи бросит Error. Идеально для иммутабельных объектов (Value Objects, DTO): гарантирует, что значение не изменится после создания. С PHP 8.2 целый класс можно объявить readonly — тогда readonly применяется ко всем его свойствам.',
+                'code_example' => '<?php
+final class Point
+{
+    public function __construct(
+        public readonly float $x,
+        public readonly float $y,
+    ) {}
+}
+
+$p = new Point(1.0, 2.0);
+// $p->x = 5.0; // Error: Cannot modify readonly property',
+                'code_language' => 'php',
+            ],
+            [
+                'category' => 'ООП',
+                'topic' => 'oop.constructor_destructor',
+                'difficulty' => 2,
+                'question' => 'Можно ли в PHP объявить несколько конструкторов (перегрузка)?',
+                'answer' => 'Нет, в одном классе может быть только один метод __construct. Имитируют разные способы создания через статические фабричные методы (named constructors): Money::fromCents(100), Money::fromDollars(1.5). Это и понятнее (название говорит о смысле), и обходит ограничение PHP на перегрузку методов.',
+                'code_example' => '<?php
+final class Money
+{
+    private function __construct(public int $cents) {}
+
+    public static function fromCents(int $cents): self
+    {
+        return new self($cents);
+    }
+
+    public static function fromDollars(float $dollars): self
+    {
+        return new self((int) round($dollars * 100));
+    }
+}
+
+$a = Money::fromCents(150);
+$b = Money::fromDollars(1.5);',
+                'code_language' => 'php',
+            ],
         ];
     }
 }

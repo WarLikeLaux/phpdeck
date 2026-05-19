@@ -85,6 +85,20 @@ $user = new User(); // автоматически подгрузится фай�
                 'difficulty' => 1,
                 'topic' => 'php.composer_autoload',
             ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что такое автозагрузчик classmap в Composer и когда его использовать?',
+                'answer' => 'Кроме psr-4 в composer.json есть раздел autoload.classmap — там перечисляют пути (директории или файлы), и Composer при composer dump-autoload сканирует их, строит карту «полное имя класса → файл». Применяют для legacy-кода, который не следует PSR-4 (например, старые библиотеки с подчёркиваниями в именах), а также для прод-оптимизации: composer dump-autoload -o (или --classmap-authoritative) превращает все psr-4-правила в один classmap и убирает поиск по файловой системе на каждый new — типичное ускорение autoload.',
+                'difficulty' => 2,
+                'topic' => 'php.composer_autoload',
+            ],
+            [
+                'category' => 'PHP',
+                'question' => 'Что делает раздел autoload.files в composer.json?',
+                'answer' => 'Если в composer.json есть autoload.files со списком файлов, Composer автоматически подключит их в каждом запросе при подключении vendor/autoload.php. Это нужно для глобальных функций (helpers), которые нельзя автозагрузить по имени класса. Так работают, например, хелперы Laravel или функции из пакета symfony/polyfill. Главное правило — там должны лежать ТОЛЬКО объявления функций/констант, никакой исполняемой логики со side-effects.',
+                'difficulty' => 2,
+                'topic' => 'php.composer_autoload',
+            ],
         ];
     }
 }

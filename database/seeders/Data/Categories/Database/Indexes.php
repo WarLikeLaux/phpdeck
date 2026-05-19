@@ -210,41 +210,6 @@ CREATE INDEX idx_events_created ON events (created_at);
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'Чем B-tree индекс отличается от Hash и от GIN, и в каких случаях выбирать GIN?',
-                'answer' => 'B-tree - упорядоченное дерево, поддерживает =, <, >, BETWEEN, ORDER BY, LIKE \'prefix%\'. Hash - только равенство, в Postgres с PG10+ wal-логируется и пригоден для интенсивных = поиска. GIN - обратный индекс: ключ → набор строк; идеален для tsvector (full-text), jsonb (?, @>), массивов и trigram (pg_trgm) для LIKE \'%inside%\'. GIN строится медленнее и больше на диске, но запросы по "содержит" выигрывают на порядки.',
-                'code_example' => '-- быстрый поиск по вхождению
-CREATE INDEX idx_products_name_trgm ON products USING gin (name gin_trgm_ops);
-SELECT * FROM products WHERE name ILIKE \'%phone%\';
-
--- jsonb-фильтр
-CREATE INDEX idx_events_payload ON events USING gin (payload);
-SELECT * FROM events WHERE payload @> \'{"type":"click"}\';',
-                'code_language' => 'sql',
-                'difficulty' => 4,
-                'topic' => 'database.indexes',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое covering index и когда он даёт большой выигрыш?',
-                'answer' => 'Covering index содержит все колонки, нужные запросу, либо в ключе, либо в INCLUDE (Postgres 11+) - оптимизатор берёт данные прямо из индекса без обращения к heap (Index Only Scan). Это убирает random IO на табличные страницы для широких таблиц. ВАЖНАЯ специфика InnoDB: каждый secondary index АВТОМАТИЧЕСКИ и неявно содержит Primary Key в листовых узлах в качестве указателя на кластерный индекс (потому что таблица в InnoDB - это и есть B-tree по PK). Поэтому индекс по (status) под капотом фактически (status, id), и SELECT id FROM orders WHERE status="paid" - это Index Only Scan без всяких дополнительных усилий, ничего вручную не добавляешь. Добавлять PK явно не надо - это будет ошибкой. Этим InnoDB отличается от Postgres heap, где для покрытия нужно явно перечислять колонки в ключе или в INCLUDE. Когда выигрыш максимален: широкие таблицы с пустыми/неиспользуемыми колонками в SELECT, "узкие" запросы по индексу + сортировка/агрегация по индексным колонкам.',
-                'code_example' => 'CREATE INDEX idx_orders_status_created
-ON orders (status, created_at) INCLUDE (total);
--- запрос обслуживается Index Only Scan
-SELECT total FROM orders
-WHERE status = \'paid\' AND created_at > NOW() - INTERVAL \'1 day\';',
-                'code_language' => 'sql',
-                'difficulty' => 4,
-                'topic' => 'database.indexes',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Что такое индекс простыми словами (аналогия с книгой)?',
-                'answer' => 'Как алфавитный указатель в конце книги: вместо чтения всей книги, чтобы найти упоминание «PHP», ты идёшь к индексу и смотришь страницы. БД делает то же: вместо чтения всех строк таблицы — идёт по индексу к нужным. Цена: место на диске + замедление INSERT/UPDATE/DELETE (нужно обновлять и индекс).',
-                'difficulty' => 1,
-                'topic' => 'database.indexes',
-            ],
-            [
-                'category' => 'Базы данных',
                 'question' => 'На какие колонки стоит ставить индекс?',
                 'answer' => 'Те, что часто встречаются в WHERE, JOIN, ORDER BY. На foreign keys (часто JOIN-ят). На колонки с высокой селективностью (много уникальных значений: email, user_id). НЕ стоит на колонки с двумя-тремя значениями (boolean, status) — индекс не поможет.',
                 'difficulty' => 2,
@@ -252,8 +217,14 @@ WHERE status = \'paid\' AND created_at > NOW() - INTERVAL \'1 day\';',
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'Какие основные виды индексов простыми словами?',
-                'answer' => 'B-tree (по умолчанию) — диапазоны и сортировка, для большинства случаев. Hash — только точное равенство, очень быстро (Postgres, Memory engine MySQL). UNIQUE — гарантирует уникальность + ускоряет поиск. Полнотекстовый (FULLTEXT, GIN) — для поиска по словам внутри текста. Составной — на несколько колонок (важен порядок).',
+                'question' => 'Что такое UNIQUE INDEX и чем он отличается от обычного индекса?',
+                'answer' => 'UNIQUE INDEX делает то же самое, что и обычный индекс (ускоряет поиск по столбцу), но дополнительно запрещает вставлять дубли значений — попытка вставки или обновления, ведущая к повтору, упадёт с ошибкой. Под UNIQUE constraint в реляционных БД создаётся именно такой индекс. По одному столбцу пишут UNIQUE (email), по нескольким — составной UNIQUE (user_id, team_id), который запрещает только повтор пары целиком.',
+                'code_example' => 'CREATE UNIQUE INDEX idx_users_email ON users(email);
+
+-- Cоставной uniq: один пользователь = одна запись в команду
+CREATE UNIQUE INDEX idx_memberships_user_team
+  ON memberships(user_id, team_id);',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.indexes',
             ],

@@ -98,7 +98,7 @@ class OrderShipped implements ShouldBroadcast {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое listener в Laravel?',
-                'answer' => 'Класс с методом handle(), который реагирует на событие: получает объект события и что-то делает. На один event можно повесить несколько listeners. Регистрируются в EventServiceProvider (старый стиль) или через автоматическое discover (новый).',
+                'answer' => 'Класс с методом handle($event), который реагирует на событие: получает объект события и что-то делает. На один event можно повесить несколько listeners. В Laravel 11+ Laravel сам находит подписки по type-hint в handle() (event discovery) — отдельный $listen массив больше не нужен. В Laravel 10 и старше регистрация шла в app/Providers/EventServiceProvider.php в свойстве $listen. Также всегда работает явная Event::listen(SomeEvent::class, SomeListener::class) в AppServiceProvider::boot().',
                 'difficulty' => 2,
                 'topic' => 'laravel.events_listeners',
             ],

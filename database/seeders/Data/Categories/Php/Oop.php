@@ -676,9 +676,22 @@ class PermissionCacheGood
             ],
             [
                 'category' => 'PHP',
-                'question' => 'Как работает сборщик мусора в PHP?',
-                'answer' => 'Основной механизм — reference counting: у каждой переменной счётчик ссылок (refcount). Когда refcount = 0 — память освобождается сразу. Проблема: циклические ссылки (объект A ссылается на B, B на A) — refcount никогда не упадёт до 0. Для этого с PHP 5.3 есть cycle collector — периодически сканирует zval-ы и находит «потерянные» циклы. Можно запустить вручную gc_collect_cycles(), включить/выключить gc_enable()/gc_disable(). В типовом коротком HTTP-запросе цикл-коллектор почти не работает — память освобождается в конце скрипта.',
-                'difficulty' => 3,
+                'question' => 'Что такое инкапсуляция в ООП простыми словами?',
+                'answer' => 'Инкапсуляция — это принцип «спрятать внутренности класса и оставить наружу только нужный интерфейс». Свойства делают private (или protected), а доступ к ним организуют через публичные методы (геттеры/сеттеры) или специальные методы поведения (deposit/withdraw у Account). Это позволяет менять внутреннее устройство класса, не ломая код, который им пользуется, и поддерживать инварианты (например, баланс не может стать отрицательным) в одном месте.',
+                'code_example' => 'class BankAccount {
+    private int $balance = 0;
+
+    public function deposit(int $amount): void {
+        if ($amount <= 0) throw new InvalidArgumentException();
+        $this->balance += $amount;
+    }
+
+    public function getBalance(): int {
+        return $this->balance;
+    }
+}',
+                'code_language' => 'php',
+                'difficulty' => 2,
                 'topic' => 'php.oop',
             ],
             [
