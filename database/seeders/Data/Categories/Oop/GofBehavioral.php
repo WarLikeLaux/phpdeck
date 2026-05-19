@@ -86,7 +86,7 @@ class CommandQueue
                 'topic' => 'oop.gof_behavioral',
                 'difficulty' => 3,
                 'question' => 'Паттерн Iterator',
-                'answer' => 'Iterator (итератор) даёт способ последовательного доступа к элементам коллекции, не раскрывая её внутреннего устройства. В PHP есть встроенные интерфейсы Iterator и IteratorAggregate. Реализация позволяет использовать объект в foreach. Также есть генераторы (yield) - удобный способ создания итераторов.',
+                'answer' => 'Iterator даёт способ последовательного доступа к элементам коллекции, не раскрывая её внутреннего устройства (массив? связный список? дерево? — клиенту всё равно). В PHP два встроенных интерфейса: 1) Iterator — пять методов (current, key, next, rewind, valid), полный контроль курсора. 2) IteratorAggregate — один метод getIterator() возвращает Iterator. Реализация любого из них позволяет использовать объект в foreach. Современная альтернатива — генераторы (yield): возвращают Generator, который сам реализует Iterator. Удобно для ленивой выдачи (читать строки большого файла, не загружая весь файл в память).',
                 'code_example' => '<?php
 class NumberCollection implements \IteratorAggregate
 {
@@ -466,9 +466,54 @@ class CheckoutController {
             [
                 'category' => 'ООП',
                 'question' => 'Что такое SplObserver и SplSubject в стандартной библиотеке PHP?',
-                'answer' => 'Это встроенные в SPL интерфейсы, реализующие классический паттерн Observer. SplSubject объявляет attach, detach и notify, а SplObserver — единственный метод update, в который субъект передаёт сам себя. Реализовав эти интерфейсы, можно собрать pub/sub без своих базовых классов и быть совместимым с кодом, который ждёт именно SPL-контракт. На практике в современных приложениях чаще берут event dispatcher из фреймворка, а SplObserver остаётся скорее академической демонстрацией.',
+                'answer' => 'Встроенные в SPL интерфейсы, реализующие классический паттерн Observer без своих базовых классов. SplSubject объявляет attach(SplObserver), detach(SplObserver) и notify(). SplObserver — единственный метод update(SplSubject), куда субъект передаёт сам себя, а наблюдатель сам выясняет, что нужно из его состояния. Удобно для совместимости с кодом, который ждёт именно SPL-контракт. На практике в Laravel/Symfony берут полноценный event dispatcher с типизированными событиями (отдельные классы Event, listener получает конкретный тип, а не «субъект»), а SplObserver — скорее академическая демонстрация и иногда встречается в legacy.',
                 'difficulty' => 3,
                 'topic' => 'oop.gof_behavioral',
+                'code_example' => '<?php
+final class Order implements \SplSubject
+{
+    private \SplObjectStorage $observers;
+    public function __construct(public string $status = \'new\')
+    {
+        $this->observers = new \SplObjectStorage();
+    }
+
+    public function attach(\SplObserver $o): void { $this->observers->attach($o); }
+    public function detach(\SplObserver $o): void { $this->observers->detach($o); }
+
+    public function notify(): void
+    {
+        foreach ($this->observers as $o) {
+            $o->update($this); // передаём себя
+        }
+    }
+
+    public function pay(): void
+    {
+        $this->status = \'paid\';
+        $this->notify();
+    }
+}
+
+final class EmailNotifier implements \SplObserver
+{
+    public function update(\SplSubject $subject): void
+    {
+        // достаём состояние из субъекта - типа конкретного нет
+        if ($subject instanceof Order && $subject->status === \'paid\') {
+            echo "Order paid - sending email\n";
+        }
+    }
+}
+
+$order = new Order();
+$order->attach(new EmailNotifier());
+$order->pay(); // notify → EmailNotifier::update
+
+// В Laravel вместо этого - типизированные события:
+// event(new OrderPaid($order));
+// class SendReceipt { public function handle(OrderPaid $event): void {} }',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

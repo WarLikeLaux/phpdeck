@@ -108,6 +108,22 @@ $mock = new class extends BaseRepo implements Storable {
                 'category' => 'PHP',
                 'question' => 'Что такое first-class callable syntax (PHP 8.1) и зачем он нужен?',
                 'answer' => 'Синтаксис $fn = strlen(...) или $obj->method(...) создаёт Closure из функции/метода без строкового имени. По сравнению со старым [$obj, "method"] и "strlen" - типобезопасно, поддерживает рефакторинг IDE, и, что важно, ловит ошибки опечаток на этапе компиляции. Удобно для array_map, pipeline и DI-резолверов.',
+                'code_example' => '<?php
+// ❌ Старые формы — строки, IDE не видит, опечатки в рантайме
+$fn = "strlen";
+$fn = [$obj, "method"];
+$fn = Closure::fromCallable("strlen");
+
+// ✅ PHP 8.1+ first-class callable syntax — Closure-объект
+$len   = strlen(...);
+$save  = $repo->save(...);
+$build = User::fromArray(...);   // статический метод
+$factor = fn(int $x) => $x * 2;
+
+// В array_map — короче и типобезопасно
+$lengths = array_map(strlen(...), ["a", "bb", "ccc"]);
+// [1, 2, 3]',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.closures',
             ],

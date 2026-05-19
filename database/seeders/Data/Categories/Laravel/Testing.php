@@ -253,7 +253,45 @@ class TokenTest extends TestCase
             [
                 'category' => 'Laravel',
                 'question' => 'Как замокать фасад в тесте и почему это вообще возможно?',
-                'answer' => 'Фасад — это прокси к биндингу в контейнере, и у его базового класса есть метод swap/shouldReceive, подменяющий реальный объект Mockery-моком. Cache::shouldReceive("get")->andReturn(...) ставит мок в контейнер на ключе фасада, и любой код, дергающий Cache::get внутри запроса, попадёт в мок. После теста фасады очищаются автоматически в TestCase.',
+                'answer' => 'Фасад - это прокси к биндингу в Service Container: статика Cache::get() через __callStatic уходит в Container::make("cache") и зовёт ->get() на реальном объекте. У базового класса Facade есть методы swap($mock) / shouldReceive(...) / expects(...), которые подменяют биндинг в контейнере на Mockery-мок. shouldReceive создаёт stub - "если позвали, верни значение"; expects - mock с явным ожиданием ("должны позвать ровно один раз"). После теста PHPUnit/Pest TestCase автоматически вызывает Facade::clearResolvedInstances(), поэтому моки не утекают между тестами. Альтернатива - подмена через $this->instance() (если зависимость пробрасывается через DI, а не через фасад). Партиал-мок: $this->partialMock(Service::class)->shouldReceive("only-this-method")->andReturn(...) - остальные методы работают как настоящие.',
+                'code_example' => '<?php
+public function test_cache_is_used(): void
+{
+    // STUB - просто вернуть значение
+    Cache::shouldReceive("get")
+        ->with("user:42")
+        ->andReturn(["id" => 42, "name" => "Tom"]);
+
+    $response = $this->getJson("/api/users/42");
+    $response->assertOk();
+}
+
+public function test_cache_is_written_exactly_once(): void
+{
+    // MOCK - проверка факта вызова
+    Cache::shouldReceive("put")
+        ->once()
+        ->with("user:42", Mockery::any(), 3600);
+
+    $this->postJson("/api/users/42/refresh")->assertOk();
+}
+
+public function test_partial_mock(): void
+{
+    // только нужный метод подменили, остальное - настоящий
+    $this->partialMock(PaymentService::class, function ($mock) {
+        $mock->shouldReceive("charge")->andReturn(new PaidResult);
+    });
+
+    $this->post("/checkout")->assertRedirect("/thanks");
+}
+
+public function test_via_instance(): void
+{
+    // Альтернатива - подмена в контейнере (для DI, не фасадов)
+    $this->instance(Mailer::class, new ArrayMailer);
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.testing',
             ],
@@ -293,7 +331,32 @@ class LoginTest extends DuskTestCase {
             [
                 'category' => 'Laravel',
                 'question' => 'Сравните Laravel Telescope и Laravel Pulse.',
-                'answer' => 'Telescope — детальный отладочный инструмент для dev/staging: показывает каждый отдельный запрос, исключение, SQL, job, mail, cache-операцию, почти как трассировка. Pulse — лёгкий мониторинг для продакшена в реальном времени: агрегаты по медленным маршрутам, медленным запросам, нагрузке серверов, активным пользователям. Telescope на проде дорог по записи и месту, Pulse наоборот спроектирован для prod.',
+                'answer' => 'Это разные инструменты под разные задачи. Telescope - детальный отладочный профайлер для dev/staging: для КАЖДОГО запроса пишет в БД отдельные записи по каждому SQL-запросу, исключению, job, mail, cache-операции, view-рендеру - почти распределённая трассировка. Полезно при разработке и расследовании incident-а на staging, но генерирует тонну записей: telescope_entries раздувается за дни, на проде даёт значимый overhead (доп. INSERT-ы на каждое событие). Pulse - агрегированный мониторинг для продакшена в реальном времени: не пишет отдельную строку на каждое событие, а собирает агрегаты в Redis/БД (top slow routes за последний час, slow queries, активные пользователи, нагрузка серверов через php artisan pulse:check на cron, cache hit rate, очереди). Дёшево по записи и месту, дашборд показывает агрегаты, а не построчные трассы. Правило: Telescope - локально и на staging для отладки, Pulse - на проде для real-time мониторинга. Часто стоят оба, но Telescope гасят через ENABLED-флаг.',
+                'code_example' => '# Telescope - dev only
+composer require laravel/telescope --dev
+php artisan telescope:install
+php artisan migrate
+
+# .env
+TELESCOPE_ENABLED=true       # dev/staging
+# TELESCOPE_ENABLED=false    # production (отключить, чтоб не писало)
+
+# или гейтинг через TelescopeServiceProvider::gate()
+Gate::define("viewTelescope", fn ($user) => $user?->is_admin);
+
+# В schedule - удалять старые записи
+Schedule::command("telescope:prune --hours=48")->daily();
+
+# Pulse - production
+composer require laravel/pulse
+php artisan vendor:publish --tag=pulse-config
+php artisan migrate
+
+# pulse:check периодически собирает метрики
+# в schedule:
+Schedule::command("pulse:check")->everyMinute();
+Schedule::command("pulse:clean --before=\\"7 days ago\\"")->daily();',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.testing',
             ],
@@ -307,7 +370,29 @@ class LoginTest extends DuskTestCase {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Debugbar и стоит ли использовать его в продакшене?',
-                'answer' => 'Debugbar (barryvdh/laravel-debugbar) — community-пакет, выводящий панель внизу страницы со временем запросов, SQL, route-инфой, view-данными, событиями. Используется в локальной разработке: его подключают через app.debug=true и APP_ENV=local. На продакшене включать нельзя — он замедляет приложение, раскрывает структуру и может выдать SQL и переменные окружения наружу.',
+                'answer' => 'Debugbar (barryvdh/laravel-debugbar) - community-пакет, выводящий toolbar внизу страницы с временем выполнения, SQL-запросами и их EXPLAIN, route-инфой, view-данными, событиями, кешем, переменными окружения, dumper-ами. Очень удобен для отладки N+1 (видно дублирующиеся запросы) и понимания, какие данные передаются во view. Включать ТОЛЬКО локально - dev-зависимость в composer.json и app.debug=true в .env. На продакшене категорически нельзя: 1) Замедляет каждый запрос (собирает данные о каждом SQL/event/view). 2) Раздувает HTML ответа на десятки КБ. 3) Раскрывает структуру приложения: SQL-запросы, имена таблиц, пути файлов - готовая разведка для атакующего. 4) Может выдать значения переменных окружения наружу (включая ключи). По умолчанию активируется только если APP_DEBUG=true; на проде APP_DEBUG обязан быть false (это отдельная боль - debug-режим прода = утечка stack-trace через Whoops). Безопасная альтернатива для прода - Laravel Pulse (агрегаты, без построчного дампа).',
+                'code_example' => '# Установка - ТОЛЬКО как dev-зависимость
+composer require barryvdh/laravel-debugbar --dev
+
+# .env
+APP_ENV=local
+APP_DEBUG=true        # toolbar появится только при true
+DEBUGBAR_ENABLED=true # альтернатива - явный флаг
+
+# .env.production - оба должны быть false
+APP_ENV=production
+APP_DEBUG=false
+# Debugbar не загрузится, так как стоит --dev (нет в composer install --no-dev)
+
+# Дамп с подсветкой прямо в toolbar
+debugbar()->info("user", $user);
+debugbar()->error("Bad thing");
+debugbar()->addMeasure("db", $start, microtime(true));
+
+# Игнорировать AJAX-запросы (по умолчанию пишет и их)
+// config/debugbar.php
+"capture_ajax" => false,',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.testing',
             ],

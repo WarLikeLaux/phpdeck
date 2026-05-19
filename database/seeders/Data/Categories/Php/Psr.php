@@ -32,6 +32,22 @@ class Psr
                 'category' => 'PHP',
                 'question' => 'Что описывает PSR-3 и зачем нужен LoggerInterface?',
                 'answer' => 'PSR-3 — общий интерфейс для библиотек логирования, определяющий LoggerInterface с восемью уровнями (debug, info, notice, warning, error, critical, alert, emergency) и методом log(). Он позволяет приложениям и библиотекам зависеть от абстракции, а не от конкретной реализации вроде Monolog: достаточно принять Psr\\Log\\LoggerInterface в конструкторе, и пользователь подставит любой совместимый логгер. Также стандартизирован формат плейсхолдеров в сообщениях через фигурные скобки.',
+                'code_example' => '<?php
+use Psr\\Log\\LoggerInterface;
+
+class UserService
+{
+    public function __construct(private LoggerInterface $logger) {}
+
+    public function register(string $email): void
+    {
+        // {placeholder} — стандарт PSR-3
+        $this->logger->info("User {email} registered", ["email" => $email]);
+    }
+}
+
+// Подойдёт любой PSR-3: Monolog, Laravel Log, Symfony, NullLogger',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.psr',
             ],
@@ -39,6 +55,18 @@ class Psr
                 'category' => 'PHP',
                 'question' => 'Что описывает PSR-7 и почему его объекты неизменяемы?',
                 'answer' => 'PSR-7 определяет общие интерфейсы для HTTP-сообщений: запросов, ответов, URI, потоков и загруженных файлов. Все объекты иммутабельны — методы вроде withHeader() возвращают новый экземпляр вместо изменения текущего, что делает их безопасными в многопоточном или middleware-окружении и упрощает рассуждения о состоянии запроса. Это даёт интероперабельность между фреймворками: один HTTP-клиент или middleware-стек работает поверх любого PSR-7 совместимого ядра.',
+                'code_example' => '<?php
+use Psr\\Http\\Message\\ResponseInterface;
+
+function addCors(ResponseInterface $response): ResponseInterface
+{
+    // НЕ мутируем — каждый with* возвращает новый объект
+    return $response
+        ->withHeader("Access-Control-Allow-Origin", "*")
+        ->withHeader("Access-Control-Allow-Methods", "GET, POST")
+        ->withStatus(200);
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.psr',
             ],
@@ -46,6 +74,23 @@ class Psr
                 'category' => 'PHP',
                 'question' => 'Что описывает PSR-15 и как он связан с PSR-7?',
                 'answer' => 'PSR-15 стандартизирует серверные HTTP-компоненты и определяет два интерфейса: RequestHandlerInterface и MiddlewareInterface. Middleware принимает PSR-7 запрос и следующий обработчик, а возвращает PSR-7 ответ, что позволяет выстраивать конвейер слоёв (аутентификация, логирование, CORS, кэш) поверх любой совместимой реализации. Стандарт целиком построен на PSR-7 и заменил старую модель double-pass middleware более явной и типобезопасной single-pass моделью.',
+                'code_example' => '<?php
+use Psr\\Http\\Message\\{ServerRequestInterface, ResponseInterface};
+use Psr\\Http\\Server\\{MiddlewareInterface, RequestHandlerInterface};
+
+class AuthMiddleware implements MiddlewareInterface
+{
+    public function process(
+        ServerRequestInterface $request,
+        RequestHandlerInterface $handler,
+    ): ResponseInterface {
+        if (!$request->getHeaderLine("Authorization")) {
+            return new Response(401);
+        }
+        return $handler->handle($request); // вперёд по цепочке
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.psr',
             ],

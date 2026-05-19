@@ -411,20 +411,69 @@ class Mailer2
                 'topic' => 'oop.misc',
                 'difficulty' => 3,
                 'question' => 'Что такое паттерн Specification?',
-                'answer' => 'Условие выборки или проверки оформлено как объект с методом isSatisfiedBy($entity). Спецификации можно комбинировать через AndSpec, OrSpec, NotSpec. Зачем: избавиться от десятков методов вроде findActiveUsersOlderThan() в репозитории — клиент сам собирает нужное условие из кирпичиков. В Eloquent похожая роль у query scopes.',
+                'answer' => 'Бизнес-правило отбора или проверки оформлено как объект с методом isSatisfiedBy($entity): bool. Спецификации комбинируются через AndSpec, OrSpec, NotSpec — получается мини-DSL для условий. Зачем: избавиться от взрыва методов вроде findActiveUsersOlderThan18WithSubscription() в репозитории — клиент сам собирает условие из кирпичиков и передаёт его в репо. Применения: валидация (правило подходит ли заказ под скидку), выборка из коллекции в памяти (filter), формирование query (продвинутые версии умеют переводиться в SQL — toQuery(Builder)). В Eloquent похожая роль у query scopes, но Specification переносим между in-memory и persistent storage. Не злоупотреблять — для одного-двух простых условий метод репо проще.',
                 'code_example' => '<?php
-interface Spec { public function isSatisfiedBy(User $u): bool; }
-
-class IsActive implements Spec {
-    public function isSatisfiedBy(User $u): bool { return $u->bannedAt === null; }
+interface Spec
+{
+    public function isSatisfiedBy(User $u): bool;
 }
 
-class AndSpec implements Spec {
-    public function __construct(private Spec $a, private Spec $b) {}
-    public function isSatisfiedBy(User $u): bool {
-        return $this->a->isSatisfiedBy($u) && $this->b->isSatisfiedBy($u);
+final class IsActive implements Spec
+{
+    public function isSatisfiedBy(User $u): bool
+    {
+        return $u->bannedAt === null;
     }
-}',
+}
+
+final class OlderThan implements Spec
+{
+    public function __construct(private int $age) {}
+    public function isSatisfiedBy(User $u): bool
+    {
+        return $u->age >= $this->age;
+    }
+}
+
+final class HasSubscription implements Spec
+{
+    public function isSatisfiedBy(User $u): bool
+    {
+        return $u->subscription !== null;
+    }
+}
+
+// Комбинаторы
+final class AndSpec implements Spec
+{
+    /** @param Spec[] $specs */
+    public function __construct(private array $specs) {}
+    public function isSatisfiedBy(User $u): bool
+    {
+        foreach ($this->specs as $s) {
+            if (! $s->isSatisfiedBy($u)) return false;
+        }
+        return true;
+    }
+}
+
+final class NotSpec implements Spec
+{
+    public function __construct(private Spec $inner) {}
+    public function isSatisfiedBy(User $u): bool
+    {
+        return ! $this->inner->isSatisfiedBy($u);
+    }
+}
+
+// Клиент сам собирает условие из кирпичиков
+$canSeeDiscount = new AndSpec([
+    new IsActive(),
+    new OlderThan(18),
+    new HasSubscription(),
+]);
+
+$eligible = array_filter($users, fn(User $u) => $canSeeDiscount->isSatisfiedBy($u));',
                 'code_language' => 'php',
             ],
             [
@@ -490,6 +539,7 @@ class OrderService
         // никаких проверок - типы это уже гарантируют
     }
 }',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -551,9 +601,49 @@ echo (new Dog())->speak(); // звук / гав
             [
                 'category' => 'ООП',
                 'question' => 'Какие типы наследования различают в теории ООП и какие из них поддерживает PHP?',
-                'answer' => 'Обычно выделяют четыре формы: одиночное (класс наследует одного родителя), многоуровневое (цепочка A → B → C), иерархическое (несколько потомков у одного родителя) и множественное (один класс — два и более прямых родителя). PHP напрямую поддерживает только одиночное, многоуровневое и иерархическое наследование классов. Множественное наследование классов в PHP запрещено, но эффект «гибридного» получают за счёт реализации нескольких интерфейсов и подмешивания трейтов. Это даёт композицию поведения без diamond-проблемы и неоднозначности диспетчеризации.',
+                'answer' => 'Четыре основные формы: 1) Одиночное — класс наследует одного родителя (B extends A). 2) Многоуровневое — цепочка A → B → C. 3) Иерархическое — у одного родителя несколько потомков (Admin/Guest extends User). 4) Множественное — один класс наследует ДВУХ и более родителей напрямую. PHP поддерживает первые три для классов; множественное наследование КЛАССОВ запрещено (избегаем diamond problem — неоднозначности при общем предке). Эффект «гибридного» получают через 1) реализацию нескольких интерфейсов (множественное наследование КОНТРАКТОВ — разрешено). 2) Трейты — горизонтальная композиция реализации с явным разрешением конфликтов через insteadof/as.',
                 'difficulty' => 3,
                 'topic' => 'oop.misc',
+                'code_example' => '<?php
+// 1) Одиночное
+class Animal {}
+class Dog extends Animal {}
+
+// 2) Многоуровневое - цепочка
+class A {}
+class B extends A {}
+class C extends B {} // C получает всё от A и B
+
+// 3) Иерархическое - один родитель, много потомков
+class User {}
+class Admin extends User {}
+class Guest extends User {}
+class Moderator extends User {}
+
+// 4) Множественное наследование классов - ЗАПРЕЩЕНО
+// class Child extends A, B {} // Parse error в PHP
+
+// ✅ Множественное наследование ИНТЕРФЕЙСОВ - разрешено
+interface Loggable { public function log(string $m): void; }
+interface Cacheable { public function cacheKey(): string; }
+interface Serializable { public function serialize(): string; }
+
+class Report implements Loggable, Cacheable, Serializable
+{
+    public function log(string $m): void {}
+    public function cacheKey(): string { return \'r\'; }
+    public function serialize(): string { return \'\'; }
+}
+
+// ✅ Трейты - горизонтальная композиция реализации
+trait HasTimestamps { public ?\DateTimeImmutable $createdAt = null; }
+trait Searchable    { public function search(string $q): array { return []; } }
+
+class Article
+{
+    use HasTimestamps, Searchable; // подмешали два «миксина»
+}',
+                'code_language' => 'php',
             ],
         ];
     }

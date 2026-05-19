@@ -94,7 +94,22 @@ readonly class Coordinates {
             [
                 'category' => 'PHP',
                 'question' => 'Чем intersection types отличаются от union types?',
-                'answer' => 'Union types (PHP 8.0) задаются через | и позволяют значению быть одного из перечисленных типов, например int|string. Intersection types (PHP 8.1) задаются через & и требуют, чтобы объект реализовывал сразу все указанные интерфейсы или классы, например Countable&Iterator.',
+                'answer' => 'Union types (PHP 8.0) задаются через | и позволяют значению быть одного из перечисленных типов, например int|string. Intersection types (PHP 8.1) задаются через & и требуют, чтобы объект реализовывал сразу все указанные интерфейсы или классы, например Countable&Iterator. Union — это «ИЛИ», intersection — «И».',
+                'code_example' => '<?php
+// Union — int ИЛИ string
+function format(int|string $value): string {
+    return (string) $value;
+}
+
+// Intersection — реализует И Countable, И Iterator
+function dump(Countable&Iterator $items): void {
+    echo count($items);
+    foreach ($items as $i) {}
+}
+
+// DNF (PHP 8.2) — комбинация: (A&B) ИЛИ null
+function maybe((Countable&Iterator)|null $x): void {}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.types',
             ],
@@ -102,6 +117,22 @@ readonly class Coordinates {
                 'category' => 'PHP',
                 'question' => 'Что такое mixed-тип в PHP 8 и когда его использовать?',
                 'answer' => 'mixed (PHP 8.0) — это тип, который означает «любое значение»: int, float, string, bool, array, object, callable, resource, null. Эквивалент отсутствия типа в старом коде. Используется, когда параметр или возврат действительно могут быть чем угодно (например, фасад generic-контейнера или __get/__set). Минус — отключает большинство проверок статанализа, поэтому лучше указывать конкретный union (int|string), а mixed применять только когда других вариантов нет.',
+                'code_example' => '<?php
+// ❌ mixed — теряем проверки типов
+function get(string $key): mixed {
+    return $this->data[$key] ?? null;
+}
+
+// ✅ Лучше — узкий union
+function get(string $key): int|string|null {
+    return $this->data[$key] ?? null;
+}
+
+// mixed уместен в магических методах
+class Bag {
+    public function __get(string $name): mixed { /* ... */ }
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.types',
             ],
@@ -116,6 +147,21 @@ readonly class Coordinates {
                 'category' => 'PHP',
                 'question' => 'Зачем PHP 8.2 разрешил null, false и true как самостоятельные типы?',
                 'answer' => 'Раньше эти значения существовали только внутри union (например string|false), и нельзя было сказать «функция всегда возвращает false» иначе как через bool. Самостоятельные типы убирают этот пробел: alwaysFalse(): false точно описывает контракт legacy-функций вроде strpos и помогает статанализу. true появился для симметрии, а отдельный тип null официально оформил то, что и так использовалось на практике.',
+                'code_example' => '<?php
+// До PHP 8.2 — нельзя написать просто ": false"
+function findUser(int $id): User|false {
+    return $repository->find($id) ?? false;
+}
+
+// PHP 8.2 — отдельные null/false/true
+function alwaysFails(): false {
+    return false;
+}
+
+function isPhp(): true {
+    return true;
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.types',
             ],
@@ -123,6 +169,17 @@ readonly class Coordinates {
                 'category' => 'PHP',
                 'question' => 'Зачем в PHP 8.4 объявили устаревшим неявный nullable у параметров?',
                 'answer' => 'Конструкция function f(string $name = null) долгое время неявно делала параметр nullable, потому что null был совместим со значением по умолчанию. Это противоречило принципу «тип говорит правду» и было источником багов при рефакторинге. С 8.4 такой код выдаёт deprecation, и нужно писать ?string $name = null, явно указывая, что null допустим.',
+                'code_example' => '<?php
+// ❌ До PHP 8.4 — неявный nullable, c 8.4 — deprecation
+function greet(string $name = null): string {
+    return "Hi, " . ($name ?? "Guest");
+}
+
+// ✅ Явный nullable — работает на всех версиях
+function greet(?string $name = null): string {
+    return "Hi, " . ($name ?? "Guest");
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.types',
             ],

@@ -77,6 +77,22 @@ setcookie("user", "", time() - 3600);',
                 'category' => 'PHP',
                 'question' => 'Что делает session_write_close() и зачем вызывать его явно?',
                 'answer' => 'Функция сериализует $_SESSION, записывает данные в хранилище и снимает блокировку файла сессии, не дожидаясь конца скрипта. Её зовут сразу после того, как запись в сессию закончена, чтобы освободить блокировку и позволить параллельным запросам того же пользователя выполняться. После вызова дальнейшая запись в $_SESSION в текущем скрипте не сохранится без повторного session_start().',
+                'code_example' => '<?php
+session_start();
+
+// Прочитали и записали то, что нужно
+$_SESSION["last_seen"] = time();
+
+// Снимаем блокировку, чтобы параллельные AJAX/long-polling не висели
+session_write_close();
+
+// Долгая работа — пользователь параллельно может ходить по сайту
+sleep(5);
+generateExpensiveReport();
+
+// Запись после write_close в $_SESSION НЕ попадёт в хранилище
+$_SESSION["x"] = 1; // потеряется',
+                'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'php.sessions',
             ],
@@ -84,6 +100,20 @@ setcookie("user", "", time() - 3600);',
                 'category' => 'PHP',
                 'question' => 'Что такое session fixation и как от неё защититься в PHP?',
                 'answer' => 'Session fixation — атака, при которой злоумышленник навязывает жертве заранее известный ему ID сессии (например, через ссылку или iframe), а после логина получает доступ к её аккаунту по тому же ID. Защита — вызывать session_regenerate_id(true) сразу после успешной аутентификации и любого изменения уровня привилегий, а также включить session.use_strict_mode = 1, чтобы PHP отвергал неинициализированные ID, присланные клиентом.',
+                'code_example' => '<?php
+session_start();
+
+if (authenticate($_POST["email"], $_POST["password"])) {
+    // Сменить ID сразу после логина — закрыть fixation
+    session_regenerate_id(true); // true = удалить старый файл сессии
+    $_SESSION["user_id"] = $user->id;
+}
+
+// php.ini:
+// session.use_strict_mode = 1
+// session.cookie_secure = 1
+// session.cookie_httponly = 1',
+                'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'php.sessions',
             ],

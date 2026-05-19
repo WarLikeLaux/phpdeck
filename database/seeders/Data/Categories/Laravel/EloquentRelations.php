@@ -30,13 +30,46 @@ class Post extends Model {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое hasManyThrough и hasOneThrough?',
-                'answer' => 'hasManyThrough - связь "через" промежуточную таблицу. Например: Country имеет много Posts через User (Country -> User -> Post). hasOneThrough - то же, но только один.',
-                'code_example' => 'class Country extends Model {
-    public function posts() {
-        return $this->hasManyThrough(Post::class, User::class);
-        // ищет посты пользователей этой страны
+                'answer' => 'hasManyThrough - связь "через" промежуточную таблицу, когда две модели соединены не напрямую, а через третью. Канонический пример: Country имеет много User (users.country_id), User имеет много Post (posts.user_id) - Country хочет ВСЕ Post-ы своих юзеров одним запросом: $country->posts. Без hasManyThrough пришлось бы делать $country->users()->with("posts") и собирать вручную. Сигнатура: hasManyThrough(FinalModel, IntermediateModel, foreignKeyOnIntermediate, foreignKeyOnFinal, localKey, secondLocalKey). По умолчанию Laravel угадывает имена FK (country_id, user_id) и PK (id) - если соглашение соблюдено, аргументы можно опустить. hasOneThrough - то же самое, но возвращает ОДНУ модель. ⚠️ Ограничение: through работает только для прямой цепочки belongsTo→hasMany. Для many-to-many через pivot нужен пакет staudenmeir/eloquent-has-many-deep или явный join. Сложные through-связи плохо комбинируются с whereHas и могут давать неожиданные планы запросов - смотрите EXPLAIN.',
+                'code_example' => '<?php
+class Country extends Model {
+    public function users() {
+        return $this->hasMany(User::class);
     }
-}',
+
+    // Country -> User -> Post (через user_id)
+    public function posts() {
+        return $this->hasManyThrough(
+            Post::class,     // финальная модель
+            User::class,     // промежуточная
+            "country_id",    // FK на countries.id в таблице users
+            "user_id",       // FK на users.id в таблице posts
+            "id",            // PK countries
+            "id",            // PK users (вторая локальная)
+        );
+    }
+
+    // Один последний пост любого юзера страны
+    public function latestPost() {
+        return $this->hasOneThrough(Post::class, User::class)
+            ->latestOfMany();
+    }
+}
+
+// Использование
+$country = Country::find(1);
+foreach ($country->posts as $post) {                // все посты юзеров страны
+    echo $post->title;
+}
+
+// С eager loading - один запрос вместо N
+Country::with("posts")->get();
+
+// SQL под капотом:
+// SELECT posts.*, users.country_id
+// FROM posts
+// INNER JOIN users ON posts.user_id = users.id
+// WHERE users.country_id IN (1, 2, 3)',
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.eloquent_relations',

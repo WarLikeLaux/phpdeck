@@ -261,7 +261,22 @@ DB::raw("SELECT pg_advisory_lock(?)"); // session-level lock протекает 
             [
                 'category' => 'Базы данных',
                 'question' => 'Чем timestamp отличается от timestamptz в PostgreSQL?',
-                'answer' => 'timestamp without time zone хранит «голую» дату-время как есть и не выполняет никаких преобразований часового пояса. timestamp with time zone (timestamptz) при INSERT приводит входное значение к UTC, хранит его в UTC, а при SELECT отдаёт обратно в часовом поясе сессии. Несмотря на название, сам пояс не сохраняется — сохраняется момент времени. Для приложений с пользователями в разных таймзонах почти всегда нужен именно timestamptz.',
+                'answer' => 'timestamp without time zone хранит "голую" дату-время как есть и никаких преобразований часового пояса не выполняет — что записали, то и прочитали. timestamp with time zone (timestamptz) при INSERT берёт значение, приводит его к UTC по текущему SET TIME ZONE сессии и хранит в UTC; при SELECT отдаёт обратно в timezone сессии. Несмотря на название, сам пояс в строке не сохраняется — сохраняется точный момент во времени. Из этого вытекает практическое правило: для приложений с пользователями в разных таймзонах и для всех системных полей (created_at, updated_at) почти всегда нужен timestamptz. timestamp без TZ имеет смысл только для абстрактного "время суток" (например, расписание звонков "звонок в 09:00 локального времени каждого офиса"), где привязка к UTC не нужна. Сравнивать timestamp и timestamptz напрямую — частая ошибка.',
+                'code_example' => 'CREATE TABLE events (
+    id BIGSERIAL PRIMARY KEY,
+    at_local timestamp,        -- расписание "в 9:00 локально"
+    at_utc   timestamptz       -- "произошло в этот момент"
+);
+
+SET TIME ZONE \'Europe/Moscow\';                   -- UTC+3
+INSERT INTO events(at_local, at_utc) VALUES
+    (\'2026-05-20 09:00\', \'2026-05-20 09:00\');     -- сохраняем
+
+SET TIME ZONE \'Europe/London\';                   -- UTC+1
+SELECT at_local, at_utc FROM events;
+-- at_local = 2026-05-20 09:00:00 (без изменений)
+-- at_utc   = 2026-05-20 07:00:00+01 (тот же момент во времени London)',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.postgresql',
             ],
@@ -285,7 +300,32 @@ ALTER TYPE order_status ADD VALUE \'refunded\';',
             [
                 'category' => 'Базы данных',
                 'question' => 'Какие действия ON DELETE/ON UPDATE поддерживает FOREIGN KEY в PostgreSQL?',
-                'answer' => 'CASCADE каскадно удаляет или обновляет ссылающиеся строки. RESTRICT и NO ACTION запрещают операцию, если есть ссылающиеся строки; разница в том, что NO ACTION проверка откладывается до конца транзакции и совместима с DEFERRABLE. SET NULL обнуляет ссылающийся столбец, SET DEFAULT ставит его DEFAULT (и тоже должен пройти проверку FK). Выбирать действие надо явно под бизнес-смысл: CASCADE опасно на больших таблицах из-за длинных каскадов и блокировок.',
+                'answer' => 'CASCADE — каскадно удалить или обновить все ссылающиеся строки. RESTRICT и NO ACTION оба запрещают операцию, если есть ссылающиеся строки; разница в том, что NO ACTION откладывает проверку до конца транзакции (совместимо с DEFERRABLE INITIALLY DEFERRED), а RESTRICT падает мгновенно. SET NULL обнуляет ссылающийся столбец (требует, чтобы он был nullable). SET DEFAULT ставит ему значение по умолчанию (и оно тоже должно проходить FK-проверку, иначе ошибка). По умолчанию используется NO ACTION. Выбирать действие надо явно под бизнес-смысл: CASCADE удобно для строго подчинённых сущностей (комментарии при удалении поста), но опасно на больших таблицах — может развернуться в долгие каскадные DELETE с блокировками и логированием в WAL.',
+                'code_example' => 'CREATE TABLE posts (
+    id BIGSERIAL PRIMARY KEY,
+    title TEXT NOT NULL
+);
+
+CREATE TABLE comments (
+    id BIGSERIAL PRIMARY KEY,
+    post_id BIGINT NOT NULL,
+    body TEXT NOT NULL,
+    -- при удалении поста удалить все комментарии к нему
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE orders (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT,
+    -- при удалении пользователя оставить заказ, но обнулить ссылку
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Отложенная проверка - удобно при цикличных FK
+ALTER TABLE orders ADD CONSTRAINT fk_user
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    DEFERRABLE INITIALLY DEFERRED;',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.postgresql',
             ],
@@ -310,14 +350,46 @@ ALTER TABLE products ADD CONSTRAINT price_positive CHECK (price > 0);',
             [
                 'category' => 'Базы данных',
                 'question' => 'Какие сетевые типы и UUID есть в PostgreSQL и зачем они отдельно?',
-                'answer' => 'inet хранит IPv4/IPv6 адрес с опциональной маской подсети, cidr — сеть с обязательной маской, macaddr/macaddr8 — MAC-адреса. По сравнению с TEXT они занимают меньше места, валидируют формат на входе и поддерживают операторы вроде <<= (входит ли адрес в сеть). Тип uuid хранит 128-битный идентификатор в 16 байтах вместо 36-байтной строки, имеет генераторы (gen_random_uuid() из pgcrypto) и быстрее индексируется, чем TEXT-представление.',
+                'answer' => 'inet хранит IPv4/IPv6 адрес с опциональной маской подсети (7 или 19 байт), cidr — сеть с обязательной маской (хосто-биты обязательно нули). macaddr (6 байт) и macaddr8 (8 байт) — MAC-адреса. По сравнению с обычным TEXT они занимают меньше места, валидируют формат на входе (нельзя записать "999.999.999.999"), сортируются по числовому значению адреса и поддерживают специальные операторы: <<= ("входит ли адрес в сеть"), && ("пересекаются ли сети"), >> и т. д. Тип uuid (16 байт) хранит 128-битный идентификатор в бинарном виде, в два с лишним раза компактнее 36-символьного TEXT, лучше индексируется и имеет встроенный генератор gen_random_uuid() (из расширения pgcrypto, начиная с PG 13 — нативно).',
+                'code_example' => 'CREATE TABLE audit (
+    id BIGSERIAL PRIMARY KEY,
+    user_id uuid DEFAULT gen_random_uuid(),
+    ip      inet NOT NULL,
+    mac     macaddr,
+    network cidr
+);
+
+INSERT INTO audit (ip, mac, network) VALUES
+    (\'192.168.1.42\', \'08:00:2b:01:02:03\', \'192.168.1.0/24\');
+
+-- Найти запросы из определённой подсети
+SELECT * FROM audit WHERE ip <<= \'192.168.1.0/24\';
+
+-- Сравнить с TEXT: \'192.168.1.42\' длиной 12 байт vs inet 7 байт + операторы',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.postgresql',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Что делает WITH CHECK OPTION при создании VIEW в PostgreSQL?',
-                'answer' => 'WITH CHECK OPTION запрещает INSERT и UPDATE через представление, если результат перестаёт удовлетворять условию WHERE этого VIEW. Например, для VIEW active_users AS SELECT ... WHERE status = \'active\' WITH CHECK OPTION попытка обновить пользователя в status = \'banned\' через это представление упадёт с ошибкой. Это превращает VIEW в инструмент защиты данных: пользователь видит только свой срез и не может «вытолкнуть» строку из этого среза. Бывает LOCAL (проверяет только текущий VIEW) и CASCADED (проверяет ещё и условия нижележащих VIEW).',
+                'answer' => 'По умолчанию updatable VIEW позволяет INSERT и UPDATE строк, которые сразу же "выпадают" из условия WHERE этого VIEW — то есть видимы через таблицу, но не через сам VIEW. WITH CHECK OPTION включает проверку: любая INSERT/UPDATE через VIEW, после которого строка перестаёт удовлетворять WHERE, упадёт с ошибкой "new row violates check option". Это превращает VIEW в инструмент изоляции: например, выдали аналитику доступ только к VIEW active_users WHERE status = \'active\' — он не сможет UPDATE-ом перевести юзера в \'banned\' и "потерять" его из своего среза. Бывает двух уровней: LOCAL проверяет условие только текущего VIEW, CASCADED — ещё и условия всех нижележащих VIEW (если VIEW построен на другом VIEW). По умолчанию в PG — CASCADED.',
+                'code_example' => 'CREATE TABLE users (id BIGINT PRIMARY KEY, status TEXT);
+INSERT INTO users VALUES (1, \'active\'), (2, \'banned\');
+
+CREATE VIEW active_users AS
+    SELECT * FROM users WHERE status = \'active\'
+    WITH CHECK OPTION;
+
+-- Это пройдёт - строка остаётся active
+UPDATE active_users SET status = \'active\' WHERE id = 1;
+
+-- Это упадёт: ERROR: new row violates check option for view
+UPDATE active_users SET status = \'banned\' WHERE id = 1;
+
+-- INSERT, который сразу "выпадает" из VIEW - тоже запрещён
+INSERT INTO active_users (id, status) VALUES (3, \'banned\'); -- ошибка',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.postgresql',
             ],

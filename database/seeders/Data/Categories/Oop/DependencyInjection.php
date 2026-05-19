@@ -74,9 +74,51 @@ class OrderService
                 'topic' => 'oop.dependency_injection',
                 'difficulty' => 3,
                 'question' => 'Что такое Inversion of Control (IoC)?',
-                'answer' => 'IoC (инверсия управления) - принцип, при котором управление потоком программы передаётся фреймворку или контейнеру, а не пишется в коде приложения. Простыми словами: "не звоните нам, мы позвоним вам" - вы пишете компоненты, а фреймворк решает, когда их вызвать. Примеры IoC: фреймворк вызывает ваш контроллер, DI-контейнер создаёт объекты, hooks/события дёргают ваши обработчики. DI - это одна из техник реализации IoC (по Фаулеру).',
-                'code_example' => null,
-                'code_language' => null,
+                'answer' => 'IoC (инверсия управления) — принцип, при котором поток выполнения контролирует ФРЕЙМВОРК/КОНТЕЙНЕР, а не код приложения. Голливудский принцип: "Don\'t call us, we\'ll call you". В обычной библиотеке ты вызываешь её функции; в IoC-фреймворке ты регистрируешь компоненты, а фреймворк сам решает, КОГДА их позвать. Формы IoC: 1) Dependency Injection — контейнер создаёт твои объекты и передаёт зависимости. 2) Event-driven — фреймворк дёргает твои обработчики. 3) Template Method / lifecycle hooks — родитель вызывает твои переопределённые методы. 4) Routing/middleware — фреймворк маршрутизирует запрос в твой контроллер. DI — это ОДНА из техник реализации IoC, не синоним.',
+                'code_example' => '<?php
+// ❌ Без IoC - приложение само управляет потоком
+$request = Request::createFromGlobals();
+$router = new Router($routes);
+$controller = $router->resolve($request);
+$response = $controller->handle($request);
+$response->send();
+// Ты пишешь главный цикл сам.
+
+// ✅ С IoC (Laravel) - фреймворк сам вызывает твой код в нужный момент
+
+// 1) DI: контейнер создаёт контроллер и передаёт зависимости
+class OrderController
+{
+    public function __construct(private OrderService $orders) {}
+
+    public function store(StoreOrderRequest $request): JsonResponse
+    {
+        // Laravel сам:
+        // - смаршрутизировал POST /orders сюда
+        // - инстанцировал контроллер
+        // - резолвил OrderService через контейнер
+        // - валидировал и инжектнул FormRequest
+        $order = $this->orders->place($request->validated());
+        return response()->json($order);
+    }
+}
+
+// 2) Event-driven: ты регистрируешь listener, Laravel зовёт его сам
+class SendWelcomeEmail
+{
+    public function handle(UserRegistered $event): void
+    {
+        // Laravel вызовет тебя, когда событие случится
+    }
+}
+
+// 3) Lifecycle hooks: фреймворк вызывает твой boot/register
+class AppServiceProvider extends ServiceProvider
+{
+    public function register(): void { /* фреймворк позовёт сам */ }
+    public function boot(): void { /* и это тоже */ }
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

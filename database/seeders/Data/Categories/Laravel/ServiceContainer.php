@@ -101,7 +101,34 @@ $this->app->when(AdminController::class)
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между app(Foo::class), resolve(Foo::class) и App::make(Foo::class)?',
-                'answer' => 'Все три в итоге зовут Container::make и эквивалентны по результату — возвращают разрешённый из контейнера экземпляр. resolve() — это просто хелпер-обёртка над app(), а App — фасад того же контейнера. Разница чисто стилистическая; для передачи параметров в конструктор используется второй аргумент: app(Foo::class, ["id" => 5]).',
+                'answer' => 'Все три в итоге зовут Container::make() и эквивалентны по результату - возвращают разрешённый из контейнера экземпляр. resolve($abstract) - просто хелпер, под капотом возвращает app($abstract). app($abstract) сам тоже хелпер - app() без аргументов возвращает контейнер, с аргументом - резолвит. App - это фасад того же контейнера. То есть разница ЧИСТО стилистическая, выбирать по консистентности проекта. Без аргумента app() удобен для получения самого контейнера: app()->bound(Foo::class), app()->isProduction(). Для передачи параметров в конструктор - второй аргумент массивом: app(Foo::class, ["id" => 5]) - id попадёт в конструктор как обычный параметр, не из контейнера. Идиома Laravel-сообщества: app() для коротких inline-резолвов, type-hint в конструкторе для постоянных зависимостей (это основной способ).',
+                'code_example' => '<?php
+// Все эквивалентны
+$repo1 = app(UserRepository::class);
+$repo2 = resolve(UserRepository::class);
+$repo3 = App::make(UserRepository::class);
+
+// app() без аргументов - сам контейнер
+if (app()->bound(UserRepository::class)) { /* ... */ }
+if (app()->isProduction()) { /* ... */ }
+
+// С параметрами конструктора
+class ReportGenerator {
+    public function __construct(public string $type, public Mailer $mailer) {}
+}
+$gen = app(ReportGenerator::class, ["type" => "weekly"]);
+// $mailer резолвится из контейнера, type подставится явно
+
+// makeWith - явная семантика "make с параметрами"
+$gen = App::makeWith(ReportGenerator::class, ["type" => "weekly"]);
+
+// Идиома "постоянная зависимость" - через type-hint, без app()
+class UserController extends Controller {
+    public function __construct(private UserRepository $repo) {}
+    //                                  ^^^^^^^^^^^^^^^
+    //                          контейнер сам подставит при резолве контроллера
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.service_container',
             ],

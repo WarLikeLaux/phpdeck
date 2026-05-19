@@ -89,28 +89,129 @@ php artisan horizon:terminate',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое RoadRunner и за счёт чего он быстрее PHP-FPM?',
-                'answer' => 'RoadRunner — это PHP application server и менеджер процессов, написанный на Go. Он держит пул PHP-воркеров живыми и передаёт им запросы по бинарному протоколу Goridge. В отличие от PHP-FPM, который перезапускает интерпретатор и заново бутстрапит фреймворк на каждом запросе, RoadRunner загружает приложение один раз, поэтому накладные расходы на инициализацию контейнера и роутов исчезают. Octane использует RoadRunner (или FrankenPHP/Swoole) как базовый сервер.',
+                'answer' => 'RoadRunner - PHP application server и менеджер процессов, написанный на Go. Держит пул PHP-воркеров живыми и передаёт им запросы по бинарному протоколу Goridge. В отличие от PHP-FPM, который при каждом запросе создаёт новый процесс/потомка с нуля и бутстрапит фреймворк заново (autoload, конфиги, провайдеры, роуты), RoadRunner загружает Laravel ОДИН раз при старте воркера и держит его в памяти. Каждый последующий запрос - просто вызов handle($request) на уже готовом приложении. Накладные расходы на bootstrap (~10-50ms на FPM) исчезают, throughput часто в 3-5x выше. Octane - официальная интеграция Laravel с RoadRunner (и Swoole, FrankenPHP). Цена: нужно следить за state leakage между запросами (singleton-ы, статические переменные), потому что они переживают.',
+                'code_example' => '# Установка RoadRunner + Octane
+composer require laravel/octane spiral/roadrunner-cli
+php artisan octane:install --server=roadrunner
+
+# Запуск
+php artisan octane:start --server=roadrunner --workers=8 --max-requests=500
+# --max-requests - перезапустить воркер после N запросов (страховка от утечек)
+
+# .rr.yaml - конфиг RoadRunner
+version: "3"
+server:
+  command: "php artisan octane:start --server=roadrunner"
+http:
+  address: 0.0.0.0:8080
+  pool:
+    num_workers: 8
+    max_jobs: 500    # перезапуск после 500 запросов
+    max_memory: 256  # MB - перезапуск при превышении
+    debug: false     # true в dev - новый воркер на каждый запрос
+
+# В коде - для per-request state: scoped, НЕ singleton
+$this->app->scoped(RequestContext::class);',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое протокол Goridge и какие каналы связи он поддерживает?',
-                'answer' => 'Goridge — это бинарный протокол, по которому Go-сервер RoadRunner общается с PHP-воркерами. Он умеет работать через стандартные pipes (по умолчанию, не требует настройки), TCP-сокеты (можно разнести воркеры по машинам или контейнерам) и Unix-сокеты для быстрой локальной связи. Любой echo или предупреждение, ушедшие в STDOUT, повредят протокол, поэтому RoadRunner 2.0+ автоматически перенаправляет STDOUT в STDERR.',
+                'answer' => 'Goridge - бинарный протокол, по которому Go-сервер RoadRunner общается с PHP-воркерами. Каналы связи: 1) pipes (stdin/stdout, по умолчанию) - проще всего, ничего не настраивать, годится для большинства случаев. 2) TCP-сокеты - можно разнести RoadRunner и пул PHP-воркеров по разным машинам/контейнерам (k8s sidecar-сценарий). 3) Unix-сокеты - самая быстрая локальная связь. Главное правило: PHP-воркер общается с RoadRunner через STDIN/STDOUT в режиме pipes, поэтому ЛЮБОЙ echo, var_dump, warning или die("debug") в STDOUT повредит фрейм протокола - RoadRunner получит мусор и убьёт воркер. RoadRunner 2.0+ автоматически перенаправляет STDOUT в STDERR, но логи через error_log() и кастомные обёртки всё равно надо направлять в файл/STDERR. Для дампов в Octane есть dump() с дополнительной обработкой.',
+                'code_example' => '# .rr.yaml - выбор канала связи (relay)
+server:
+  command: "php worker.php"
+  relay: "pipes"           # дефолт: stdin/stdout
+  # relay: "tcp://127.0.0.1:7000"  # TCP - если воркеры в отдельных контейнерах
+  # relay: "unix:///var/run/rr.sock" # Unix socket - быстрая локальная связь
+
+# В PHP коде категорически НЕЛЬЗЯ:
+echo "debug";           # ломает pipes-протокол
+var_dump($x);           # то же
+print_r($x);            # то же
+
+# Можно:
+error_log("debug");     # уходит в STDERR
+\\Log::info("debug");    # уходит в logs/laravel.log
+fwrite(STDERR, "...");  # явно в STDERR',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое PHP Worker в RoadRunner и как выглядит его жизненный цикл?',
-                'answer' => 'PHP Worker — это обычный PHP-скрипт, в котором через Spiral\\RoadRunner\\Worker крутится бесконечный цикл while waitRequest. Воркер ждёт запрос от RoadRunner, обрабатывает его (часто через PSR-7 HttpWorker), отдаёт ответ методом respond и снова идёт ждать. При исключении следует вызвать $worker->error(), иначе процесс упадёт и RoadRunner поднимет новый. Между итерациями скрипт остаётся в памяти со всем загруженным фреймворком.',
+                'answer' => 'PHP Worker - обычный PHP-скрипт, в котором через библиотеку Spiral\\RoadRunner крутится бесконечный цикл while waitRequest(). Воркер блокируется в waitRequest(), ждёт следующего HTTP-запроса от RoadRunner-сервера, обрабатывает его (через PSR-7 HttpWorker - конвертация в Symfony Request/Response), отдаёт ответ методом respond() и снова идёт ждать. Между итерациями скрипт остаётся в памяти со всем загруженным фреймворком - вот откуда экономия на bootstrap. При исключении в обработке надо вызвать $worker->error($message), иначе RoadRunner посчитает воркера сломанным и kill-ит его (поднимет новый). При работе с Laravel Octane всю эту обвязку Octane делает сам в octane:start - но понимать что происходит критично для отладки.',
+                'code_example' => '<?php
+// Простейший воркер без Laravel - чтобы понять механику
+require __DIR__ . "/vendor/autoload.php";
+
+use Spiral\\RoadRunner;
+use Nyholm\\Psr7;
+
+$worker = RoadRunner\\Worker::create();
+$psrFactory = new Psr7\\Factory\\Psr17Factory();
+$psr7 = new RoadRunner\\Http\\PSR7Worker($worker, $psrFactory, $psrFactory, $psrFactory);
+
+while (true) {
+    try {
+        $request = $psr7->waitRequest();
+        if ($request === null) break; // сигнал на остановку
+    } catch (\\Throwable $e) {
+        $psr7->respond(new Psr7\\Response(400));
+        continue;
+    }
+
+    try {
+        // здесь обработка запроса
+        $response = new Psr7\\Response(200, [], "Hello, " . $request->getUri()->getPath());
+        $psr7->respond($response);
+    } catch (\\Throwable $e) {
+        $psr7->respond(new Psr7\\Response(500, [], "Error"));
+        $worker->error((string) $e);  // сообщить RR об ошибке
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Какие лимиты пула воркеров RoadRunner важно настраивать в .rr.yaml?',
-                'answer' => 'Базовые параметры: num_workers задаёт стартовое количество процессов, max_jobs ограничивает число запросов до перезапуска воркера (защита от утечек памяти), max_memory мягко завершает воркер, превысивший лимит, ttl и idle_ttl — максимальное время жизни и простоя. В разработке удобно ставить pool.debug=true: воркер создаётся под каждый запрос, сбрасывая состояние и упрощая отладку. В продакшене debug отключают.',
+                'answer' => 'Базовые параметры в секции http.pool / jobs.pool: 1) num_workers - стартовое количество процессов, обычно по числу CPU-ядер или чуть больше для I/O-bound нагрузки. 2) max_jobs - число запросов до плановой перезагрузки воркера; критично как страховка от утечек памяти в чужих пакетах (типично 500-2000). 3) max_memory - порог в МБ, при превышении воркер плавно завершится; ещё одна страховка от утечек (типично 256-512 МБ). 4) allocate_timeout - сколько ждать выделения воркера из пула до 503. 5) destroy_timeout - время на graceful shutdown воркера (default 60s). 6) supervisor.exec_ttl - максимальное время на ОДИН запрос (защита от зависших воркеров) - аналог timeout у FPM. В разработке удобно ставить pool.debug=true: на каждый запрос создаётся НОВЫЙ воркер, состояние не переживает - упрощает отладку. В продакшене debug=false обязательно.',
+                'code_example' => '# .rr.yaml - production
+version: "3"
+
+server:
+  command: "php artisan octane:start --server=roadrunner"
+
+http:
+  address: 0.0.0.0:8080
+  pool:
+    num_workers: 8
+    max_jobs: 1000             # перезапуск после 1000 запросов
+    max_memory: 256            # MB - страховка от утечек
+    allocate_timeout: 60s
+    destroy_timeout: 60s
+    debug: false               # production: воркеры переиспользуются
+
+  supervisor:
+    watch_tick: 1s
+    exec_ttl: 30s              # макс. время на 1 запрос
+    max_worker_memory: 256
+
+logs:
+  mode: production
+  level: error
+  encoding: json
+
+# dev .rr.yaml - воркер на запрос
+http:
+  pool:
+    debug: true                # каждый запрос - новый воркер',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
@@ -124,21 +225,121 @@ php artisan horizon:terminate',
             [
                 'category' => 'Laravel',
                 'question' => 'Зачем нужен KV-плагин в RoadRunner и какие у него драйверы?',
-                'answer' => 'KV-плагин даёт единый интерфейс к key-value хранилищам и позволяет вынести часть кеша или управление состоянием из PHP в Go-процесс RoadRunner. Поддерживаются драйверы redis и memcached (распределённые), boltdb (файловое хранилище) и memory (быстрый локальный кеш экземпляра RR). Это удобно, когда нужно делиться состоянием между воркерами без накладных расходов на полноценный внешний кеш.',
+                'answer' => 'KV-плагин даёт единый интерфейс к key-value хранилищам и позволяет вынести часть кеша или управление состоянием из PHP в Go-процесс RoadRunner. Драйверы: redis и memcached (распределённые, для горизонтального масштабирования), boltdb (файловое embedded-хранилище без внешних зависимостей - годится для конфигов и feature flags на одной ноде), memory (in-memory кеш на жизнь процесса RR - быстрее всего, но теряется при рестарте, шарится МЕЖДУ воркерами одного RR-экземпляра, не между разными нодами). Полезно когда нужно делиться состоянием между воркерами без накладных расходов на полноценный внешний кеш (например, rate-limiter, который должен видеть запросы от всех воркеров одной ноды). Используется через PHP-клиент Spiral\\Goridge / Spiral\\RoadRunner\\KeyValue.',
+                'code_example' => '# .rr.yaml
+kv:
+  user-cache:
+    driver: redis
+    config:
+      addrs:
+        - "redis:6379"
+
+  shared-state:
+    driver: memory
+    config:
+      interval: 60     # GC interval
+
+  feature-flags:
+    driver: boltdb
+    config:
+      file: "/var/data/flags.db"
+      permissions: 0666
+
+# PHP-использование
+use Spiral\\RoadRunner\\KeyValue\\Factory;
+use Spiral\\Goridge\\RPC\\RPC;
+
+$factory = new Factory(RPC::create("tcp://127.0.0.1:6001"));
+$cache = $factory->select("user-cache");
+$cache->set("user:42", $userArray, 3600);
+$user = $cache->get("user:42");',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Как работают очереди (Jobs) в RoadRunner и какие брокеры поддерживаются?',
-                'answer' => 'RoadRunner сам выступает потребителем и менеджером задач: получает задачи от брокера и передаёт их PHP-воркерам через Goridge, поэтому отдельный CLI-консьюмер не нужен. Поддерживаются драйверы amqp, beanstalk, redis, sqs, nats, а также boltdb и memory для локальных и тестовых сценариев. Это централизует обработку очередей в том же процессе, что и HTTP, и упрощает деплой.',
+                'answer' => 'RoadRunner сам выступает консьюмером и менеджером задач: подписывается на брокер, получает задачи и передаёт их PHP-воркерам через Goridge - отдельный CLI-консьюмер (queue:work) НЕ нужен. Поддерживаемые драйверы: amqp (RabbitMQ), beanstalk, redis, sqs (AWS), nats, kafka, а также boltdb (embedded) и memory (in-process) для локальных и тестовых сценариев. Преимущества над классическим queue:work + Supervisor: 1) Единый процесс для HTTP и Jobs - проще деплой, меньше supervisord-конфигов. 2) Go-сторона эффективнее держит долгие соединения с брокером. 3) Pool jobs изолирован от HTTP pool - можно настраивать отдельно. 4) Pipelines (логические очереди) описываются декларативно в YAML, не в PHP. Минус: для Laravel классический queue:work с Horizon даёт лучший дашборд, потому RoadRunner Jobs чаще выбирают для не-Laravel или больших нагрузок.',
+                'code_example' => '# .rr.yaml - очереди через RoadRunner
+amqp:
+  addr: amqp://guest:guest@rabbitmq:5672
+
+jobs:
+  num_pollers: 10
+  pipeline_size: 100000
+
+  pool:
+    num_workers: 8
+    max_jobs: 0          # 0 = без лимита
+    allocate_timeout: 60s
+
+  pipelines:
+    default:
+      driver: amqp
+      config:
+        queue: "default"
+        priority: 1
+
+    high:
+      driver: redis
+      config:
+        addr: "redis:6379"
+        priority: 10
+
+  consume:
+    - "default"
+    - "high"
+
+# PHP - dispatch как обычно через Laravel Queue фасад
+SendEmail::dispatch($user)->onQueue("high");',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что HTTP-плагин RoadRunner делает с входящими запросами и поддерживает ли он стриминг ответов?',
-                'answer' => 'HTTP-плагин принимает запросы как обычный веб-сервер и преобразует их в PSR-7 объекты для PHP-воркера. На уровне Go он умеет gzip-сжатие, кастомные заголовки, статические файлы, SSL/TLS и HTTP/2, а также middleware. Поддерживается Response Streaming: PHP может отдавать большой ответ клиенту инкрементально, не держа его целиком в памяти, что важно для скачиваний и server-sent events.',
+                'answer' => 'HTTP-плагин RoadRunner принимает запросы как обычный веб-сервер и преобразует их в PSR-7 объекты для PHP-воркера. На уровне Go умеет: gzip-сжатие (автоматически для типовых mime-типов), кастомные заголовки и middleware, отдачу статических файлов из заданной директории (без вызова PHP), SSL/TLS, HTTP/2, HTTP/3 (с RR 2.10+), CORS, headers-стрипинг. Поддерживается Response Streaming: PHP-воркер может через generator или ResponseFactory отдавать ответ инкрементально (Symfony StreamedResponse), не держа весь контент в памяти - критично для скачиваний больших файлов и server-sent events (SSE). FastCGI-фронтенд через nginx обычно НЕ нужен - RoadRunner сам обрабатывает HTTP/2 и TLS. Удобно: nginx как edge-proxy с TLS-терминацией, дальше plain HTTP на RR.',
+                'code_example' => '# .rr.yaml
+http:
+  address: 0.0.0.0:8080
+  middleware: ["gzip", "headers", "static"]
+
+  static:
+    dir: "/var/www/public"
+    forbid: [".php", ".htaccess"]
+
+  headers:
+    response:
+      X-Powered-By: ""    # убрать заголовок
+
+  ssl:
+    address: ":443"
+    cert: /etc/ssl/cert.pem
+    key:  /etc/ssl/key.pem
+
+  http2:
+    h2c: false
+    max_concurrent_streams: 128
+
+# PHP - стриминг через Laravel
+return response()->stream(function () {
+    foreach (Report::cursor() as $row) {
+        echo csvLine($row);
+        ob_flush(); flush();
+    }
+}, 200, ["Content-Type" => "text/csv"]);
+
+# SSE
+return response()->stream(function () {
+    while (true) {
+        echo "data: " . json_encode(["time" => now()]) . "\\n\\n";
+        ob_flush(); flush();
+        sleep(1);
+    }
+}, 200, ["Content-Type" => "text/event-stream"]);',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
@@ -159,7 +360,38 @@ php artisan horizon:terminate',
             [
                 'category' => 'Laravel',
                 'question' => 'Как работает плагин Locks в RoadRunner?',
-                'answer' => 'Плагин Locks даёт PHP-воркерам распределённые блокировки для синхронизации доступа к общим ресурсам. Lock можно взять между несколькими воркерами одного экземпляра RoadRunner или между несколькими экземплярами RR на разных машинах. В качестве бэкенда используют Redis для распределённого случая или локальную память, если синхронизация нужна только внутри одного процесса.',
+                'answer' => 'Плагин Locks даёт PHP-воркерам распределённые блокировки для синхронизации доступа к общим ресурсам. Lock можно взять: 1) Между несколькими воркерами одного экземпляра RoadRunner (типичный случай "только один воркер сейчас обрабатывает background-задачу"). 2) Между несколькими экземплярами RR на разных машинах (если используется распределённый бэкенд Redis). Бэкенды: memory - локальная память Go-процесса, шарится между воркерами этого RR, но не между нодами; redis - распределённый, синхронизирует все ноды. API похож на atomic locks Laravel Cache: ->lock(name, ttl)->get($callback) - блокирующий вариант через RR быстрее, чем через PHP-Redis-клиент, потому что отсутствуют PHP-overhead и пересоздание соединения на каждом acquire.',
+                'code_example' => '# .rr.yaml
+lock:
+  driver: redis      # или memory
+  config:
+    addrs:
+      - "redis:6379"
+
+# PHP
+use Spiral\\RoadRunner\\Lock\\Lock;
+use Spiral\\Goridge\\RPC\\RPC;
+
+$lock = new Lock(RPC::create("tcp://127.0.0.1:6001"));
+
+// Захватить лок на 30 сек на ресурс "report.daily"
+if ($lock->lock("report.daily", ttl: 30)) {
+    try {
+        generateDailyReport(); // только один воркер сделает это
+    } finally {
+        $lock->release("report.daily");
+    }
+}
+
+// С block - ждать пока освободится (но не больше waitTtl)
+if ($lock->lock("user:42", ttl: 60, waitTtl: 5)) {
+    // ...
+}
+
+// Совет: для Laravel-приложений проще использовать
+// Cache::lock("key", 30)->get(fn() => ...) - тот же механизм,
+// без отдельной зависимости',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],
@@ -194,7 +426,32 @@ php artisan horizon:terminate',
             [
                 'category' => 'Laravel',
                 'question' => 'Чем Laravel Octane отличается от Laravel Horizon в задачах производительности?',
-                'answer' => 'Octane ускоряет HTTP-запросы: держит приложение в памяти под Swoole/RoadRunner/FrankenPHP, экономя бутстрап Laravel. Horizon ускоряет фоновую обработку: запускает воркеры Redis-очередей, балансирует их, показывает дашборд по jobs. Это разные слои: Octane про fastpath онлайн-запросов, Horizon про оффлайн-задачи. На крупном проде их часто используют вместе.',
+                'answer' => 'Это разные слои стека и разные задачи. Octane ускоряет HTTP-запросы: подменяет FPM на Swoole/RoadRunner/FrankenPHP, держит Laravel в памяти между запросами, экономит ~50ms bootstrap. Цена - надо следить за state leakage (singleton-ы переживают между запросами, статика не сбрасывается). Запускается php artisan octane:start. Horizon ускоряет/оркеструет фоновую обработку: дашборд + автомасштабирование воркеров Redis-очередей (не для других драйверов), метрики по jobs, throughput, failed_jobs, теги для группировки. Не ускоряет сам PHP - просто более удобный supervisor для queue:work на Redis. Запускается php artisan horizon. Слои не конкурируют - часто стоят оба: Octane для онлайн-запросов, Horizon для оффлайн-задач. Деплой: для Octane нужно octane:reload, для Horizon - horizon:terminate.',
+                'code_example' => '# Octane - HTTP layer
+php artisan octane:install --server=roadrunner
+php artisan octane:start --workers=8 --max-requests=500
+
+# Horizon - Jobs layer (только Redis)
+php artisan horizon:install
+php artisan horizon
+
+# config/horizon.php
+"environments" => [
+    "production" => [
+        "supervisor-1" => [
+            "connection"   => "redis",
+            "queue"        => ["default", "emails"],
+            "balance"      => "auto",
+            "minProcesses" => 1,
+            "maxProcesses" => 20,
+        ],
+    ],
+],
+
+# Deploy hook - перезапустить оба
+php artisan octane:reload      # без даунтайма HTTP
+php artisan horizon:terminate  # текущие job-ы доработают, потом restart',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.octane_horizon',
             ],

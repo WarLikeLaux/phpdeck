@@ -531,63 +531,314 @@ Feature::for($user)->forget("new-checkout");',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Contracts в Laravel и чем они отличаются от Facades?',
-                'answer' => 'Contracts — это набор интерфейсов в Illuminate\\Contracts, описывающих основные сервисы фреймворка (Cache, Queue, Mail и т.д.). Внедряя контракт через конструктор, вы получаете ту же реализацию, что стоит за фасадом, но через явный DI. Фасад даёт удобный статический фасадный синтаксис, контракт — типизированную зависимость, удобную для подмены и unit-тестов.',
+                'answer' => 'Contracts - набор интерфейсов в неймспейсе Illuminate\\Contracts, описывающих основные сервисы фреймворка: Cache\\Repository, Queue\\Queue, Mail\\Mailer, Filesystem\\Filesystem, Auth\\Guard и т.д. Внедряя контракт через конструктор, вы получаете ту же реализацию, что стоит за фасадом, но через явный DI. Преимущества: 1) Подменяется в тестах через $this->instance(Contract::class, $mock) без shouldReceive на фасадах. 2) Типизированная зависимость видна в сигнатуре - реальный контракт класса. 3) Удобно для пакетов, которые не хотят жёстко зависеть от фасадов Laravel. Фасад выигрывает по краткости в простом коде, контракт - по тестируемости и явности в сервисах/Action-классах.',
+                'code_example' => '<?php
+// Facade - кратко, статика
+use Illuminate\\Support\\Facades\\Cache;
+Cache::put("k", "v", 60);
+
+// Contract - явная зависимость через DI
+use Illuminate\\Contracts\\Cache\\Repository as CacheContract;
+
+class ReportService {
+    public function __construct(
+        private CacheContract $cache,        // тот же объект, что за фасадом Cache
+        private \\Illuminate\\Contracts\\Mail\\Mailer $mailer,
+    ) {}
+
+    public function generate(): void {
+        $this->cache->put("last_report_at", now(), 3600);
+    }
+}
+
+// В тесте подмена тривиальна
+$this->instance(CacheContract::class, new InMemoryCache());',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Sail и зачем он нужен, если уже есть Docker?',
-                'answer' => 'Sail — лёгкий CLI-обёртка над docker compose с готовым набором сервисов (PHP, MySQL/PostgreSQL, Redis, MeiliSearch, MailHog/Mailpit, Selenium). Даёт команды вида sail up, sail artisan, sail composer без необходимости писать собственный docker-compose.yml. Подходит как стандартное dev-окружение, в продакшен напрямую не предназначен.',
+                'answer' => 'Sail - официальный CLI-обёртка над docker compose с готовым docker-compose.yml для типового dev-стека: PHP, MySQL/PostgreSQL/MariaDB, Redis, MeiliSearch/Typesense, MailHog/Mailpit, Selenium для Dusk. Команды sail up, sail artisan migrate, sail composer require, sail npm i проксируют команды в контейнеры приложения - не нужно держать локально установленные PHP/Node/composer и не нужно писать свой docker-compose. Ставится через composer require laravel/sail --dev + php artisan sail:install. Подходит как стандартное dev-окружение и onboarding новых разработчиков; для прода не предназначен - там FPM/Octane + nginx/k8s.',
+                'code_example' => '# Установка
+composer require laravel/sail --dev
+php artisan sail:install   # выбрать сервисы интерактивно
+
+# Запуск/остановка
+./vendor/bin/sail up -d
+./vendor/bin/sail down
+
+# Алиас для удобства - в ~/.zshrc или ~/.bashrc
+alias sail="bash vendor/bin/sail"
+
+# Привычные команды через sail
+sail artisan migrate
+sail artisan tinker
+sail composer require spatie/laravel-permission
+sail npm run dev
+sail test
+sail mysql               # клиент в контейнер БД
+sail shell               # bash в контейнер app
+
+# Опубликовать docker-compose.yml для правок
+sail artisan sail:publish',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Pint и чем он отличается от php-cs-fixer?',
-                'answer' => 'Pint — официальный фиксер стиля кода Laravel, построенный поверх PHP-CS-Fixer. Идёт с готовыми пресетами (laravel, psr12, per, symfony) и нулевой конфигурацией: достаточно запустить vendor/bin/pint. Под капотом тот же php-cs-fixer, но с дефолтами под Laravel и удобным CLI; кастомные правила задаются через pint.json.',
+                'answer' => 'Pint - официальный фиксер стиля кода Laravel поверх PHP-CS-Fixer. Идёт с готовыми пресетами (laravel - дефолт, psr12, per, symfony) и нулевой конфигурацией: достаточно vendor/bin/pint. Технически это тот же php-cs-fixer, но с подкрученными под Laravel правилами и удобным CLI: --test (dry-run для CI), --dirty (только изменённые в git файлы), --bail (упасть на первой проблеме). Кастомные правила и исключения - в pint.json в корне проекта. Ставится по умолчанию в Laravel 9+; для старых версий composer require laravel/pint --dev.',
+                'code_example' => '# Запустить fixer
+vendor/bin/pint
+
+# Только проверка (для CI - вернёт !=0 при ошибках)
+vendor/bin/pint --test
+
+# Только файлы, изменённые в git
+vendor/bin/pint --dirty
+
+# Конкретный путь
+vendor/bin/pint app/Models
+
+# pint.json в корне проекта
+{
+    "preset": "laravel",
+    "rules": {
+        "simplified_null_return": true,
+        "no_unused_imports": true,
+        "ordered_imports": { "sort_algorithm": "alpha" }
+    },
+    "exclude": ["database/migrations"]
+}',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Cashier и какие провайдеры он поддерживает?',
-                'answer' => 'Cashier — официальный пакет для подписочного биллинга. Существует две версии: Cashier Stripe и Cashier Paddle. Закрывает создание подписок, тарифные планы, пробные периоды, купоны, single-charge платежи, инвойсы и обработку вебхуков. На стороне модели User добавляется трейт Billable, дальше биллинг ведётся выразительным API вместо ручных вызовов SDK.',
+                'answer' => 'Cashier - официальный пакет для подписочного биллинга. Существует две независимых версии под разные платёжные системы: Cashier Stripe (laravel/cashier) и Cashier Paddle (laravel/cashier-paddle). Закрывает подписки, тарифные планы, пробные периоды, купоны, single-charge платежи, инвойсы, обработку вебхуков, прокси-роуты для payment intent (3DS). На модели User подключают трейт Billable, дальше биллинг ведётся выразительным API ($user->newSubscription, $user->subscribed, $user->invoices) вместо ручных вызовов Stripe/Paddle SDK. Webhook controller из коробки обрабатывает все основные события (invoice.paid, customer.subscription.deleted) и обновляет статус подписки в БД.',
+                'code_example' => '<?php
+// composer require laravel/cashier
+// php artisan vendor:publish --tag="cashier-migrations"
+// php artisan migrate
+
+use Laravel\\Cashier\\Billable;
+
+class User extends Authenticatable {
+    use Billable;
+}
+
+// Создать подписку
+$user->newSubscription("default", "price_monthly_basic")
+    ->trialDays(14)
+    ->create($paymentMethodId);
+
+// Проверки
+$user->subscribed("default");                 // активна ли
+$user->subscription("default")->onTrial();    // в trial-периоде
+$user->subscribedToPrice("price_pro", "default");
+
+// Смена тарифа
+$user->subscription("default")->swap("price_yearly_pro");
+
+// Отмена
+$user->subscription("default")->cancel();     // до конца оплаченного периода
+$user->subscription("default")->cancelNow();  // сразу
+
+// Инвойсы
+$user->invoices()->each(fn($i) => /* ... */);
+return $user->downloadInvoice($invoiceId, ["vendor" => "MyApp"]);',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Folio и в чём его особенность маршрутизации?',
-                'answer' => 'Folio — пакет page-based роутинга: маршрут создаётся самим фактом существования Blade-файла в каталоге resources/views/pages. Файл users/[id].blade.php автоматически становится маршрутом /users/{id}. Параметры в квадратных скобках, middleware и имена объявляются прямо во фронт-маттере страницы. Удобен для сайтов с большим числом простых страниц без явной декларации в routes/web.php.',
+                'answer' => 'Folio - пакет page-based роутинга в духе Next.js: маршрут создаётся самим фактом существования Blade-файла в каталоге resources/views/pages. Файл pages/users/[id].blade.php автоматически становится роутом GET /users/{id}, [...slug].blade.php - catch-all. Параметры в квадратных скобках, middleware/name/доменные настройки задаются прямо во фронт-маттере страницы через директивы. Удобен для контентных сайтов и landing-страниц с большим числом простых страниц - не нужно объявлять каждый роут в routes/web.php. Для сложного API/CRUD остаётся классический routes/web.php.',
+                'code_example' => '<?php
+// composer require laravel/folio
+// php artisan folio:install
+
+// resources/views/pages/index.blade.php → GET /
+// resources/views/pages/about.blade.php → GET /about
+// resources/views/pages/users/[id].blade.php → GET /users/{id}
+// resources/views/pages/users/[id]/edit.blade.php → GET /users/{id}/edit
+// resources/views/pages/blog/[...slug].blade.php → GET /blog/{slug?...} catch-all
+
+// pages/users/[User].blade.php — Route Model Binding по имени класса
+?>
+@php
+    use function Laravel\\Folio\\{name, middleware};
+
+    name("users.show");
+    middleware(["auth", "verified"]);
+@endphp
+
+<x-layout>
+    <h1>{{ $User->name }}</h1>
+    <p>{{ $User->email }}</p>
+</x-layout>',
+                'code_language' => 'blade',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Envoy и для чего он применяется?',
-                'answer' => 'Envoy — простой раннер задач на удалённых серверах через SSH. Задачи описываются в Envoy.blade.php в синтаксисе, похожем на Blade: @servers, @task. Используется для деплоя, миграций, обслуживания серверов: envoy run deploy выполнит указанные команды на всех заданных серверах. По функциям сравним с упрощённым Capistrano или Deployer для PHP.',
+                'answer' => 'Envoy - простой раннер задач на удалённых серверах через SSH. Задачи описываются в Envoy.blade.php в синтаксисе, похожем на Blade: @servers задаёт хосты, @task - команды для них. Используется для деплоя, миграций, выкладки секретов, обслуживания серверов: envoy run deploy выполнит указанную задачу на всех заданных серверах. По функциям сравним с упрощённым Capistrano или Deployer. Поддерживает интерполяцию задач, передачу аргументов, hipchat/slack-уведомления, story (последовательное выполнение нескольких task-ов). Альтернатива для k8s/lambda - не нужен; для classic VPS-деплоев живёт хорошо.',
+                'code_example' => '# composer global require laravel/envoy
+
+# Envoy.blade.php в корне проекта
+@servers([\'web\' => [\'deploy@1.2.3.4\', \'deploy@5.6.7.8\']])
+
+@story(\'deploy\')
+    pull
+    composer
+    migrate
+    restart-php
+@endstory
+
+@task(\'pull\', [\'on\' => \'web\', \'parallel\' => true])
+    cd /var/www/app
+    git pull origin main
+@endtask
+
+@task(\'composer\', [\'on\' => \'web\'])
+    cd /var/www/app && composer install --no-dev --optimize-autoloader
+@endtask
+
+@task(\'migrate\', [\'on\' => \'web\'])
+    cd /var/www/app && php artisan migrate --force
+@endtask
+
+@task(\'restart-php\', [\'on\' => \'web\', \'parallel\' => true])
+    sudo systemctl reload php8.3-fpm
+@endtask
+
+# Запуск
+# envoy run deploy
+# envoy run migrate',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Prompts и где он используется?',
-                'answer' => 'Prompts — пакет красивых интерактивных форм для CLI: text, password, confirm, select, multiselect, search, suggest, spin. Используется внутри artisan-команд и инсталлеров пакетов вместо $this->ask()/$this->choice(). С Laravel 10+ ставится по умолчанию и применяется самим фреймворком в make:* командах.',
+                'answer' => 'Prompts - пакет красивых интерактивных форм для CLI: text, password, confirm, select, multiselect, search, suggest, spin (long-running task с спиннером), progress (progress bar), form (мультишаговая форма). Используется внутри artisan-команд и инсталлеров пакетов вместо устаревших $this->ask()/$this->choice() (они всё ещё работают, но Prompts красивее). С Laravel 10.17+ ставится по умолчанию и применяется самим фреймворком в make:* командах. Поддерживает валидацию, transform-функции, defaults; на не-TTY окружениях (CI, Docker без -it) автоматически фолбэчится на старые prompts.',
+                'code_example' => '<?php
+use function Laravel\\Prompts\\{text, password, select, confirm, multiselect, search, spin, progress};
+
+// Простой ввод с валидацией
+$name = text(
+    label: "Как тебя зовут?",
+    placeholder: "Иван",
+    required: true,
+    validate: fn ($v) => strlen($v) < 2 ? "Минимум 2 символа" : null,
+);
+
+// Пароль
+$pwd = password(label: "Пароль", required: true);
+
+// Выбор из списка
+$db = select(
+    label: "Какую БД использовать?",
+    options: ["mysql" => "MySQL", "pgsql" => "PostgreSQL", "sqlite" => "SQLite"],
+    default: "mysql",
+);
+
+// Подтверждение
+if (! confirm("Точно удалить?", default: false)) {
+    return;
+}
+
+// Мульти-выбор
+$features = multiselect(
+    label: "Какие пакеты ставим?",
+    options: ["pint", "larastan", "telescope", "horizon"],
+);
+
+// Поиск с автоподсказкой
+$user = search(
+    label: "Найди юзера",
+    options: fn (string $q) => User::where("name", "like", "%{$q}%")->pluck("name", "id")->all(),
+);
+
+// Long-running task
+$users = spin(fn () => User::all(), "Загружаем пользователей...");
+
+// Progress bar
+progress(label: "Импорт", steps: $rows, callback: fn ($row) => importRow($row));',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel IDE Helper и зачем он нужен?',
-                'answer' => 'IDE Helper (barryvdh/laravel-ide-helper) — dev-пакет, генерирующий PHPDoc-метаинформацию для фасадов, моделей и контейнерных биндингов. Команды ide-helper:generate, ide-helper:models, ide-helper:meta создают _ide_helper.php и .phpstorm.meta.php, чтобы IDE и статические анализаторы понимали магические методы Eloquent (where{Field}, find), фасады и резолв из контейнера.',
+                'answer' => 'IDE Helper (barryvdh/laravel-ide-helper) - dev-пакет, генерирующий PHPDoc-метаинформацию для фасадов, моделей и контейнерных биндингов. Команды: ide-helper:generate - создаёт _ide_helper.php с PHPDoc для всех фасадов (Cache::get → реальная сигнатура); ide-helper:models - добавляет @property/@method PHPDoc прямо в файлы моделей (или в отдельный _ide_helper_models.php), чтобы IDE понимала магические where{Field}, findOrFail и атрибуты из БД; ide-helper:meta - создаёт .phpstorm.meta.php для PhpStorm, чтобы он понимал app()->make() и резолв из контейнера. Без него PhpStorm/static анализаторы ругаются на "undefined method" у фасадов и Eloquent-магии. Запускается обычно в post-update-cmd composer-скрипта и/или в deploy.',
+                'code_example' => '# Установка
+composer require --dev barryvdh/laravel-ide-helper
+
+# Команды
+php artisan ide-helper:generate     # фасады
+php artisan ide-helper:models -N    # модели (в отдельный файл, без правки)
+php artisan ide-helper:models -W    # модели (записывает PHPDoc в файл модели)
+php artisan ide-helper:meta         # PhpStorm meta
+
+# composer.json - автогенерация после composer update
+{
+  "scripts": {
+    "post-update-cmd": [
+      "@php artisan ide-helper:generate",
+      "@php artisan ide-helper:meta"
+    ]
+  }
+}
+
+# .gitignore - сгенерированные файлы в git не нужны
+_ide_helper.php
+_ide_helper_models.php
+.phpstorm.meta.php',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Nova и чем она отличается от бесплатных админок (Filament, Backpack)?',
-                'answer' => 'Nova — официальная платная админка Laravel: Resource-классы описывают CRUD-страницы, фильтры, lenses, actions и метрики. Filament и Backpack — open-source конкуренты с похожей моделью и часто более активным комьюнити. Nova даёт официальную поддержку и интеграцию с экосистемой (Scout, Sanctum), Filament — современный TALL-стек и плагины, Backpack — наиболее зрелое решение из бесплатных.',
+                'answer' => 'Nova - официальная платная админка Laravel: Resource-классы описывают CRUD-страницы, фильтры, lenses (saved views), actions (групповые операции), metrics (KPI-карточки). Стек - Vue.js + Laravel API. Filament - бесплатная open-source альтернатива на TALL-стеке (Tailwind + Alpine + Livewire + Laravel), сейчас самая активная экосистема и плагины. Backpack - бесплатная (Pro-плагины платные) с самой длинной историей и зрелостью, шаблон CoreUI. Nova - выбирают за официальную поддержку и тесную интеграцию с экосистемой (Scout, Sanctum, Horizon, Pulse); Filament - за современный стек и быстрый старт; Backpack - за зрелую функциональность и community-плагины. Цена: Nova - $199/сайт (бессрочная лицензия), Filament/Backpack - бесплатно.',
+                'code_example' => '<?php
+// Nova Resource - app/Nova/User.php
+use Laravel\\Nova\\Resource;
+use Laravel\\Nova\\Fields\\{ID, Text, Email, Password, BelongsTo, HasMany};
+
+class User extends Resource {
+    public static $model = \\App\\Models\\User::class;
+    public static $title = "name";
+    public static $search = ["id", "name", "email"];
+
+    public function fields(NovaRequest $request): array {
+        return [
+            ID::make()->sortable(),
+            Text::make("Name")->sortable()->rules("required", "max:255"),
+            Email::make("Email")->sortable()->rules("required", "email", "unique:users,email,{{resourceId}}"),
+            Password::make("Password")->onlyOnForms()->creationRules("required", "min:8"),
+            BelongsTo::make("Team"),
+            HasMany::make("Posts"),
+        ];
+    }
+
+    public function actions(NovaRequest $request): array {
+        return [new \\App\\Nova\\Actions\\SuspendUser];
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],

@@ -184,7 +184,42 @@ class WelcomeNotification extends Notification {
             [
                 'category' => 'Laravel',
                 'question' => 'Что произойдёт, если вложенная route-группа задаёт middleware и prefix, которые уже есть у внешней?',
-                'answer' => 'Атрибуты не перезаписываются, а мерджатся: prefix конкатенируется ("api" + "v1" -> "api/v1"), middleware и where-ограничения объединяются в массив, name-prefix также склеивается через точку. Поэтому admin внутри api/v1 даст префикс api/v1/admin и сумму всех middleware. Это поведение задаётся в RouteGroup::merge.',
+                'answer' => 'Атрибуты группы НЕ перезаписываются, а МЕРДЖАТСЯ - это часто удивляет. Поведение определено в Illuminate\\Routing\\RouteGroup::merge. Правила: 1) prefix конкатенируется через слэш ("api" + "v1" -> "api/v1"); 2) middleware объединяется в массив (внешний + вложенный); 3) where-ограничения регекспов на параметры объединяются в массив (вложенный имеет приоритет на конфликте ключей); 4) name-prefix склеивается через точку ("api." + "v1." -> "api.v1."); 5) namespace конкатенируется через бэкслеш (легаси, в L11 редко используют); 6) domain - вложенный заменяет внешний (это исключение!). Поэтому admin-группа внутри api/v1 даст в итоге префикс api/v1/admin, имя api.v1.admin., и сумму всех middleware. Полезно для версионирования API + RBAC: одна группа задаёт auth:sanctum + throttle, вложенная добавляет role:admin.',
+                'code_example' => '<?php
+Route::prefix("api")
+    ->middleware(["throttle:60,1"])
+    ->name("api.")
+    ->group(function () {
+
+        // /api/v1/* с throttle
+        Route::prefix("v1")
+            ->middleware(["auth:sanctum"])    // + throttle
+            ->name("v1.")                      // + "api."
+            ->group(function () {
+
+                // /api/v1/users - throttle + auth:sanctum
+                Route::get("/users", ...)->name("users.index");
+                // route name = "api.v1.users.index"
+
+                // /api/v1/admin/* - throttle + auth:sanctum + role:admin
+                Route::prefix("admin")
+                    ->middleware(["role:admin"])
+                    ->name("admin.")
+                    ->group(function () {
+                        Route::delete("/users/{id}", ...);
+                        // route name = "api.v1.admin..." и т.д.
+                    });
+            });
+    });
+
+// where - тоже мерджится
+Route::where(["id" => "[0-9]+"])->group(function () {
+    Route::where(["slug" => "[a-z-]+"])->group(function () {
+        // оба where применятся: id регексп + slug регексп
+        Route::get("/{id}/{slug}", ...);
+    });
+});',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.routing',
             ],

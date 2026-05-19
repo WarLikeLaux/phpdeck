@@ -9,8 +9,22 @@ class Mysql
         return [
             [
                 'category' => 'Базы данных',
-                'question' => 'InnoDB vs MyISAM в MySQL?',
-                'answer' => 'InnoDB - современный движок MySQL по умолчанию. Поддерживает: транзакции (ACID), foreign keys, row-level locks, crash recovery, MVCC. MyISAM - старый движок: только table-level locks, нет транзакций и FK, но быстрее на простых SELECT-only нагрузках и full-text. На практике почти всегда используют InnoDB. MyISAM считается устаревшим.',
+                'question' => 'Чем отличается InnoDB от MyISAM в MySQL?',
+                'answer' => 'InnoDB — движок MySQL по умолчанию с MySQL 5.5 (2010). Поддерживает транзакции с полным ACID, foreign keys с проверкой целостности, row-level блокировки (десятки тысяч одновременных писателей на одной таблице), MVCC для неблокирующего чтения и crash recovery через redo/undo log. MyISAM — старый движок: только table-level lock (на запись в таблицу — все остальные ждут), нет транзакций, нет FK, нет crash recovery (при падении таблицу нужно чинить REPAIR TABLE). Плюсы MyISAM, которые сегодня уже не актуальны: компактнее на диске, чуть быстрее на чистом SELECT, поддержка FULLTEXT (с MySQL 5.6 это есть и в InnoDB). На практике почти все таблицы — InnoDB; MyISAM остался в системных таблицах mysql.* и в легаси-проектах.',
+                'code_example' => '-- Узнать движок таблицы
+SELECT engine FROM information_schema.tables
+WHERE table_schema = DATABASE() AND table_name = \'orders\';
+
+-- Создать с явным движком (по умолчанию InnoDB)
+CREATE TABLE orders (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) -- FK — только InnoDB
+) ENGINE=InnoDB;
+
+-- Конвертация MyISAM → InnoDB
+ALTER TABLE legacy_table ENGINE=InnoDB;',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.mysql',
             ],
@@ -151,7 +165,22 @@ CREATE TABLE products (
             [
                 'category' => 'Базы данных',
                 'question' => 'Чем ENUM и SET в MySQL отличаются от обычного VARCHAR?',
-                'answer' => 'ENUM хранит ровно одно значение из заранее объявленного списка, а SET — комбинацию из нескольких значений (до 64) как битовую маску. Внутри они кодируются числом, поэтому занимают меньше места и сравниваются быстрее, чем VARCHAR. Обратная сторона — расширение списка значений требует ALTER TABLE, что на больших таблицах болезненно, и переносить ENUM между MySQL и другими СУБД неудобно. Часто их заменяют отдельной справочной таблицей или CHECK-ограничением.',
+                'answer' => 'ENUM хранит ровно одно значение из заранее объявленного списка, SET — комбинацию из нескольких (до 64 значений) как битовую маску. Внутри оба кодируются целым числом (1 или 2 байта в зависимости от размера списка), поэтому занимают меньше места и сравниваются быстрее, чем VARCHAR. Минусы по сравнению с VARCHAR / справочной таблицей: расширение списка значений требует ALTER TABLE (на большой таблице — длинная операция и риск даунтайма), порядок значений в списке влияет на сортировку (ORDER BY enum_col сортирует по позиции, а не по тексту), синтаксис не переносится между MySQL и PostgreSQL/SQL Server, добавление/удаление значений у SET вообще болезненно. Поэтому ENUM/SET — для редко меняющихся коротких списков (пол, размер футболки), для бизнес-статусов чаще делают отдельную справочную таблицу с FK или CHECK-ограничение.',
+                'code_example' => 'CREATE TABLE orders (
+    id BIGINT PRIMARY KEY,
+    status ENUM(\'new\',\'paid\',\'shipped\',\'cancelled\') NOT NULL DEFAULT \'new\',
+    tags   SET(\'urgent\',\'gift\',\'fragile\',\'bulk\') NOT NULL DEFAULT \'\'
+);
+
+INSERT INTO orders(id, status, tags) VALUES (1, \'paid\', \'urgent,gift\');
+
+-- Поиск одного значения в SET
+SELECT * FROM orders WHERE FIND_IN_SET(\'urgent\', tags);
+
+-- Добавление нового статуса — переписывает определение таблицы
+ALTER TABLE orders MODIFY status
+    ENUM(\'new\',\'paid\',\'shipped\',\'cancelled\',\'refunded\') NOT NULL DEFAULT \'new\';',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.mysql',
             ],
@@ -175,7 +204,15 @@ CREATE TABLE attachments (
             [
                 'category' => 'Базы данных',
                 'question' => 'Чем CHAR_LENGTH отличается от LENGTH в MySQL?',
-                'answer' => 'CHAR_LENGTH возвращает количество символов в строке, а LENGTH — количество байтов в её представлении. Для ASCII обе функции совпадают, а на UTF-8 один кириллический символ занимает 2 байта, эмодзи — 4, и значения расходятся. Это важно при проверке длины поля VARCHAR(100) — лимит в MySQL считается в символах, а не в байтах. Использовать LENGTH для валидации пользовательских строк — частая ошибка, приводящая к неожиданным обрезаниям.',
+                'answer' => 'CHAR_LENGTH (синоним CHARACTER_LENGTH) возвращает количество символов в строке с учётом charset, а LENGTH — количество байтов в её внутреннем представлении. Для чистого ASCII обе функции дают одинаковый результат. Для utf8mb4 один кириллический символ занимает 2 байта, эмодзи — до 4 байт, иероглиф — 3, и значения расходятся. Это критично при валидации пользовательских строк и при проверке против лимита колонки: лимит в VARCHAR(255) в MySQL считается в СИМВОЛАХ, а не в байтах, поэтому корректную проверку длины перед INSERT надо делать через CHAR_LENGTH. Типичный баг — использовать LENGTH(name) <= 100 для никнейма, и тогда строка из 60 эмодзи (240 байт) ложно "не помещается".',
+                'code_example' => 'SELECT
+    CHAR_LENGTH(\'hello\') AS chars1, LENGTH(\'hello\') AS bytes1,   -- 5, 5
+    CHAR_LENGTH(\'привет\') AS chars2, LENGTH(\'привет\') AS bytes2, -- 6, 12 (utf8mb4)
+    CHAR_LENGTH(\'😀😀\')   AS chars3, LENGTH(\'😀😀\')   AS bytes3;  -- 2, 8
+
+-- Корректная валидация лимита
+SELECT * FROM users WHERE CHAR_LENGTH(nickname) > 30;',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.mysql',
             ],
@@ -203,7 +240,7 @@ CREATE TABLE attachments (
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое MariaDB и почему она существует отдельно от MySQL?',
-                'answer' => 'MariaDB — форк MySQL, созданный его оригинальными разработчиками в 2009 году после того, как Oracle купила Sun (владельца MySQL). Сообщество опасалось, что Oracle закроет открытую разработку, и форк страховал лицензию GPL. MariaDB задумывалась как drop-in замена: команды mysql, протокол и большинство файлов данных совместимы, но со временем продукты разошлись — у MariaDB появились свои движки (Aria, MyRocks, ColumnStore), оконные функции и роли пришли раньше, MySQL 8 в свою очередь добавил CTE и JSON-операторы. На уровне разработки разница обычно несущественна, на уровне DBA — различаются параметры, репликация и поведение оптимизатора.',
+                'answer' => 'MariaDB — форк MySQL, созданный его оригинальными разработчиками во главе с Michael "Monty" Widenius в 2009 году, после того как Oracle купила Sun (владельца MySQL). Сообщество опасалось, что Oracle ослабит открытую разработку, и форк страховал лицензию GPL. MariaDB задумывалась как drop-in replacement: клиент mysql, протокол подключения, формат файлов данных и большинство запросов совместимы, в Linux-дистрибутивах пакет mysql-server часто фактически указывает на MariaDB. Со временем продукты разошлись: у MariaDB появились собственные движки (Aria, MyRocks, ColumnStore), оконные функции и роли поддерживались раньше, чем в MySQL; MySQL 8 в ответ добавил CTE и JSON-функции. На уровне прикладного разработчика разница обычно несущественна; на уровне DBA различаются параметры конфигурации, реализация репликации (MariaDB GTID отличается от MySQL GTID) и поведение оптимизатора, поэтому "перепрыгнуть" в обе стороны без проверки уже нельзя.',
                 'difficulty' => 3,
                 'topic' => 'database.mysql',
             ],

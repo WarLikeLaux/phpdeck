@@ -87,14 +87,76 @@ public function run(): void {
             [
                 'category' => 'Laravel',
                 'question' => 'Как в фабрике создать модель с дочерними записями и пивотом, не вызывая save вручную?',
-                'answer' => 'Используйте методы has/for/hasAttached фабрики: User::factory()->has(Post::factory()->count(3))->create() создаст юзера с тремя постами, а ->hasAttached(Role::factory()->count(2), ["assigned_at" => now()]) добавит связи через pivot c дополнительными колонками. Метод for() задаёт родителя для belongsTo-связи (например, Post::factory()->for(User::factory())). Так фабрика сама разруливает foreign keys и pivot-таблицу.',
+                'answer' => 'Фабрики Laravel умеют автоматически создавать связи через has(), for() и hasAttached(). 1) has(Factory $factory) - для hasMany/hasOne: создаёт родителя, потом дочерние записи с правильным FK. 2) for(Factory $factory) - для belongsTo: сначала создаёт родителя, потом записывает его id в текущую модель. 3) hasAttached(Factory $factory, array $pivotData) - для belongsToMany: создаёт связанные модели и записи в pivot-таблице с дополнительными колонками. 4) Магические методы по имени отношения: ->hasPosts(3), ->forAuthor() - alias к has()/for() с авто-распознаванием класса фабрики. Так фабрика сама разруливает FK и pivot - в seeder/тесте не нужно сохранять руками.',
+                'code_example' => '<?php
+// hasMany - юзер с 3 постами
+$user = User::factory()
+    ->has(Post::factory()->count(3))
+    ->create();
+
+// Тот же через магический метод (если есть relation posts)
+$user = User::factory()->hasPosts(3)->create();
+
+// belongsTo - пост с автором
+$post = Post::factory()
+    ->for(User::factory()->state(["role" => "admin"]))
+    ->create();
+
+// belongsToMany с дополнительными pivot-колонками
+$user = User::factory()
+    ->hasAttached(
+        Role::factory()->count(2),
+        ["assigned_at" => now(), "assigned_by" => 1]
+    )
+    ->create();
+
+// Вложенные связи
+$post = Post::factory()
+    ->for(User::factory())                          // автор
+    ->has(Comment::factory()->count(5)              // 5 комментов
+        ->for(User::factory(), "author"))           // у каждого свой автор
+    ->create();
+
+// Кастомный foreign key (если не стандартное имя)
+User::factory()
+    ->has(Post::factory()->count(3), "publishedPosts")
+    ->create();',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.migrations_seeders',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Чем команда artisan migrate:status отличается от migrate:rollback и зачем нужен squash?',
-                'answer' => 'migrate:status показывает таблицу пройденных и непройденных миграций со столбцом batch, ничего не меняя в БД. migrate:rollback откатывает последний batch (или N batches при --step). schema:dump --prune (squash) сворачивает все старые миграции в один SQL-снапшот в database/schema, чтобы свежая install-миграция не прогоняла сотни файлов и стартовала из дампа.',
+                'answer' => 'migrate:status показывает таблицу пройденных и непройденных миграций со столбцом batch (номер пакета, в котором миграция была применена); ничего не меняет в БД, чисто read-only - полезно для debug в CI и проверке состояния прода. migrate:rollback откатывает миграции последнего batch через метод down(); с --step=N - последние N batch-ей; с --pretend - показывает SQL без выполнения. migrate:reset - откатывает все, migrate:refresh - откат + повтор, migrate:fresh - drop всех таблиц + migrate (быстрее refresh, но без down()). Зачем squash (schema:dump --prune): за годы накапливаются сотни миграций, и новый разработчик тратит минуты на их прогон с нуля. schema:dump компилирует ТЕКУЩУЮ структуру БД в один SQL-снапшот в database/schema/{driver}-schema.sql; --prune ещё и удаляет сами файлы старых миграций. При следующем migrate (на пустой БД) Laravel сначала залит снапшот, потом применит миграции, добавленные ПОСЛЕ снапшота. Откат старых миграций после squash, разумеется, невозможен.',
+                'code_example' => '# Состояние миграций - где какой batch
+php artisan migrate:status
+
+# Откатить последний batch
+php artisan migrate:rollback
+
+# Откатить последние 3 batch-а
+php artisan migrate:rollback --step=3
+
+# Посмотреть SQL без выполнения
+php artisan migrate:rollback --pretend
+
+# Откатить все
+php artisan migrate:reset
+
+# Refresh - откат всех + migrate (с down)
+php artisan migrate:refresh
+
+# Fresh - DROP всех таблиц + migrate (без down, быстрее)
+php artisan migrate:fresh --seed
+
+# Squash - свернуть существующие миграции в snapshot
+php artisan schema:dump
+php artisan schema:dump --prune   # + удалить файлы миграций
+
+# После squash файл database/schema/mysql-schema.sql
+# применится автоматически при следующем migrate на пустой БД',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.migrations_seeders',
             ],

@@ -46,6 +46,24 @@ class Symfony
                 'category' => 'PHP',
                 'question' => 'Как работает Autowiring в Symfony?',
                 'answer' => 'Autowiring разрешает конструктор и аргументы методов сервиса по type-hint: контейнер ищет в реестре сервис, реализующий нужный класс или интерфейс, и подставляет его автоматически. Это убирает руками написанные arguments в YAML и оставляет конфигурацию декларативной. Когда автоматического выбора недостаточно (несколько реализаций), используют именованные алиасы по имени параметра или атрибут #[Target].',
+                'code_example' => '<?php
+class UserService
+{
+    public function __construct(
+        private LoggerInterface $logger,          // подставится автоматически
+        private UserRepository $repo,
+        #[Target("audit")] private LoggerInterface $audit, // именованный
+    ) {}
+}
+
+// config/services.yaml — больше не нужно перечислять аргументы
+// services:
+//     _defaults:
+//         autowire: true
+//         autoconfigure: true
+//     App\\:
+//         resource: "../src/"',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.symfony',
             ],
@@ -53,6 +71,24 @@ class Symfony
                 'category' => 'PHP',
                 'question' => 'Что делает Autoconfigure в Symfony?',
                 'answer' => 'Autoconfigure автоматически проставляет сервису теги контейнера на основе реализованных им интерфейсов или родительских классов. Например, класс, реализующий EventSubscriberInterface, без единой строки конфигурации получает тег kernel.event_subscriber, а команда, наследующая Command, — тег console.command. Это позволяет писать обычный PHP-класс и сразу получать его в нужном экстеншн-пойнте фреймворка.',
+                'code_example' => '<?php
+// Класс автоматически получит тег kernel.event_subscriber
+class UserSubscriber implements EventSubscriberInterface
+{
+    public static function getSubscribedEvents(): array
+    {
+        return [UserRegisteredEvent::class => "onRegister"];
+    }
+}
+
+// Команда автоматически получит тег console.command
+#[AsCommand("app:sync")]
+class SyncCommand extends Command
+{
+    protected function execute(InputInterface $i, OutputInterface $o): int
+    { return 0; }
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.symfony',
             ],
@@ -81,6 +117,28 @@ class Symfony
                 'category' => 'PHP',
                 'question' => 'Чем EventSubscriber отличается от EventListener в Symfony?',
                 'answer' => 'Listener регистрируется в конфигурации с указанием события, метода и приоритета — конфиг хранится отдельно от класса. Subscriber реализует EventSubscriberInterface и сам в статическом getSubscribedEvents() возвращает список событий, методов и приоритетов, что делает класс самодостаточным и переносимым. Благодаря autoconfigure subscriber автоматически получает тег kernel.event_subscriber и регистрируется без ручной конфигурации.',
+                'code_example' => '<?php
+// Subscriber — самодостаточный
+class AuthSubscriber implements EventSubscriberInterface
+{
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            LoginSuccessEvent::class => ["onLogin", 10],
+            LogoutEvent::class       => "onLogout",
+        ];
+    }
+
+    public function onLogin(LoginSuccessEvent $e): void {}
+    public function onLogout(LogoutEvent $e): void {}
+}
+
+// Listener — описание событий вынесено в config
+# services.yaml:
+# App\\EventListener\\AuthListener:
+#     tags:
+#         - { name: kernel.event_listener, event: kernel.request, priority: 10 }',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.symfony',
             ],
@@ -123,6 +181,19 @@ class Symfony
                 'category' => 'PHP',
                 'question' => 'Как описывать роутинг через атрибуты в современной Symfony?',
                 'answer' => 'Начиная с Symfony 6 рекомендованный способ — атрибут #[Route] из Symfony\\Component\\Routing\\Attribute\\Route прямо над методом или классом контроллера. На классе атрибут задаёт префикс пути и общие требования, на методе — конкретный путь, имя, методы HTTP и условия. Поддержка doctrine/annotations в RoutingComponent помечена deprecated в Symfony 6.4 и удалена в 7.0; сам пакет doctrine/annotations существует, но фреймворком для роутинга не используется.',
+                'code_example' => '<?php
+use Symfony\\Component\\Routing\\Attribute\\Route;
+
+#[Route("/api/users")]                  // префикс на классе
+class UserController
+{
+    #[Route("", methods: ["GET"], name: "users_list")]
+    public function index(): JsonResponse {}
+
+    #[Route("/{id}", methods: ["GET"], requirements: ["id" => "\\\\d+"])]
+    public function show(int $id): JsonResponse {}
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.symfony',
             ],

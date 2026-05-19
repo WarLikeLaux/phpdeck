@@ -92,7 +92,32 @@ ADD CONSTRAINT uniq_user_team UNIQUE (user_id, team_id);',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое триггер в SQL и когда его уместно использовать?',
-                'answer' => 'Триггер — это процедурный код, привязанный к таблице, который сервер автоматически выполняет на BEFORE/AFTER INSERT, UPDATE или DELETE. Его применяют для аудит-логов, синхронизации денормализованных счётчиков, проверки сложных инвариантов, которые нельзя выразить через CHECK. Минусы: логика прячется от приложения и тестов, отладка трудная, миграция между СУБД болезненна, а тяжёлый триггер замедляет каждую запись. Поэтому современный подход — переносить такую логику в код приложения и оставлять триггеры только для критичных консистентностей или legacy.',
+                'answer' => 'Триггер — процедурный код, привязанный к таблице, который СУБД автоматически выполняет на BEFORE/AFTER INSERT, UPDATE или DELETE (бывают также INSTEAD OF триггеры на VIEW). Внутри триггера доступны псевдо-записи NEW/OLD с новыми и старыми значениями строки. Применяют: аудит-логи (писать историю изменений в отдельную таблицу), синхронизация денормализованных счётчиков (likes_count), проверки сложных межтабличных инвариантов, которые нельзя выразить через CHECK, поддержка search-колонок (tsvector в PG). Минусы: логика прячется от приложения и code review, отладка трудная (нет хорошего stack trace), миграция между СУБД болезненна (синтаксис PL/pgSQL ≠ MySQL ≠ T-SQL), тяжёлый триггер замедляет каждую запись и держит транзакцию дольше. Современный подход — большую часть такой логики переносить в код приложения (Eloquent observers, Doctrine listeners), оставляя триггеры для критичной целостности и для случаев, когда таблица обновляется не только из приложения.',
+                'code_example' => '-- PostgreSQL: триггер для синхронизации счётчика
+CREATE OR REPLACE FUNCTION update_post_comments_count()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = \'INSERT\' THEN
+        UPDATE posts SET comments_count = comments_count + 1 WHERE id = NEW.post_id;
+    ELSIF TG_OP = \'DELETE\' THEN
+        UPDATE posts SET comments_count = comments_count - 1 WHERE id = OLD.post_id;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_comments_count
+AFTER INSERT OR DELETE ON comments
+FOR EACH ROW EXECUTE FUNCTION update_post_comments_count();
+
+-- MySQL аналог
+DELIMITER $$
+CREATE TRIGGER trg_comments_ins AFTER INSERT ON comments
+FOR EACH ROW
+    UPDATE posts SET comments_count = comments_count + 1 WHERE id = NEW.post_id;
+$$
+DELIMITER ;',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.basic_concepts',
             ],

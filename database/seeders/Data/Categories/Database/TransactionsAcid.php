@@ -27,7 +27,13 @@ COMMIT;
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое ACID?',
-                'answer' => 'ACID - набор свойств транзакций: Atomicity (атомарность), Consistency (согласованность), Isolation (изолированность), Durability (долговечность). Обеспечивает, что транзакции выполняются надёжно. Реляционные БД (PostgreSQL, MySQL/InnoDB) гарантируют ACID, многие NoSQL - нет.',
+                'answer' => 'ACID — набор гарантий, которые СУБД даёт для каждой транзакции: Atomicity (всё или ничего, ROLLBACK откатывает частичные изменения), Consistency (после COMMIT не нарушены ограничения PK/FK/CHECK/UNIQUE и бизнес-инварианты), Isolation (параллельные транзакции не видят промежуточных состояний друг друга, степень регулируется уровнем изоляции), Durability (после COMMIT данные сохранены даже при падении сервера — за счёт WAL/redo log). Реляционные БД (PostgreSQL, MySQL/InnoDB) гарантируют ACID; многие NoSQL ради скорости и горизонтального масштабирования отдают только BASE — eventual consistency. На собесе важно уметь раскрыть каждую букву на примере перевода денег между счетами.',
+                'code_example' => 'BEGIN;
+UPDATE accounts SET balance = balance - 100 WHERE id = 1; -- A: обе строки или ни одной
+UPDATE accounts SET balance = balance + 100 WHERE id = 2; -- C: CHECK (balance >= 0)
+COMMIT; -- D: WAL уже на диске, не пропадёт
+-- I: параллельные SELECT видят либо старое, либо новое состояние, не промежуточное',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
             ],
@@ -48,11 +54,16 @@ COMMIT;
             [
                 'category' => 'Базы данных',
                 'question' => 'I в ACID - что такое Isolation (изолированность)?',
-                'answer' => 'Изолированность: параллельные транзакции не "мешают" друг другу - результат как будто они выполняются последовательно. Степень изоляции настраивается уровнями (READ COMMITTED, REPEATABLE READ, SERIALIZABLE). Чем строже - тем безопаснее, но медленнее.',
-                'code_example' => 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+                'answer' => 'Isolation определяет, насколько параллельные транзакции "видят" друг друга. В идеале результат должен быть как при последовательном выполнении (serializable schedule), но это дорого, поэтому стандарт SQL вводит уровни: READ UNCOMMITTED (допускает dirty read), READ COMMITTED (видит только закоммиченные изменения, но возможны non-repeatable read), REPEATABLE READ (одна и та же строка читается одинаково), SERIALIZABLE (никаких аномалий). Чем строже уровень — тем больше блокировок или откатов и ниже throughput. PostgreSQL по умолчанию READ COMMITTED, MySQL/InnoDB — REPEATABLE READ. На собесе важно знать аномалии каждого уровня и уметь выбрать минимально достаточный.',
+                'code_example' => '-- PostgreSQL: установить уровень для текущей транзакции
 BEGIN;
--- ...
-COMMIT;',
+SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SELECT SUM(balance) FROM accounts; -- увидим консистентный снимок
+SELECT SUM(balance) FROM accounts; -- та же сумма, даже если идут параллельные UPDATE
+COMMIT;
+
+-- MySQL: то же
+SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE;',
                 'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
@@ -125,27 +136,52 @@ WHERE id = 1 AND version = 5;
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'Что такое блокировки (locks)?',
-                'answer' => 'Блокировки - механизм, который не даёт нескольким транзакциям одновременно изменять одни и те же данные. Бывают: shared (S, разделяемая) - для чтения, exclusive (X) - для записи. Гранулярность: row-level (PG, InnoDB), table-level (LOCK TABLES в MySQL, ACCESS EXCLUSIVE в PG), page-level (исторически SQL Server, DB2; в MySQL/InnoDB и PG как пользовательский режим отсутствует, остаются только внутренние latch-и страниц). Также бывают advisory (явные пользовательские блокировки по ключу).',
+                'question' => 'Что такое блокировки (locks) и какие у них уровни гранулярности?',
+                'answer' => 'Блокировка — механизм, не дающий нескольким транзакциям одновременно конфликтно работать с одним ресурсом. По типу: shared/S (несколько транзакций могут одновременно читать) и exclusive/X (одна транзакция модифицирует, остальные ждут). По гранулярности: row-level (PostgreSQL, InnoDB — самая мелкая, максимум concurrency), table-level (LOCK TABLES в MySQL, LOCK TABLE ... IN ACCESS EXCLUSIVE MODE в PG — для DDL и массовых операций), а также advisory locks — произвольный ключ, который БД не интерпретирует, удобно для распределённой координации. Чем мельче гранулярность, тем выше параллелизм, но тем дороже накладные расходы на отслеживание. На собесе спрашивают сочетания: например, UPDATE в InnoDB берёт X-lock на строку и intention exclusive (IX) на таблицу.',
+                'code_example' => '-- Row-level (неявно при UPDATE)
+BEGIN;
+UPDATE accounts SET balance = balance - 100 WHERE id = 1; -- X-lock на строке
+COMMIT;
+
+-- Table-level (явно)
+LOCK TABLE orders IN ACCESS EXCLUSIVE MODE; -- PostgreSQL, для миграции
+
+-- Advisory (по произвольному ключу)
+SELECT pg_advisory_xact_lock(42); -- PostgreSQL
+SELECT GET_LOCK(\'cron:cleanup\', 0); -- MySQL',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Чем отличаются shared lock и exclusive lock?',
-                'answer' => 'Shared (S) - "читать можно, писать нельзя". Несколько транзакций могут одновременно держать S на одной строке. Exclusive (X) - блокирует другие S и X на этом ресурсе, захватывается при UPDATE/DELETE. Важный нюанс: в PostgreSQL и других MVCC-СУБД row-level X-lock НЕ блокирует обычные SELECT (читатели видят прежний снапшот) - блокируются только UPDATE/DELETE/SELECT FOR UPDATE/SHARE. S и X между собой несовместимы. Это базовая модель совместимости блокировок.',
+                'answer' => 'Shared (S, разделяемая) — "несколько читателей могут держать одновременно, но писать никто не может". Захватывается через SELECT ... FOR SHARE / LOCK IN SHARE MODE. Exclusive (X, эксклюзивная) — "только один владелец, никаких других S или X на этом ресурсе"; ставится автоматически при UPDATE/DELETE или явно через SELECT ... FOR UPDATE. Матрица совместимости: S+S совместимы, S+X и X+X — нет. Важный нюанс MVCC-баз (PostgreSQL, InnoDB): row-level X НЕ блокирует обычный SELECT — читатели видят прежний снапшот, ждать должны только пишущие транзакции и FOR UPDATE/SHARE. Поэтому в Postgres "обычное чтение никогда не блокирует запись и наоборот".',
+                'code_example' => '-- Транзакция A
+BEGIN;
+SELECT * FROM products WHERE id = 1 FOR UPDATE; -- X-lock
+
+-- Транзакция B (параллельно)
+SELECT * FROM products WHERE id = 1;            -- OK, видит старую версию (MVCC)
+SELECT * FROM products WHERE id = 1 FOR SHARE;  -- ждёт COMMIT/ROLLBACK A
+UPDATE products SET price = 99 WHERE id = 1;    -- тоже ждёт',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Что делает SELECT FOR UPDATE?',
-                'answer' => 'SELECT FOR UPDATE захватывает exclusive-блокировку на выбранные строки до конца транзакции. Другие транзакции, пытающиеся обновить или взять FOR UPDATE те же строки, будут ждать. Используется, когда мы прочитали данные и собираемся обновить, и не хотим, чтобы кто-то изменил их между.',
+                'answer' => 'SELECT ... FOR UPDATE захватывает X-блокировку на каждой выбранной строке до конца текущей транзакции (то есть до COMMIT/ROLLBACK). Другие транзакции, пытающиеся прочитать эти строки с FOR UPDATE/FOR SHARE, обновить или удалить, будут ждать (или упадут с lock timeout). Обычный SELECT в MVCC-СУБД при этом не блокируется — видит прежнюю версию. Классическое применение: read-modify-write, где между чтением и записью нельзя пускать конкурентов (списание баланса, резерв места, инкремент счётчика без атомарного выражения). Работает только внутри транзакции; вне BEGIN/COMMIT блокировка снимается сразу. Модификаторы NOWAIT (упасть мгновенно вместо ожидания) и SKIP LOCKED (пропустить занятые строки — полезно для очередей) расширяют поведение.',
                 'code_example' => 'BEGIN;
-SELECT * FROM accounts WHERE id = 1 FOR UPDATE;
--- никто другой не может изменить эту строку
+SELECT balance FROM accounts WHERE id = 1 FOR UPDATE; -- X-lock до COMMIT
+-- проверяем balance в коде, потом обновляем
 UPDATE accounts SET balance = balance - 100 WHERE id = 1;
-COMMIT;',
+COMMIT;
+
+-- Воркер очереди: каждый забирает свою задачу
+SELECT id FROM jobs WHERE status = \'pending\' ORDER BY id
+LIMIT 1 FOR UPDATE SKIP LOCKED;',
                 'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
@@ -153,11 +189,15 @@ COMMIT;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что делает SELECT FOR SHARE?',
-                'answer' => 'SELECT FOR SHARE (или FOR SHARE / LOCK IN SHARE MODE в MySQL) берёт shared-lock на строки. Другие транзакции могут читать (тоже FOR SHARE), но не могут изменять, пока наша транзакция не завершится. Полезно, когда мы хотим гарантировать, что данные не изменятся, пока мы их используем (например, для проверки FK вручную).',
+                'answer' => 'SELECT ... FOR SHARE (в старом MySQL — LOCK IN SHARE MODE) ставит S-блокировку на выбранные строки до конца транзакции. Несколько транзакций могут одновременно держать S-lock на одной строке и читать её, но никто не сможет UPDATE/DELETE/FOR UPDATE, пока хотя бы один S-lock не отпущен. Применение: гарантировать, что связанные данные не изменятся, пока транзакция их использует — например, прочитать справочник тарифов и посчитать стоимость, не дав никому в этот момент изменить тариф. Важно понимать, что FOR SHARE может приводить к deadlock\'ам: если две транзакции взяли S на одной строке, а потом обе пытаются её UPDATE — обе ждут друг друга. Поэтому когда понятно, что точно будет UPDATE, лучше сразу брать FOR UPDATE.',
                 'code_example' => 'BEGIN;
-SELECT * FROM products WHERE id = 1 FOR SHARE;
--- другие могут читать, но не апдейтить
-COMMIT;',
+-- Прочитали тариф, дальше используем его в расчёте
+SELECT price FROM tariffs WHERE id = 1 FOR SHARE;
+INSERT INTO orders(tariff_id, total) VALUES (1, 1000);
+COMMIT;
+
+-- Параллельный UPDATE будет ждать
+UPDATE tariffs SET price = 1200 WHERE id = 1; -- блокируется до COMMIT первой',
                 'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
@@ -234,14 +274,39 @@ DB::update("UPDATE accounts SET balance = balance - ?
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое режим autocommit в MySQL и как сгруппировать несколько запросов в транзакцию?',
-                'answer' => 'По умолчанию MySQL работает с autocommit=1, и каждый INSERT/UPDATE/DELETE сразу фиксируется как отдельная транзакция. Чтобы выполнить несколько операций атомарно, нужно начать блок через START TRANSACTION (или BEGIN), сделать запросы и завершить COMMIT либо ROLLBACK. Альтернатива — выключить режим командой SET autocommit = 0, тогда транзакция открывается неявно при первом запросе и держится до явного COMMIT. PDO::beginTransaction под капотом делает то же самое, временно отключая autocommit.',
+                'answer' => 'По умолчанию в MySQL autocommit=1: каждый отдельный INSERT/UPDATE/DELETE сразу фиксируется как самостоятельная транзакция, ROLLBACK на него уже не подействует. Чтобы выполнить несколько операций атомарно, есть два пути: либо явно открыть блок START TRANSACTION (или BEGIN), выполнить запросы и закрыть его COMMIT/ROLLBACK — это самый частый вариант, который не меняет глобальное поведение соединения; либо выключить режим через SET autocommit = 0, тогда транзакция открывается неявно при первом DML и держится до COMMIT. PDO::beginTransaction под капотом делает первый вариант — временно посылает START TRANSACTION, на commit() — COMMIT, на rollBack() — ROLLBACK. Важно: DDL (CREATE/ALTER/DROP) в MySQL вызывают неявный COMMIT и не откатываются.',
+                'code_example' => '-- Способ 1: явная транзакция (autocommit остаётся 1)
+START TRANSACTION;
+INSERT INTO orders(user_id, total) VALUES (1, 100);
+UPDATE users SET orders_count = orders_count + 1 WHERE id = 1;
+COMMIT; -- или ROLLBACK при ошибке
+
+-- Способ 2: выключить autocommit на сессию
+SET autocommit = 0;
+INSERT INTO logs(msg) VALUES (\'a\');
+INSERT INTO logs(msg) VALUES (\'b\');
+COMMIT;
+SET autocommit = 1;',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое SAVEPOINT и зачем он нужен внутри транзакции?',
-                'answer' => 'SAVEPOINT name создаёт именованную точку внутри активной транзакции, к которой потом можно вернуться через ROLLBACK TO SAVEPOINT name, не отменяя всю транзакцию целиком. Это удобно для вложенных операций: если упадёт один из шагов, можно откатить только его, а остальные изменения сохранить и продолжить работу. RELEASE SAVEPOINT name удаляет точку, когда возврат к ней больше не нужен. На уровне ORM (Laravel, Doctrine) savepoint-ы используются для имитации вложенных транзакций при beginTransaction внутри другого beginTransaction.',
+                'answer' => 'SAVEPOINT name создаёт именованную точку внутри активной транзакции, к которой можно откатиться через ROLLBACK TO SAVEPOINT name, не отменяя всю транзакцию целиком. Это нужно для частичного отката: если один из шагов упал или дал не тот результат, отменяем только его, а остальные изменения сохраняем и продолжаем работу. RELEASE SAVEPOINT name удаляет точку, когда возврат к ней больше не нужен. ORM (Laravel, Doctrine) используют savepoint-ы для имитации "вложенных транзакций": вызов DB::beginTransaction() внутри уже открытой транзакции делает SAVEPOINT trans2, а commit/rollback внутреннего блока — RELEASE/ROLLBACK TO. Реальная транзакция одна, фиксируется только внешним COMMIT.',
+                'code_example' => 'BEGIN;
+INSERT INTO orders(user_id, total) VALUES (1, 100);
+
+SAVEPOINT before_items;
+INSERT INTO order_items(order_id, sku) VALUES (LAST_INSERT_ID(), \'A\');
+INSERT INTO order_items(order_id, sku) VALUES (LAST_INSERT_ID(), \'BAD\'); -- упало
+ROLLBACK TO SAVEPOINT before_items; -- откатили только items, заказ остался
+
+INSERT INTO order_items(order_id, sku) VALUES (LAST_INSERT_ID(), \'B\');
+RELEASE SAVEPOINT before_items;
+COMMIT;',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.transactions_acid',
             ],

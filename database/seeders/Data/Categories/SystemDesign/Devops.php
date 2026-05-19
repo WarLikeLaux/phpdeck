@@ -52,7 +52,7 @@ CMD ["php-fpm"]',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Pod, Deployment, Service в Kubernetes?',
-                'answer' => 'Pod - наименьшая единица k8s, обычно один контейнер (иногда несколько связанных, например app+sidecar). Эфемерный: упал - создаётся новый. Deployment - декларация "хочу N реплик такого пода с такой стратегией обновления". Сам управляет ReplicaSet и подами. Service - стабильная точка входа к набору подов через label selector. У подов меняются IP, у service постоянный. Типы: ClusterIP (внутри), NodePort, LoadBalancer (внешний).',
+                'answer' => 'Pod — наименьшая единица k8s, обычно один контейнер (иногда несколько связанных в одном сетевом namespace: app + sidecar для логирования или service mesh). Эфемерный: упал — создаётся новый с новым IP. Deployment — декларативное описание «хочу N реплик такого пода с такой стратегией обновления»; сам управляет ReplicaSet, который создаёт и пересоздаёт поды, держит actual ~= desired state. Service — стабильная точка входа к набору подов через label selector: у подов меняются IP, у Service постоянный ClusterIP/DNS. Типы: ClusterIP (только внутри кластера), NodePort (доступ через порт на любой ноде), LoadBalancer (внешний LB от облака). Простыми словами: Pod — единица запуска, Deployment — оркестратор реплик, Service — стабильный адрес перед ними.',
                 'code_example' => 'apiVersion: apps/v1
 kind: Deployment
 metadata: { name: api }
@@ -107,7 +107,7 @@ return view("checkout.v1");',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое 12-factor app?',
-                'answer' => '12-factor - методология построения SaaS-приложений. Ключевые: 1) Codebase в git, 2) Dependencies явные, 3) Config в env, 4) Backing services как ресурсы, 5) Build/release/run разделены, 6) Stateless процессы, 7) Port binding, 8) Concurrency через процессы, 9) Disposability (быстрый старт/остановка), 10) Dev/prod parity, 11) Logs как stream stdout, 12) Admin tasks как one-off процессы. Идеология современного облачного приложения.',
+                'answer' => '12-factor - методология Heroku для cloud-native приложений; запоминается не списком из 12, а четырьмя группами. 1) Код и зависимости: один codebase в git, явные зависимости (composer.json), конфиг в env-переменных, backing services (БД/Redis) как замыкаемые ресурсы по URL. 2) Сборка и запуск: чёткое разделение build/release/run, stateless-процессы, port binding (приложение само поднимает порт, не через Apache mod_php). 3) Эксплуатация: масштабирование через процессы (горизонталь), disposability (быстрый старт и graceful shutdown), dev/prod parity (одинаковые версии везде). 4) Поддержка: логи как stdout-поток, admin tasks как one-off процессы (artisan command). Итог: stateless, конфиг снаружи, всё одинаково на dev и prod - тогда приложение легко крутится в k8s/Docker/Heroku.',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],

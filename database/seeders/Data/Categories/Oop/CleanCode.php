@@ -77,9 +77,46 @@ function sendConfirmation(string $email, float $total): void { /* email */ }',
             [
                 'category' => 'ООП',
                 'question' => 'Сколько аргументов должна принимать функция и почему?',
-                'answer' => 'Идеал - ноль, допустимо один-два, три уже подозрительно, а четыре и больше почти всегда означают, что функция делает слишком много или что аргументы стоит сгруппировать в объект. Большое число параметров усложняет вызов, провоцирует ошибки порядка и делает функцию трудной для теста, потому что число комбинаций входов растёт комбинаторно.',
+                'answer' => 'По Clean Code Мартина: идеал — 0, нормально — 1-2, 3 — подозрительно, 4+ почти всегда означают, что функция делает слишком много или что аргументы пора сгруппировать в объект (Parameter Object). Чем больше параметров — тем легче перепутать порядок (особенно одинаковых типов), труднее читать вызов и комбинаторно растёт число случаев в тестах. Булевы флаги отдельно: function save($u, bool $sendEmail) — почти всегда сигнал разбить на два метода. Группировка в объект (DTO/VO) ещё и даёт типобезопасность.',
                 'difficulty' => 3,
                 'topic' => 'oop.clean_code',
+                'code_example' => '<?php
+// ❌ 6 параметров - легко перепутать порядок одинаковых типов
+function createUser(
+    string $name, string $email, string $phone,
+    string $city, string $street, int $age,
+): User {
+    return new User(/* ... */);
+}
+// createUser("Иван", "ivan@x.ru", "Москва", "+79991234567", "Тверская", 30);
+// перепутали phone и city - PHP не заметит
+
+// ✅ Сгруппировали в Parameter Object - типы ловят ошибки
+final readonly class Address
+{
+    public function __construct(public string $city, public string $street) {}
+}
+
+final readonly class CreateUserDto
+{
+    public function __construct(
+        public string $name,
+        public Email $email,
+        public Phone $phone,
+        public Address $address,
+        public int $age,
+    ) {}
+}
+
+function createUser(CreateUserDto $dto): User { /* ... */ }
+
+// ❌ Булев флаг = две функции в одной
+function save(User $u, bool $sendEmail): void {}
+
+// ✅ Разделили - имя метода говорит, что произойдёт
+function save(User $u): void {}
+function saveAndNotify(User $u): void {}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -91,16 +128,84 @@ function sendConfirmation(string $email, float $total): void { /* email */ }',
             [
                 'category' => 'ООП',
                 'question' => 'Почему исключения предпочтительнее кодов ошибок?',
-                'answer' => 'Коды ошибок смешивают «нормальный» путь с обработкой ошибок: вызывающий обязан проверить возвращённое значение, и забытая проверка тихо ломает программу. Исключения отделяют успешный сценарий от сбойного, передаются вверх по стеку до подходящего обработчика и не дают «потерять» ошибку. Они также позволяют сохранить читаемую сигнатуру метода: возвращается результат, а не пара «значение или код».',
+                'answer' => 'Коды ошибок смешивают happy path с обработкой ошибок: вызывающий ОБЯЗАН каждый раз проверить возврат, и забытая проверка тихо ломает программу. Исключения отделяют успех от сбоя, всплывают вверх по стеку до подходящего catch и не дают «потерять» ошибку. Сигнатура метода остаётся читаемой: метод возвращает РЕЗУЛЬТАТ, а не пару «значение или код». В PHP типизированная иерархия исключений + try/catch с union-типами (PHP 8) даёт компактный точечный отлов нужных ошибок. Стоимость: bubble-up через много слоёв иногда дороже простого if, поэтому исключения — для ИСКЛЮЧИТЕЛЬНЫХ ситуаций, а не штатных веток логики.',
                 'difficulty' => 3,
                 'topic' => 'oop.clean_code',
+                'code_example' => '<?php
+// ❌ Коды ошибок - читаемость страдает, забытые проверки = тихие баги
+function findUser(int $id): array
+{
+    if ($id <= 0) return [\'error\' => \'invalid_id\', \'user\' => null];
+    $user = DB::find($id);
+    if (! $user) return [\'error\' => \'not_found\', \'user\' => null];
+    return [\'error\' => null, \'user\' => $user];
+}
+
+$result = findUser(42);
+// если забыть проверку - $result["user"] === null, и упадём дальше
+echo $result[\'user\']->name;
+
+// ✅ Исключения - happy path не замусорен, ошибки нельзя «потерять»
+function findUser(int $id): User
+{
+    if ($id <= 0) throw new InvalidArgumentException("id must be positive");
+    return DB::find($id) ?? throw new UserNotFoundException($id);
+}
+
+try {
+    $user = findUser(42);
+    echo $user->name; // линейный happy path
+} catch (UserNotFoundException $e) {
+    // конкретный сценарий
+} catch (InvalidArgumentException | DatabaseException $e) {
+    // union-catch с PHP 8
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'question' => 'Почему стараются не возвращать null из методов?',
-                'answer' => 'Null заставляет каждого вызывающего помнить про проверку и порождает разбросанные по коду ветки if ($x === null), а забытая проверка превращается в TypeError или NullPointerException на проде. Альтернативы - выбросить исключение, если отсутствие значения означает ошибку, либо вернуть Null Object или пустую коллекцию, если отсутствие - это нормальный случай. Так контракт метода становится явным и вызывающий код упрощается.',
+                'answer' => 'Null — «миллиардная ошибка» (Тони Хоар): заставляет каждого вызывающего помнить про проверку, порождает россыпь if ($x === null) по всему коду, а забытая проверка превращается в TypeError на проде. Стратегии: 1) бросить исключение, если отсутствие значения — ошибка (findOrFail). 2) Вернуть Null Object (NullLogger, GuestUser), если поведение «ничего не делать» — норма. 3) Вернуть пустую коллекцию вместо null для списков (никаких array $items ?? []). 4) Optional/Maybe-обёртка для явного флага «есть/нет». Контракт метода становится явным, клиент пишет меньше защитных проверок.',
                 'difficulty' => 3,
                 'topic' => 'oop.clean_code',
+                'code_example' => '<?php
+// ❌ Возврат null - клиент обязан помнить про проверку
+class UserRepoBad
+{
+    public function find(int $id): ?User { /* ... */ return null; }
+    public function getActiveUsers(): ?array { /* ... */ return null; }
+}
+
+$user = $repo->find(1);
+echo $user->name; // TypeError если забыли if($user)
+
+foreach ($repo->getActiveUsers() as $u) {} // TypeError на null
+
+// ✅ Исключение, если отсутствие = ошибка (контракт явный)
+class UserRepo
+{
+    public function findOrFail(int $id): User
+    {
+        return $this->find($id) ?? throw new UserNotFoundException($id);
+    }
+
+    // ✅ Пустая коллекция вместо null для списков
+    /** @return User[] */
+    public function getActiveUsers(): array
+    {
+        return $this->query->where(\'active\', true)->get() ?: [];
+    }
+}
+
+// ✅ Null Object для «ничего не делать»
+class GuestUser extends User
+{
+    public function can(string $perm): bool { return false; }
+    public function email(): string { return \'\'; }
+}
+
+function current(): User { return Auth::user() ?? new GuestUser(); }',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -146,9 +251,66 @@ function charge(?User $user, ?Order $order): bool
             [
                 'category' => 'ООП',
                 'question' => 'Зачем оборачивать сторонние API в собственные абстракции?',
-                'answer' => 'Прямые вызовы внешней библиотеки или HTTP-клиента из бизнес-кода превращают её в неявную зависимость всего проекта: смена версии или провайдера задевает десятки файлов, а тесты вынуждены поднимать реальный клиент или ставить хитрые моки. Тонкая обёртка с собственным интерфейсом изолирует чужой контракт, даёт удобную точку для подмены в тестах и позволяет менять реализацию, не трогая остальной код.',
+                'answer' => 'Прямые вызовы Guzzle/Stripe SDK/AwsClient из бизнес-кода превращают чужую библиотеку в неявную зависимость всего проекта: смена версии задевает десятки файлов, замена провайдера (Stripe → Cloudpayments) — переписывание сервисов. Тонкая обёртка с собственным интерфейсом на ЯЗЫКЕ ДОМЕНА (PaymentGateway::charge(Money, Card), а не Stripe::createCharge(array)) даёт три выигрыша: 1) изоляция — менять реализацию можно без правки клиентов. 2) Тестируемость — в юнит-тестах подсовываем FakePaymentGateway вместо мока чужого SDK. 3) Чистый домен — никаких Stripe-типов в сигнатурах сервисов. Цена — лишний слой. Не оборачивай тривиальные утилиты ради «может пригодится» (YAGNI), оборачивай зависимости, которые реально могут меняться или важны для тестов.',
                 'difficulty' => 3,
                 'topic' => 'oop.clean_code',
+                'code_example' => '<?php
+// ❌ Stripe SDK торчит из бизнес-сервиса
+class OrderServiceBad
+{
+    public function pay(Order $order): void
+    {
+        $stripe = new \Stripe\StripeClient(config(\'stripe.key\'));
+        $stripe->charges->create([
+            \'amount\' => $order->total * 100,
+            \'currency\' => \'usd\',
+            \'source\' => $order->cardToken,
+        ]);
+        // Сменить провайдера? Переписывать все сервисы.
+        // Тестировать? Мокать чужой SDK.
+    }
+}
+
+// ✅ Свой интерфейс на языке домена
+interface PaymentGateway
+{
+    public function charge(Money $amount, CardToken $card): PaymentResult;
+}
+
+final class StripeGateway implements PaymentGateway
+{
+    public function __construct(private \Stripe\StripeClient $stripe) {}
+
+    public function charge(Money $amount, CardToken $card): PaymentResult
+    {
+        $charge = $this->stripe->charges->create([
+            \'amount\' => $amount->cents,
+            \'currency\' => strtolower($amount->currency->value),
+            \'source\' => $card->value,
+        ]);
+        return new PaymentResult($charge->id, $charge->status === \'succeeded\');
+    }
+}
+
+// В тесте - подсунем FakeGateway, никаких моков Stripe
+final class FakeGateway implements PaymentGateway
+{
+    public function charge(Money $a, CardToken $c): PaymentResult
+    {
+        return new PaymentResult(\'fake_id\', true);
+    }
+}
+
+class OrderService
+{
+    public function __construct(private PaymentGateway $gateway) {}
+
+    public function pay(Order $order): void
+    {
+        $this->gateway->charge($order->total(), $order->card());
+    }
+}',
+                'code_language' => 'php',
             ],
         ];
     }

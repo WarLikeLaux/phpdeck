@@ -164,6 +164,24 @@ if (strpos($s, "World") !== false)         { /* вхождение */ }',
                 'category' => 'PHP',
                 'question' => 'Чем mb_* функции отличаются от обычных строковых и когда это критично?',
                 'answer' => 'strlen, substr, strtolower работают побайтово. Для UTF-8 один кириллический символ - 2 байта, эмодзи - 4. mb_* функции учитывают кодировку и возвращают длину/срез в символах. Использование strlen для валидации длины пароля или substr для превью текста - частый источник багов и mojibake. Дефолтную кодировку для mb_* функций задают через ini default_charset=UTF-8 (актуальная общая настройка кодировки PHP, которой следуют mbstring/htmlspecialchars/etc) или явно вызовом mb_internal_encoding("UTF-8") в bootstrap. Старая ini mbstring.internal_encoding deprecated с PHP 5.6 - не используйте её в новых проектах.',
+                'code_example' => '<?php
+$s = "Привет";
+
+// Длина — для валидации логина/превью нужны СИМВОЛЫ, не байты
+strlen($s);       // 12
+mb_strlen($s);    // 6  ← правильно
+
+// Срез — substr ломает UTF-8
+substr($s, 0, 3);     // битый хвост
+mb_substr($s, 0, 3);  // "При"
+
+// Регистр
+strtolower("ПРИВЕТ");     // "ПРИВЕТ" — не работает
+mb_strtolower("ПРИВЕТ");  // "привет"
+
+// В bootstrap проекта
+mb_internal_encoding("UTF-8");',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.strings',
             ],

@@ -60,8 +60,26 @@ Authorization: Bearer eyJ...new
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Почему JWT нельзя «отозвать» сразу простыми словами?',
-                'answer' => 'Сервер JWT не хранит — он только проверяет подпись. Поэтому украденный токен работает до своего exp (срок действия). «Logout» обычно просто удаляет токен на клиенте — но если он уже украден, ничего не поможет. Решения: 1) короткий exp (5-15 минут). 2) Чёрный список revoked-токенов (теряется stateless). 3) Версия токена в БД (token_version), инвалидация всех при logout.',
+                'question' => 'Почему JWT нельзя отозвать сразу и как обходят это ограничение?',
+                'answer' => 'Сервер JWT не хранит — он только проверяет подпись и exp. Поэтому украденный токен работает до своего exp независимо от того, что юзер «вышел» или сменил пароль. «Logout» обычно просто удаляет токен на клиенте, но украденная копия остаётся валидной. Стандартные подходы: 1) Короткий exp (5-15 минут) + refresh token — узкое окно для атакующего. 2) Blacklist по jti (id токена) в Redis с TTL = оставшийся срок жизни — теряется stateless, но Redis-лукап на запрос дёшев. 3) token_version (или iat-cutoff) в БД на пользователя — при logout/смене пароля поднимаем версию, payload должен содержать ту же версию, иначе 401. 4) Refresh rotation: каждый рефреш выдаёт НОВЫЙ refresh_token и инвалидирует старый, повторное использование старого = сигнал кражи, выкидываем всю семью токенов.',
+                'code_example' => "<?php
+// Подход с token_version — stateless для access, инвалидация одним UPDATE
+// users: token_version INT default 1
+// access token payload: {sub:42, ver:1, exp:...}
+
+public function verifyJwt(array \$payload): User {
+    \$user = User::findOrFail(\$payload['sub']);
+    if ((\$payload['ver'] ?? 0) !== \$user->token_version) {
+        abort(401, 'token revoked');
+    }
+    return \$user;
+}
+
+// Logout «со всех устройств» / смена пароля
+public function logoutEverywhere(User \$user): void {
+    \$user->increment('token_version'); // все старые JWT мгновенно мертвы
+}",
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.tokens',
             ],
@@ -104,14 +122,43 @@ fetch('/post', {
             [
                 'category' => 'Безопасность',
                 'question' => 'Где хранить JWT на клиенте: localStorage или cookie?',
-                'answer' => 'localStorage — доступен из JS, любой XSS = угнанный токен. Cookie с флагами HttpOnly + Secure + SameSite=Strict/Lax — JS не прочитает, но появляется риск CSRF (решается CSRF-токеном или SameSite). Общая рекомендация: refresh_token — в HttpOnly-куку, access_token — в памяти JS (не сохранять между перезагрузками). Никогда не клади токены в URL-параметры — попадут в логи и истории браузера.',
+                'answer' => 'Два варианта, каждый с разным профилем рисков. localStorage / sessionStorage — удобно для SPA, токен сам цепляется в Authorization-заголовок, но JS его читает напрямую: любой XSS (вредный npm-пакет, чужой script на странице) угоняет токен мгновенно. Cookie с флагами HttpOnly + Secure + SameSite=Lax/Strict — JS прочитать не может, XSS токен не вытащит, но появляется риск CSRF (браузер сам шлёт куку с любого сайта), решается CSRF-токеном или SameSite=Strict. Современная рекомендация для веба: refresh_token — в HttpOnly+Secure+SameSite=Strict куку с path=/auth/refresh, access_token — в памяти JS-приложения (переменная/closure, не localStorage), живёт 5-15 минут, при перезагрузке страницы тихо обновляется через refresh. Никогда не клади токены в URL — попадут в access_log, history браузера и Referer-заголовок. Для мобильных — Keychain (iOS) / EncryptedSharedPreferences (Android), не AsyncStorage в открытую.',
+                'code_example' => "// Refresh — HttpOnly cookie, JS не достанет
+Set-Cookie: refresh=eyJ...; HttpOnly; Secure; SameSite=Strict; Path=/auth/refresh; Max-Age=2592000
+
+// Access — в памяти SPA, не в localStorage
+// app.js
+let accessToken = null; // closure, нет в DevTools → Application
+
+async function refresh() {
+  const r = await fetch('/auth/refresh', { method: 'POST', credentials: 'include' });
+  accessToken = (await r.json()).access_token;
+}
+
+fetch('/api/me', { headers: { Authorization: 'Bearer ' + accessToken } });",
+                'code_language' => 'http',
                 'difficulty' => 3,
                 'topic' => 'security.tokens',
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Почему JWT с alg=none — опасная фича?',
-                'answer' => 'В стандарте JWT есть значение alg=none — токен «без подписи». Старые библиотеки могли принимать такой токен как валидный — атакующий просто кладёт нужный payload и alg=none. Аналогичная классическая дыра — алгоритм-confusion (alg=HS256 с публичным RSA-ключом в качестве «секрета»). Защита: при верификации жёстко указывай разрешённые алгоритмы списком, не доверяй полю alg из header.',
+                'question' => 'Почему JWT с alg=none и алгоритм-confusion — опасные атаки?',
+                'answer' => 'В RFC 7519 разрешено значение alg=none — «токен без подписи». Старые/наивные библиотеки сначала читали alg из header, а потом по этому полю выбирали способ верификации: видят none — пропускают проверку, считают подпись валидной. Атакующий просто кладёт нужный payload, ставит alg=none, оставляет пустую секцию подписи — и стал админом. Вторая близкая атака — algorithm confusion: сервис подписывает RS256 (приватным RSA), верификатор принимает любой alg из заголовка. Атакующий берёт ПУБЛИЧНЫЙ ключ сервера (часто доступен на /.well-known/jwks.json), пересобирает токен с alg=HS256, использует публичный ключ как HMAC-секрет — библиотека верит. Защита: 1) При верификации передавай белый список алгоритмов (например, [RS256]) — НЕ доверяй полю alg из header. 2) Используй разные ключи для разных операций. 3) Отдельно валидируй iss, aud, exp. 4) Лучше выбрать библиотеку, которая привязывает ключ к алгоритму на уровне API.',
+                'code_example' => "<?php
+use Firebase\\JWT\\JWT;
+use Firebase\\JWT\\Key;
+
+// ПЛОХО — без явного указания алгоритма, библиотека прочтёт alg из header
+// (старые версии firebase/php-jwt такое позволяли)
+\$payload = JWT::decode(\$jwt, \$publicKey);
+
+// ХОРОШО — алгоритм задан жёстко, чужой alg отклоняется
+\$payload = JWT::decode(\$jwt, new Key(\$publicKey, 'RS256'));
+
+// Дополнительно — обязательная проверка iss/aud
+if (\$payload->iss !== 'https://my-issuer') abort(401);
+if (\$payload->aud !== 'my-api')             abort(401);",
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.tokens',
             ],

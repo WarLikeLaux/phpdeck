@@ -211,7 +211,7 @@ SELECT * FROM pg_replication_slots;
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое offset в Kafka и как он коммитится?',
-                'answer' => 'Offset — это позиция сообщения внутри партиции, монотонно растущее число; consumer group хранит «последний обработанный offset» в специальном внутреннем топике __consumer_offsets. При autocommit клиент периодически фиксирует offset автоматически, что даёт at-most-once при ошибке (сообщение помечено прочитанным до обработки). Ручной commit после успешной обработки даёт at-least-once: при падении сообщение повторится. Транзакционный commit вместе с записью результата даёт exactly-once в рамках Kafka.',
+                'answer' => 'Offset — позиция сообщения внутри партиции, монотонно растущее число; consumer group хранит «последний обработанный offset» в специальном внутреннем топике __consumer_offsets. Три стратегии коммита. Autocommit (enable.auto.commit=true) — клиент периодически (auto.commit.interval.ms) сам фиксирует offsets уже выданных сообщений; если упасть после autocommit, но до обработки — потеря (at-most-once). Manual commit ПОСЛЕ обработки (commitSync/Async) — стандарт на проде: при падении посередине offset не зафиксирован и сообщение придёт ещё раз (at-least-once, нужна идемпотентность). Транзакционный commit вместе с записью результата в Kafka даёт exactly-once в рамках Kafka (read-process-write), но при выходе наружу (БД, HTTP) консистентность обеспечивает уже consumer.',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],

@@ -77,41 +77,69 @@ password_verify(\$pass, \$hash); // true/false",
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое HMAC простыми словами?',
-                'answer' => 'Hash-based Message Authentication Code — способ доказать, что сообщение не подменили, используя общий секретный ключ. HMAC = hash(secret + message). Получатель пересчитывает HMAC своим секретом и сравнивает — если совпало, сообщение настоящее. Используется в JWT-подписях, webhook-сигнатурах (Stripe, GitHub).',
+                'question' => 'Что такое HMAC и как его правильно использовать?',
+                'answer' => 'Hash-based Message Authentication Code (RFC 2104) — способ доказать целостность и аутентичность сообщения через общий секретный ключ. Конструкция HMAC = H(K xor opad || H(K xor ipad || message)) защищает от length-extension атак, которым уязвим наивный sha256(secret . message). Применяется в JWT с HS256, webhook-сигнатурах (Stripe-Signature, X-Hub-Signature-256 у GitHub), AWS SigV4. Правила: 1) секрет 32+ байт случайных (random_bytes), не словарный пароль. 2) Сверяй через hash_equals — обычное == даёт timing-leak. 3) Не путай HMAC с подписью — для HMAC нужно ДЕЛИТЬ секрет с проверяющим, для асимметричной подписи (RS256) — нет. 4) Добавляй timestamp и nonce в подписываемый payload, чтобы отбить replay-атаки.',
                 'code_example' => "<?php
-\$secret = 'shared-secret';
-\$payload = '{\"order_id\":42}';
+// На webhook GitHub: header X-Hub-Signature-256: sha256=<hex>
+\$secret = config('services.github.webhook_secret');
+\$payload = file_get_contents('php://input');
+\$header = \$_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
 
-// Отправитель шлёт payload + signature
-\$signature = hash_hmac('sha256', \$payload, \$secret);
+\$expected = 'sha256='.hash_hmac('sha256', \$payload, \$secret);
 
-// Получатель пересчитывает и сверяет в constant time
-\$expected = hash_hmac('sha256', \$payload, \$secret);
-if (hash_equals(\$expected, \$signature)) {
-    // сообщение настоящее
-}",
+// ОБЯЗАТЕЛЬНО constant-time
+if (!hash_equals(\$expected, \$header)) {
+    http_response_code(401);
+    exit('invalid signature');
+}
+
+// Защита от replay: проверь timestamp из payload < 5 минут назад
+// и сохрани nonce/delivery_id, чтобы не принять тот же запрос дважды",
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.crypto',
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое цифровая подпись простыми словами?',
-                'answer' => 'Способ доказать, что данные созданы конкретным владельцем приватного ключа. Подписант хеширует данные и шифрует хеш своим приватным ключом — это и есть подпись. Любой с публичным ключом может проверить: расшифровывает подпись, сравнивает с хешем данных. Используется в TLS-сертификатах, JWT (alg=RS256), git commit signing, обновлениях ПО.',
+                'question' => 'Что такое цифровая подпись и чем она отличается от HMAC?',
+                'answer' => 'Асимметричная подпись доказывает, что данные созданы владельцем приватного ключа, и при этом проверяющему НЕ нужно знать секрет — достаточно публичного ключа. Подписант хеширует данные (SHA-256/384) и применяет к хешу приватный ключ (RSA-PSS, ECDSA, EdDSA). Любой проверяет публичным ключом и сравнивает с хешем сообщения. Отличие от HMAC: HMAC симметричный (общий секрет, все, кто проверяет, могут и подделать), подпись — асимметричная (приватный ключ не покидает подписанта, проверять может кто угодно). Применяется в TLS-сертификатах, JWT alg=RS256/ES256, git commit signing (GPG), подписи релизов (cosign, minisign), JWS. Современная рекомендация — ES256 (ECDSA-P256) или EdDSA: компактнее и быстрее RSA при той же стойкости.',
+                'code_example' => "<?php
+// Генерация ключевой пары один раз:
+// openssl genpkey -algorithm RSA -out private.pem -pkeyopt rsa_keygen_bits:2048
+// openssl pkey -in private.pem -pubout -out public.pem
+
+\$data = '{\"order_id\":42,\"amount\":100}';
+
+// Подписант (есть приватный ключ)
+\$priv = openssl_pkey_get_private(file_get_contents('private.pem'));
+openssl_sign(\$data, \$signature, \$priv, OPENSSL_ALGO_SHA256);
+\$signatureB64 = base64_encode(\$signature);
+
+// Проверяющий (есть только публичный)
+\$pub = openssl_pkey_get_public(file_get_contents('public.pem'));
+\$ok = openssl_verify(\$data, base64_decode(\$signatureB64), \$pub, OPENSSL_ALGO_SHA256);
+// \$ok === 1 — валидна, 0 — невалидна, -1 — ошибка",
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.crypto',
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое timing attack и зачем нужен hash_equals простыми словами?',
-                'answer' => 'Если сравнивать секреты обычным ==, PHP выходит из сравнения на первом несовпавшем байте — атакующий по времени ответа может побайтово подобрать токен. hash_equals($known, $user) сравнивает строки за константное время (всегда проходит все байты). Используй его для CSRF-токенов, HMAC-подписей, API-ключей. Для паролей не нужно — password_verify уже делает constant-time внутри.',
+                'question' => 'Что такое timing attack и зачем нужен hash_equals?',
+                'answer' => 'Атака на сравнение секретов через измерение времени ответа. Обычное == и strcmp выходят из сравнения на первом несовпавшем байте — чем больше совпавший префикс, тем дольше работает функция. Замеряя время сотен тысяч запросов и усредняя, атакующий побайтово подбирает токен, не зная его. На локалке разница в наносекунды, но в реальной сети при должном усреднении она выделяется из шума. hash_equals($known, $user) сравнивает строки за КОНСТАНТНОЕ время — проходит все байты, накапливает побитовый xor, возвращает результат. Используй для CSRF-токенов, HMAC-подписей webhook, API-ключей, capability-токенов. Для паролей не нужно — password_verify уже делает constant-time внутри. Важно: первым аргументом передавай ИЗВЕСТНУЮ строку (так гарантирована та же длина при сравнении).',
                 'code_example' => "<?php
-// ПЛОХО — timing leak
+// ПЛОХО — timing leak, == выходит на первом несовпавшем байте
 if (\$_POST['token'] === \$_SESSION['csrf']) { /* ... */ }
 
-// ХОРОШО — constant-time
-if (hash_equals(\$_SESSION['csrf'], \$_POST['token'])) { /* ... */ }",
+// Также плохо для бинарных подписей — strcmp/strncmp тоже не constant-time
+if (strcmp(\$signature, \$expected) === 0) { /* ... */ }
+
+// ХОРОШО — constant-time, первым параметром «правильное» значение
+if (hash_equals(\$_SESSION['csrf'], \$_POST['token'] ?? '')) { /* ok */ }
+
+// Для бинарных HMAC — тоже hash_equals (он работает с любыми строками)
+\$expected = hash_hmac('sha256', \$payload, \$secret);
+if (hash_equals(\$expected, \$received)) { /* ok */ }",
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.crypto',

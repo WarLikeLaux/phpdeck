@@ -46,6 +46,27 @@ $str = var_export($data, true);',
                 'category' => 'PHP',
                 'question' => 'Можно ли менять readonly-свойство из метода того же класса? А из наследника? Чем это отличается от private?',
                 'answer' => 'readonly разрешает запись ровно один раз и именно из scope объявившего класса — не «из конструктора», а из любого метода того же класса до первой записи; после первой записи попытка изменить даёт Error. private ограничивает только видимость (читать/писать можно сколько угодно из своего класса), readonly ограничивает запись (один раз и всё, даже из своего класса). Из наследника записать readonly-свойство нельзя — даже если оно protected, scope записи именно у объявившего класса. С PHP 8.3 разрешена переинициализация readonly-свойства строго внутри __clone() того класса, где оно объявлено.',
+                'code_example' => '<?php
+class User {
+    public function __construct(public readonly string $name) {}
+
+    public function init(): void {
+        // ✅ Можно из метода ОБЪЯВИВШЕГО класса до первой записи
+        // НО $name уже был записан в конструкторе → Error
+        // $this->name = "new";
+    }
+}
+
+class Admin extends User {
+    public function rename(): void {
+        // ❌ Из наследника — Error: cannot modify readonly property
+        // $this->name = "admin";
+    }
+}
+
+$u = new User("Иван");
+// $u->name = "X"; // Error: readonly',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.basic_qa',
             ],

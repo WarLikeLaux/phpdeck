@@ -20,16 +20,35 @@ CREATE INDEX idx_orders_user_id ON orders(user_id);',
             [
                 'category' => 'Базы данных',
                 'question' => 'Как устроен B-tree индекс?',
-                'answer' => 'B-tree (balanced tree) - сбалансированное дерево, где данные отсортированы и поиск идёт за O(log n). Каждый узел содержит несколько ключей и указатели на детей; листья связаны для эффективного range-поиска. Это самый универсальный тип индекса по умолчанию: подходит для =, <, >, BETWEEN, ORDER BY, LIKE "pref%". PostgreSQL и MySQL по умолчанию создают именно B-tree.',
+                'answer' => 'B-tree (balanced tree, точнее B+ tree в современных СУБД) — это сбалансированное многоуровневое дерево с большим коэффициентом ветвления, где все ключи отсортированы. Внутренние узлы содержат только ключи-разделители и указатели на детей, а собственно данные/идентификаторы строк лежат в листьях; все листья дополнительно связаны двусвязным списком — это даёт дешёвое range-сканирование (нашли начало диапазона, дальше идём по соседям без возврата в корень). Поиск, вставка и удаление — O(log n), причём из-за высокого ветвления реальная высота дерева на миллиарде строк — 3-5 уровней (несколько обращений к диску/буферному пулу). Это самый универсальный тип индекса и стоит по умолчанию: подходит для =, <, >, BETWEEN, IN, ORDER BY, для префиксного LIKE \'abc%\'. Не помогает на LIKE \'%abc%\' и на функции от колонки (нужен expression index).',
+                'code_example' => '-- Создание (по умолчанию это и есть B-tree)
+CREATE INDEX idx_orders_created ON orders(created_at);
+-- PG явно: CREATE INDEX ... USING btree(created_at);
+
+-- B-tree работает на равенстве, диапазоне и сортировке
+SELECT * FROM orders WHERE created_at >= \'2026-01-01\'
+                       AND created_at <  \'2026-02-01\'
+ORDER BY created_at; -- range + order по индексу, без отдельной сортировки
+
+-- Префиксный LIKE — индексируется
+SELECT * FROM products WHERE name LIKE \'iPhone%\';
+
+-- Полный поиск \'%pro%\' — индекс не помогает, нужен GIN/FULLTEXT',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.indexes',
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'Что такое hash-индекс?',
-                'answer' => 'Hash-индекс хранит хэш ключа и указатель на строку. Поиск по равенству очень быстрый - O(1), но не работает для диапазонов (<, >, BETWEEN) и сортировки. В PostgreSQL hash-индексы есть, но используются редко. В Redis и memcached - основной механизм.',
-                'code_example' => '-- PostgreSQL
-CREATE INDEX idx_users_email ON users USING hash(email);',
+                'question' => 'Что такое hash-индекс и когда он уместен?',
+                'answer' => 'Hash-индекс хранит хэш-функцию от ключа и указатель на строку. Поиск по равенству — амортизированно O(1) и часто компактнее B-tree, но он принципиально не поддерживает диапазоны (<, >, BETWEEN), сортировку (ORDER BY) и префиксы (LIKE \'abc%\'), потому что хэш ломает порядок. В PostgreSQL hash-индексы есть и с версии 10 они полноценно crash-safe и реплицируются, но используют их редко: B-tree почти всегда сопоставим по скорости на равенство, а универсальнее. В MySQL/InnoDB пользовательский hash-индекс отсутствует, но InnoDB сам поддерживает Adaptive Hash Index в памяти как кеш над B-tree. Hash — основной механизм в Redis и memcached, как тип индекса в SQL — нишевый.',
+                'code_example' => '-- PostgreSQL: явный hash-индекс
+CREATE INDEX idx_users_email_hash ON users USING hash(email);
+
+-- Работает только на равенство
+SELECT * FROM users WHERE email = \'a@b.c\'; -- OK, index scan
+SELECT * FROM users WHERE email LIKE \'a%\'; -- индекс НЕ используется
+SELECT * FROM users ORDER BY email;        -- индекс НЕ используется',
                 'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.indexes',

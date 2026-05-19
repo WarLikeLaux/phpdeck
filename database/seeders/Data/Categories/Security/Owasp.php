@@ -73,8 +73,26 @@ public function show(Invoice \$invoice) {
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое Insecure Design простыми словами?',
-                'answer' => 'Уязвимости, заложенные на этапе проектирования, а не в реализации. Примеры: восстановление пароля только по дате рождения (легко угадать), reset-токен с длиной 6 цифр без rate limit, отсутствие в архитектуре идеи throttling/lockout. Даже идеальный код не спасёт плохой дизайн. Защита: threat modeling, security review до старта разработки.',
+                'question' => 'Что такое Insecure Design и чем он отличается от Misconfiguration?',
+                'answer' => 'Пункт №4 в OWASP Top 10 2021 — уязвимости, заложенные на этапе ПРОЕКТИРОВАНИЯ бизнес-логики, а не в коде или настройках. Идеальная реализация плохой идеи всё равно небезопасна. Отличие от Security Misconfiguration: misconfig — это «забыли включить флаг»/«дефолтный пароль», insecure design — «фича изначально позволяет атаку». Классические примеры: восстановление пароля по дате рождения (легко угадать через соцсети), 4-6 цифр в reset-коде без rate limit (брутится за минуты), купон на скидку без проверки one-time-use, race condition в переводе денег (TOCTOU), отсутствие лимита попыток ввода 2FA, бизнес-flow «верификация по SMS» как единственный фактор для крупных операций. Защита: threat modeling до старта (STRIDE, abuser stories наряду с user stories), security review дизайна, явные требования к rate limit / lockout / идемпотентности на уровне спецификации, «secure by default» — фича сначала закрыта, потом открывается.',
+                'code_example' => "<?php
+// Плохой дизайн — 6-значный код без лимита попыток
+public function verifyReset(Request \$r) {
+    \$u = User::where('reset_code', \$r->code)->first();
+    if (\$u) Auth::login(\$u); // брутфорс 1000000 за минуты
+}
+
+// Хороший дизайн — длинный токен + lockout + одноразовость
+public function verifyReset(Request \$r) {
+    RateLimiter::hit('reset:'.\$r->ip(), 60); // 5 попыток в минуту
+    if (RateLimiter::tooManyAttempts('reset:'.\$r->ip(), 5)) abort(429);
+
+    \$record = PasswordReset::where('token_hash', hash('sha256', \$r->token))
+        ->where('expires_at', '>', now())->firstOr(fn() => abort(401));
+    \$record->delete(); // одноразовый
+    Auth::login(\$record->user);
+}",
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.owasp',
             ],
@@ -108,8 +126,23 @@ npm audit fix",
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое Software and Data Integrity Failures простыми словами?',
-                'answer' => 'Доверие коду/данным без проверки подписи. Примеры: CI/CD ставит npm-пакет без integrity-чека, автообновление ПО без проверки подписи, десериализация недоверенных данных (PHP unserialize() с пользовательским вводом — путь к RCE). Защита: lock-файлы, SRI для CDN-скриптов, подписи артефактов, json_decode вместо unserialize для внешних данных.',
+                'question' => 'Что такое Software and Data Integrity Failures и причём тут unserialize?',
+                'answer' => 'Пункт №8 в OWASP Top 10 2021 — доверие коду или данным без проверки целостности. Примеры: CI/CD ставит npm/composer-пакет без integrity-чека (supply chain атака — atomicfoo, event-stream), автообновление ПО без проверки подписи, CDN-скрипт без SRI-хеша, десериализация недоверенных данных. Последнее — самое опасное в PHP: unserialize() с пользовательским вводом — путь к RCE через POP-чейн (PHP Object Property-Oriented Programming): атакующий конструирует строку, которая при unserialize создаёт цепочку объектов, у которых __destruct/__wakeup/__toString делают вредоносное (file_put_contents, exec). Аналог в Java — Apache Commons Collections gadget. Защита: 1) lock-файлы (composer.lock, package-lock.json) и composer/npm audit в CI. 2) SRI-атрибут integrity= у внешних <script>. 3) Подписи артефактов релизов (cosign, GPG). 4) Для внешних данных — json_decode, никогда unserialize. 5) Если unserialize неизбежен — second-аргумент allowed_classes с явным whitelist.',
+                'code_example' => "<?php
+// ОЧЕНЬ ПЛОХО — RCE через POP-chain
+\$data = unserialize(\$_COOKIE['state']);
+
+// Лучше — JSON, не исполняет код
+\$data = json_decode(\$_COOKIE['state'], true);
+
+// Если unserialize неизбежен (legacy) — whitelist классов
+\$data = unserialize(\$blob, ['allowed_classes' => [DTO::class]]);
+
+// SRI для внешних скриптов
+// <script src=\"https://cdn.example.com/lib.js\"
+//   integrity=\"sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC\"
+//   crossorigin=\"anonymous\"></script>",
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.owasp',
             ],
@@ -122,8 +155,23 @@ npm audit fix",
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое Server-Side Request Forgery (SSRF) как пункт OWASP Top 10?',
-                'answer' => 'Атакующий заставляет твой сервер послать HTTP-запрос куда ему нужно — на внутренние сервисы (Redis, metadata-эндпоинт облака), localhost, частные сети. Появилась как отдельный пункт №10 в OWASP 2021. Защита: whitelist разрешённых доменов, блок 127.0.0.1 / 10.0.0.0/8 / 169.254.169.254, отдельный egress-firewall для исходящего трафика.',
+                'question' => 'Почему SSRF попал в OWASP Top 10 отдельным пунктом и как защититься в архитектуре?',
+                'answer' => 'SSRF (Server-Side Request Forgery) — атакующий заставляет твой сервер сходить по нужному ему URL. В OWASP Top 10 2021 SSRF выделен в отдельный №10 (раньше шёл внутри Broken Access Control), потому что взрывной рост микросервисов и облаков сделал его одной из ведущих причин крупных утечек (Capital One 2019 — через SSRF получили AWS IAM credentials из metadata-эндпоинта). Опасность не только в чтении внутренних API, но и в side-effects: внутренний Redis принимает команды по HTTP-протоколу, внутренние админки часто без auth. Защита по слоям (defense-in-depth): 1) В коде — whitelist разрешённых доменов вместо blacklist. 2) Резолвить DNS заранее и блочить приватные IP-диапазоны (включая 169.254.169.254, ::1, IPv4-mapped IPv6). 3) Запрет редиректов или проверка каждого hop. 4) Архитектурно — отдельная сетевая зона для исходящего трафика (egress proxy типа Squid с whitelist). 5) Для AWS — IMDSv2 (требует токена, защищён). 6) Запуск сервиса с минимальным IAM-ролем, чтобы даже при SSRF метадата была бесполезна.',
+                'code_example' => "<?php
+// В контроллере — резолвим и проверяем все IP домена
+function fetchExternal(string \$url): string {
+    \$host = parse_url(\$url, PHP_URL_HOST) ?: abort(400);
+    foreach (gethostbynamel(\$host) ?: [] as \$ip) {
+        if (!filter_var(\$ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            abort(400, 'blocked: private IP '.\$ip);
+        }
+    }
+    return Http::withOptions(['allow_redirects' => false, 'timeout' => 5])->get(\$url)->body();
+}
+
+# На AWS — обязательно IMDSv2
+aws ec2 modify-instance-metadata-options --http-tokens required",
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.owasp',
             ],

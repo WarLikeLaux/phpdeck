@@ -167,6 +167,14 @@ foreach ($nums as $k => $n) {
                 'category' => 'PHP',
                 'question' => 'Что такое разделители в числовых литералах PHP?',
                 'answer' => 'С PHP 7.4 в числовых литералах разрешён символ подчёркивания между цифрами для повышения читаемости, например 1_000_000 или 0xFF_EC. На рантайм это не влияет: парсер игнорирует подчёркивания, и значение хранится как обычное число.',
+                'code_example' => '<?php
+$population = 8_000_000_000;      // читается как 8 миллиардов
+$mask       = 0xFF_FF_FF;         // hex по байтам
+$timeoutNs  = 1_500_000;          // 1.5 ms в наносекундах
+
+var_dump($population);            // int(8000000000)
+var_dump($population === 8000000000); // true — разделители не меняют значение',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.basic_syntax',
             ],
@@ -188,6 +196,23 @@ foreach ($nums as $k => $n) {
                 'category' => 'PHP',
                 'question' => 'Какие магические константы есть в PHP и от чего зависят их значения?',
                 'answer' => 'Магические константы — это псевдо-константы, значение которых вычисляется парсером в зависимости от того, где они написаны: __LINE__ возвращает номер строки, __FILE__ — полный путь к файлу, __DIR__ — каталог файла, __FUNCTION__ — имя текущей функции, __CLASS__ — имя класса, __METHOD__ — Class::method, __TRAIT__ — имя трейта, __NAMESPACE__ — текущее пространство имён. Особняком стоит ClassName::class — это constant expression, который раскрывается в полное имя класса со всеми namespace в момент компиляции и работает даже без autoload.',
+                'code_example' => '<?php
+namespace App\\Services;
+
+class UserService {
+    public function find(): void {
+        echo __LINE__;         // номер строки
+        echo __FILE__;         // /app/Services/UserService.php
+        echo __DIR__;          // /app/Services
+        echo __FUNCTION__;     // "find"
+        echo __CLASS__;        // "App\\Services\\UserService"
+        echo __METHOD__;       // "App\\Services\\UserService::find"
+        echo __NAMESPACE__;    // "App\\Services"
+    }
+}
+
+echo UserService::class;       // "App\\Services\\UserService" — без autoload',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.basic_syntax',
             ],

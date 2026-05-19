@@ -202,9 +202,55 @@ echo $original->author->name; // Иван (благодаря __clone)',
             [
                 'category' => 'ООП',
                 'question' => 'В чём разница между паттерном Factory и Dependency Injection?',
-                'answer' => 'Сравнение методически некорректно — это ортогональные понятия: Factory отвечает на вопрос «как создать», DI — «кто принесёт». Factory знает, какие конкретные классы выбрать, какие параметры собрать, и инкапсулирует логику создания. Dependency Injection — это вообще не паттерн создания, а способ доставки уже готовой зависимости тому, кто её использует, через конструктор или сеттер. Они не взаимоисключающие: фабрика часто сама регистрируется как сервис в DI-контейнере и инжектится туда, где нужно создавать объекты по требованию (например, по типу из запроса).',
+                'answer' => 'Понятия ортогональные. Factory отвечает на «КАК создать»: знает, какие конкретные классы выбрать (по конфигу, типу из запроса), как собрать параметры, инкапсулирует сложную логику конструирования. DI отвечает на «КТО ПРИНЕСЁТ»: способ ДОСТАВКИ уже готовой зависимости через конструктор/сеттер. Это разные оси, они сочетаются. Когда брать что: 1) Объект нужен ОДИН на запрос — DI, инжектим в конструктор. 2) Объект создаётся МНОГОКРАТНО или его тип определяется в рантайме (по полю запроса) — Factory. 3) Часто фабрика сама регистрируется как сервис и инжектится через DI туда, где нужно создавать объекты по требованию.',
                 'difficulty' => 3,
                 'topic' => 'oop.gof_creational',
+                'code_example' => '<?php
+// DI - доставляем УЖЕ ГОТОВУЮ зависимость
+class OrderService
+{
+    public function __construct(
+        private OrderRepository $repo,    // создаст контейнер - один на сервис
+        private Logger $logger,
+    ) {}
+}
+
+// Factory - создаём МНОГО объектов в рантайме, выбор по входу
+interface Notifier { public function send(string $msg): void; }
+class EmailNotifier implements Notifier { public function send(string $m): void {} }
+class SmsNotifier   implements Notifier { public function send(string $m): void {} }
+class PushNotifier  implements Notifier { public function send(string $m): void {} }
+
+final class NotifierFactory
+{
+    public function __construct(
+        private Container $container, // фабрика сама зависит от DI
+    ) {}
+
+    public function make(string $channel): Notifier
+    {
+        return match ($channel) {
+            \'email\' => $this->container->make(EmailNotifier::class),
+            \'sms\'   => $this->container->make(SmsNotifier::class),
+            \'push\'  => $this->container->make(PushNotifier::class),
+            default => throw new InvalidArgumentException("Unknown: $channel"),
+        };
+    }
+}
+
+// DI + Factory вместе: фабрика инжектится, в рантайме создаёт нужный Notifier
+class NotificationService
+{
+    public function __construct(private NotifierFactory $factory) {}
+
+    public function notify(User $user, string $msg): void
+    {
+        foreach ($user->channels() as $channel) {
+            $this->factory->make($channel)->send($msg);
+        }
+    }
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

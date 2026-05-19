@@ -636,14 +636,70 @@ foreach (User::query()->where(...)->toBase()->cursor() as $row) {
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает withTrashed, onlyTrashed и restore при использовании SoftDeletes?',
-                'answer' => 'По умолчанию глобальный scope SoftDeletingScope скрывает записи с непустым deleted_at. withTrashed() включает их в выборку, onlyTrashed() возвращает только удалённые. restore() обнуляет deleted_at и стреляет событиями restoring/restored. forceDelete() удаляет физически, минуя soft delete и вызывая событие forceDeleted.',
+                'answer' => 'Трейт SoftDeletes регистрирует глобальный scope SoftDeletingScope, который автоматически добавляет WHERE deleted_at IS NULL ко всем запросам - удалённые записи скрыты. withTrashed() отключает этот scope и возвращает и живые, и удалённые. onlyTrashed() инвертирует условие - WHERE deleted_at IS NOT NULL, только удалённые. restore() сбрасывает deleted_at в null и стреляет событиями restoring/restored - можно слушать в Observer. forceDelete() игнорирует SoftDeletes и физически удаляет строку из таблицы, выпуская событие forceDeleted. Удобно для админок ("корзина") и для гарантированной очистки PII (GDPR).',
+                'code_example' => '<?php
+class Post extends Model {
+    use SoftDeletes;
+}
+
+// Дефолт - только живые
+Post::all();
+
+// Включая удалённые
+Post::withTrashed()->get();
+
+// Только удалённые - например "Корзина"
+Post::onlyTrashed()->get();
+
+// Восстановить из корзины
+$post = Post::onlyTrashed()->find($id);
+$post->restore();           // deleted_at = null + событие restored
+
+// Жёсткое удаление - данные исчезают физически
+$post->forceDelete();       // событие forceDeleted
+
+// На одной выборке
+Post::withTrashed()->where("user_id", $id)->restore();',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.eloquent_advanced',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что нужно учитывать при выборе движка Scout: database, MeiliSearch, Algolia, Typesense?',
-                'answer' => 'database-драйвер хорош для прототипа и небольших коллекций — это просто LIKE по индексам, без релевантности. MeiliSearch и Typesense — self-hosted поисковые движки с морфологией и быстрым индексированием. Algolia — SaaS с очень хорошим ранжированием, но платный и оффшорный (PII). Выбор зависит от объёма данных, требований к релевантности, бюджета и compliance-ограничений на хранение данных у внешнего вендора.',
+                'answer' => 'database-драйвер - LIKE-поиск по индексным колонкам той же БД, ноль инфраструктуры, но без релевантности и морфологии; норм для прототипа и до ~100k записей. collection - такой же LIKE, но в памяти (для тестов). MeiliSearch - self-hosted на Rust, простой API, поддерживает typo-tolerance и фасеты; популярный дефолт для middle-проектов. Typesense - self-hosted на C++, быстрее MeiliSearch на больших корпусах, отличный геопоиск. Algolia - SaaS с лучшим ранжированием на рынке, но платный (плюс данные у внешнего вендора - вопросы PII/GDPR). Критерии: 1) объём индекса (database до 100k, Meili/Typesense до миллионов, Algolia на любой); 2) бюджет (Meili/Typesense - бесплатно + сервер, Algolia - $$$); 3) compliance (можно ли отдавать данные наружу); 4) языки (морфология русского лучше всего у Meili 1.x+ и Typesense). Переключение между драйверами - один конфиг, SCOUT_DRIVER=meilisearch.',
+                'code_example' => '<?php
+// .env
+// SCOUT_DRIVER=meilisearch
+// MEILISEARCH_HOST=http://127.0.0.1:7700
+
+class Product extends Model {
+    use Searchable;
+
+    public function toSearchableArray(): array {
+        return [
+            "id"          => (string) $this->id,
+            "name"        => $this->name,
+            "category"    => $this->category->name,
+            "price"       => (float) $this->price,
+        ];
+    }
+}
+
+// Поиск, одинаковый для всех движков
+Product::search("ноутбук")
+    ->where("category", "electronics")
+    ->paginate(15);
+
+// Импорт в индекс (поточно по chunkById)
+// php artisan scout:import "App\\Models\\Product"
+
+// Переключить store на лету (например, для админ-поиска - Algolia,
+// для публичного - database)
+Product::search("...", function ($engine, string $query, array $opts) {
+    // кастомизация под конкретный движок
+})->get();',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.eloquent_advanced',
             ],

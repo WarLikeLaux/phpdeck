@@ -84,6 +84,17 @@ $config["timeout"] ??= 30; // если не задано, поставить 30'
                 'category' => 'PHP',
                 'question' => 'Что такое pipe operator |> в PHP 8.5?',
                 'answer' => 'Конвейерный оператор |> передаёт результат левого выражения как аргумент правому callable, позволяя выстраивать цепочки преобразований слева направо. Это альтернатива вложенным вызовам вроде strtolower(trim($s)) и хорошо сочетается с first-class callable syntax.',
+                'code_example' => '<?php
+// ❌ Без pipe — читать справа налево
+$result = ucfirst(strtolower(trim("  HELLO  ")));
+
+// ✅ PHP 8.5+ pipe — читать слева направо
+$result = "  HELLO  "
+    |> trim(...)
+    |> strtolower(...)
+    |> ucfirst(...);
+// "Hello"',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.operators',
             ],

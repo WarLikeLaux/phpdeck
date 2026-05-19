@@ -371,6 +371,16 @@ $admin = $admin ? reset($admin) : null;',
                 'category' => 'PHP',
                 'question' => 'Что такое типизированные константы классов в PHP 8.3?',
                 'answer' => 'С PHP 8.3 у констант класса, интерфейса, enum и trait можно указывать тип, например const string ROLE = "admin". Тип проверяется при объявлении и при переопределении в наследнике — нельзя сузить его до несовместимого. Это полезно прежде всего для интерфейсных констант: реализации больше не могут случайно положить туда значение неподходящего типа.',
+                'code_example' => '<?php
+interface HasStatus {
+    const string DEFAULT = "active";   // тип константы интерфейса
+}
+
+class User implements HasStatus {
+    // const int DEFAULT = 1;          // Error: тип несовместим
+    const string DEFAULT = "guest";    // OK — тот же тип
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.php8_features',
             ],
@@ -378,6 +388,24 @@ $admin = $admin ? reset($admin) : null;',
                 'category' => 'PHP',
                 'question' => 'Что такое динамическое получение констант класса в PHP 8.3?',
                 'answer' => 'Раньше для обращения к константе по имени из переменной приходилось писать constant(MyClass::class . "::" . $name). В PHP 8.3 появился прямой синтаксис MyClass::{$name}, аналогичный динамическому доступу к свойствам и методам. Это короче, не требует строки с именем класса и работает с enum cases, что особенно удобно при маршрутизации и десериализации.',
+                'code_example' => '<?php
+class Status {
+    const ACTIVE = "active";
+    const BANNED = "banned";
+}
+
+$name = "ACTIVE";
+
+// До PHP 8.3
+echo constant(Status::class . "::" . $name); // "active"
+
+// PHP 8.3+
+echo Status::{$name};                        // "active"
+
+// Работает и с enum
+enum Role: string { case Admin = "admin"; }
+echo Role::{"Admin"}->value;                 // "admin"',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.php8_features',
             ],
@@ -385,6 +413,21 @@ $admin = $admin ? reset($admin) : null;',
                 'category' => 'PHP',
                 'question' => 'Что разрешает синтаксис new в инициализаторах PHP 8.1?',
                 'answer' => 'С PHP 8.1 объект, созданный через new, можно использовать как значение по умолчанию для параметра, как значение свойства, статической переменной и параметра атрибута. Это убирает костыль с присваиванием в теле конструктора через ?? new NullLogger() и упрощает DI с разумными дефолтами. Аргументы конструктора, естественно, должны сами быть константными выражениями.',
+                'code_example' => '<?php
+class Service {
+    // До PHP 8.1
+    public function __construct(?LoggerInterface $logger = null) {
+        $this->logger = $logger ?? new NullLogger();
+    }
+}
+
+// PHP 8.1+
+class ServiceNew {
+    public function __construct(
+        private LoggerInterface $logger = new NullLogger(),
+    ) {}
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.php8_features',
             ],
@@ -392,6 +435,21 @@ $admin = $admin ? reset($admin) : null;',
                 'category' => 'PHP',
                 'question' => 'Зачем нужен атрибут #[SensitiveParameter] в PHP 8.2?',
                 'answer' => 'Атрибут помечает параметр функции как чувствительный — пароль, токен, ключ. При формировании stack trace, в том числе в логах и сообщениях об исключениях, его значение заменяется на объект SensitiveParameterValue без реальных данных. Это снижает риск утечки секретов через незачищенные логи и Sentry-репорты, не требуя ручной зачистки трейсов.',
+                'code_example' => '<?php
+function login(
+    string $email,
+    #[\\SensitiveParameter] string $password,
+): void {
+    throw new RuntimeException("auth failed");
+}
+
+try {
+    login("a@b.c", "supersecret");
+} catch (Throwable $e) {
+    echo $e->getTraceAsString();
+    // В трейсе вместо "supersecret" — Object(SensitiveParameterValue)
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.php8_features',
             ],
@@ -399,6 +457,15 @@ $admin = $admin ? reset($admin) : null;',
                 'category' => 'PHP',
                 'question' => 'Что нового в работе с DateTime появилось в PHP 8.4?',
                 'answer' => 'Появились статические методы DateTime::createFromTimestamp() и DateTimeImmutable::createFromTimestamp(), принимающие int или float и возвращающие соответствующий объект. Раньше для этого приходилось писать new DateTimeImmutable("@$ts") и потом вручную выставлять таймзону, потому что @-конструкция всегда даёт UTC. Новый API короче и предсказуемее.',
+                'code_example' => '<?php
+// До PHP 8.4
+$dt = (new DateTimeImmutable("@1700000000"))
+    ->setTimezone(new DateTimeZone("Europe/Moscow"));
+
+// PHP 8.4+
+$dt = DateTimeImmutable::createFromTimestamp(1700000000);
+$dt = DateTimeImmutable::createFromTimestamp(1700000000.123); // микросекунды',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.php8_features',
             ],
@@ -413,6 +480,20 @@ $admin = $admin ? reset($admin) : null;',
                 'category' => 'PHP',
                 'question' => 'Что изменилось в синтаксисе создания и использования объектов в PHP 8.4?',
                 'answer' => 'PHP 8.4 разрешил цепочку прямо после new без внешних скобок: new User($name)->save() и new Config()->path вместо (new User($name))->save(). Это убирает визуальный шум в текучих API и фабриках. Внутри по-прежнему создаётся новый объект, и приоритет такой же, как у обычной цепочки методов и обращения к свойствам.',
+                'code_example' => '<?php
+// До PHP 8.4 — обязательны скобки
+$id = (new User($name))->save();
+$path = (new Config())->path;
+
+// PHP 8.4+
+$id = new User($name)->save();
+$path = new Config()->path;
+
+// Текучий API
+$response = new Request("GET", $url)
+    ->withHeader("Accept", "application/json")
+    ->send();',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.php8_features',
             ],
@@ -434,6 +515,19 @@ $admin = $admin ? reset($admin) : null;',
                 'category' => 'PHP',
                 'question' => 'Что такое функции array_first() и array_last() в PHP 8.5?',
                 'answer' => 'array_first() и array_last() возвращают первое и последнее значение массива (или null, если массив пуст), не двигая внутренний указатель и не создавая новых массивов. До 8.5 для этого приходилось писать reset()/end(), которые мутируют указатель, либо array_key_first() в связке с обращением по ключу. Новые функции чистые и проще читаются.',
+                'code_example' => '<?php
+$users = ["a" => "Иван", "b" => "Аня", "c" => "Петя"];
+
+// До PHP 8.5
+$first = reset($users);  // "Иван", но указатель смещён
+$last  = end($users);    // "Петя", указатель в конце
+
+// PHP 8.5+ — чисто
+$first = array_first($users); // "Иван"
+$last  = array_last($users);  // "Петя"
+
+array_first([]); // null',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.php8_features',
             ],
@@ -448,6 +542,20 @@ $admin = $admin ? reset($admin) : null;',
                 'category' => 'PHP',
                 'question' => 'Что нового в применении атрибутов появилось в PHP 8.5?',
                 'answer' => 'Во-первых, атрибуты теперь можно вешать на константы классов. Во-вторых, #[\\Override] разрешено применять не только к методам, но и к свойствам — полезно вместе с property hooks, чтобы зафиксировать факт переопределения в наследнике. В-третьих, #[\\Deprecated] расширен на трейты и константы. Это закрывает дыры, оставшиеся после ввода атрибутов в 8.0.',
+                'code_example' => '<?php
+class Config {
+    #[\\Deprecated("используйте VERSION_V2")]
+    const VERSION = "1.0";       // атрибут на константе (PHP 8.5)
+}
+
+class Admin extends User {
+    #[\\Override]
+    public string $role = "admin"; // Override на свойстве (PHP 8.5)
+}
+
+#[\\Deprecated("используйте трейт LoggableV2")]
+trait Loggable {}                  // Deprecated на трейте',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.php8_features',
             ],

@@ -70,21 +70,147 @@ class OrderShipped implements ShouldBroadcast {
             [
                 'category' => 'Laravel',
                 'question' => 'Чем listener с интерфейсом ShouldQueue отличается от обычного слушателя события?',
-                'answer' => 'Обычный listener выполняется синхронно в том же процессе, что и dispatch события, и блокирует ответ на запрос. Listener, реализующий ShouldQueue, сериализуется и отправляется в очередь, обрабатываясь воркером отдельно; его методы failed/retryUntil/backoff работают как у Job. Это критично, если внутри тяжёлая логика типа отправки писем или обращения к внешним API.',
+                'answer' => 'Обычный listener выполняется СИНХРОННО в том же процессе, что и dispatch события - блокирует ответ на HTTP-запрос. Если в handle() есть Mail::send (SMTP-вызов 1-2 сек) или HTTP-вызов внешнего API - пользователь ждёт. Listener, реализующий ShouldQueue, сериализуется (вместе с event-объектом) и отправляется в очередь, обрабатывается отдельным воркером queue:work. Контроллер возвращает ответ мгновенно, тяжёлая работа происходит асинхронно. Бонус: на listener распространяются все механизмы Job-а - public int $tries, public function backoff(), public function failed(\\Throwable $e), public function viaConnection(), retryUntil(), middleware(), $afterCommit. ShouldBroadcastNow / ShouldBroadcast - то же самое для broadcast-событий: оба отправляются в очередь, если есть ShouldQueue. Подводный камень: event-объект должен быть serializable (нет Closure, PDO, file handles); если в event Eloquent-модель - сериализуется только её ID, при handle модель re-fetch-ится из БД (SerializesModels трейт).',
+                'code_example' => '<?php
+// Синхронно - блокирует ответ
+class SendWelcomeEmail
+{
+    public function handle(UserRegistered $event): void
+    {
+        Mail::to($event->user)->send(new WelcomeMail()); // 1-2 сек SMTP
+    }
+}
+
+// Асинхронно - dispatch вернётся мгновенно
+class SendWelcomeEmail implements ShouldQueue
+{
+    use InteractsWithQueue;
+
+    public int $tries = 3;
+    public int $backoff = 60;          // сек между попытками
+    public string $queue = "emails";
+    public bool $afterCommit = true;   // ждать commit транзакции
+
+    public function handle(UserRegistered $event): void
+    {
+        Mail::to($event->user)->send(new WelcomeMail());
+    }
+
+    public function failed(UserRegistered $event, \\Throwable $e): void
+    {
+        Log::error("Welcome mail failed", [
+            "user_id" => $event->user->id,
+            "error"   => $e->getMessage(),
+        ]);
+    }
+
+    // Условный skip - например при maintenance
+    public function shouldQueue(UserRegistered $event): bool
+    {
+        return ! app()->isDownForMaintenance();
+    }
+}
+
+// Часть слушателей синхронны, часть в очереди - управляется на каждом отдельно
+event(new UserRegistered($user));',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.events_listeners',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Reverb и чем он отличается от Pusher и Soketi?',
-                'answer' => 'Reverb — официальный высокопроизводительный WebSocket-сервер на ReactPHP, появившийся в Laravel 11. Совместим с протоколом Pusher, поэтому Laravel Echo и существующие клиенты работают без изменений. Pusher — внешний платный сервис, Soketi — open-source альтернатива на Node.js; Reverb решает ту же задачу, но в виде официально поддерживаемого PHP-сервера, который ставится через php artisan install:broadcasting.',
+                'answer' => 'Reverb (laravel/reverb) - официальный высокопроизводительный WebSocket-сервер от Laravel, появившийся в Laravel 11. Написан на чистом PHP поверх ReactPHP (event loop), совместим с протоколом Pusher - то есть Laravel Echo и любые существующие Pusher-клиенты работают БЕЗ изменений в коде. Pusher - внешний платный SaaS-сервис (платишь за connections и messages), Soketi - open-source альтернатива на Node.js, который тоже совместим с Pusher-протоколом. Reverb решает ту же задачу, но в виде официально поддерживаемого PHP-сервера, который ставится одной командой php artisan install:broadcasting. Преимущества Reverb: 1) Один стек (PHP, как и приложение), не нужно держать Node-демона. 2) Официальная поддержка Laravel-команды. 3) Бесплатно. 4) Производительность сопоставима с Soketi. Минус: новый продукт, экосистема плагинов меньше. Pusher оставляют, если нужен managed-сервис без обслуживания.',
+                'code_example' => '# Установка
+php artisan install:broadcasting    # выбираешь reverb
+# или вручную:
+composer require laravel/reverb
+php artisan reverb:install
+
+# .env - Reverb
+BROADCAST_CONNECTION=reverb
+REVERB_APP_ID=app-id
+REVERB_APP_KEY=app-key
+REVERB_APP_SECRET=app-secret
+REVERB_HOST=localhost
+REVERB_PORT=8080
+REVERB_SCHEME=http
+
+# Vite
+VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
+VITE_REVERB_HOST="${REVERB_HOST}"
+VITE_REVERB_PORT="${REVERB_PORT}"
+
+# Запуск сервера
+php artisan reverb:start --debug
+# В проде - под supervisor
+
+# resources/js/bootstrap.js - клиент тот же что для Pusher
+import Echo from "laravel-echo";
+import Pusher from "pusher-js";
+window.Pusher = Pusher;
+
+window.Echo = new Echo({
+    broadcaster: "reverb",
+    key: import.meta.env.VITE_REVERB_APP_KEY,
+    wsHost: import.meta.env.VITE_REVERB_HOST,
+    wsPort: import.meta.env.VITE_REVERB_PORT,
+    forceTLS: false,
+    enabledTransports: ["ws", "wss"],
+});',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'laravel.events_listeners',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Echo и как он связан с broadcasting?',
-                'answer' => 'Echo — это JavaScript-клиент, который подписывается на каналы broadcasting и слушает события, которые сервер транслирует через Pusher/Reverb/Ably. Сам по себе Echo не реализует протокол: он надстройка над pusher-js или socket.io-client. На сервере событие реализует ShouldBroadcast, на клиенте Echo.private("channel").listen("EventName", ...) ловит его.',
+                'answer' => 'Echo (laravel-echo, npm-пакет) - JavaScript-клиент, который подписывается на каналы broadcasting и слушает события, транслируемые сервером через Pusher/Reverb/Ably. Сам по себе протокол не реализует - это надстройка над pusher-js (или socket.io-client). На сервере событие реализует ShouldBroadcast, broadcastOn() возвращает Channel/PrivateChannel/PresenceChannel, broadcastAs() задаёт имя события для клиента, broadcastWith() - payload. На клиенте Echo.channel("chat")  .listen("MessageSent", e => ...) - публичный, .private("orders.42").listen(...) - с авторизацией через /broadcasting/auth, .join("room.5") - presence (получаешь here/joining/leaving события). Авторизация private/presence-каналов идёт в routes/channels.php через Broadcast::channel("orders.{userId}", fn(User $u, $userId) => $u->id === (int)$userId). Без Echo пришлось бы вручную работать с pusher-js, форматировать имена каналов, разбирать сообщения - Echo прячет это в красивый API.',
+                'code_example' => '<?php
+// Server - событие
+class MessageSent implements ShouldBroadcast
+{
+    public function __construct(public Message $message) {}
+
+    public function broadcastOn(): PrivateChannel
+    {
+        return new PrivateChannel("chat.{$this->message->room_id}");
+    }
+
+    public function broadcastAs(): string
+    {
+        return "message.sent";  // имя для клиента
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            "id"      => $this->message->id,
+            "text"    => $this->message->text,
+            "author"  => $this->message->author->name,
+        ];
+    }
+}
+
+// routes/channels.php - авторизация
+Broadcast::channel("chat.{roomId}", function (User $user, int $roomId) {
+    return $user->rooms()->whereKey($roomId)->exists();
+});
+
+# Client (Vue/React/vanilla JS)
+window.Echo.private(`chat.${roomId}`)
+    .listen(".message.sent", (e) => {     // точка перед именем - кастомный broadcastAs
+        console.log(e.author, e.text);
+        appendMessage(e);
+    });
+
+# Presence channel - кто онлайн в комнате
+window.Echo.join(`room.${roomId}`)
+    .here((users) => setOnline(users))
+    .joining((user) => appendOnline(user))
+    .leaving((user) => removeOnline(user));
+?>',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.events_listeners',
             ],

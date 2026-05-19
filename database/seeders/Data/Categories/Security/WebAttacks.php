@@ -66,8 +66,22 @@ User::where('id', \$request->id)->first();",
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое CSP и как он помогает от XSS?',
-                'answer' => 'Content Security Policy — HTTP-заголовок, который говорит браузеру: «загружай скрипты/стили/изображения только с этих источников». Если XSS прошёл, но политика запрещает inline-скрипты и внешние домены, эксплойт не сработает — браузер просто не выполнит чужой JS. Пример: Content-Security-Policy: default-src \'self\'; script-src \'self\'.',
+                'question' => 'Что такое CSP, какие у него ключевые директивы и режимы?',
+                'answer' => 'Content Security Policy — HTTP-заголовок, который указывает браузеру, ОТКУДА можно грузить скрипты/стили/картинки/шрифты/фреймы. Это второй рубеж от XSS: даже если инъекция прошла, неподходящий по политике JS просто не выполнится. Ключевые директивы: default-src — дефолт для всех остальных, script-src / style-src / img-src / connect-src / frame-src / font-src — по типам ресурсов, frame-ancestors — кто может встраивать тебя в iframe (замена X-Frame-Options), report-uri/report-to — куда слать отчёты о нарушениях. Современный подход к inline-скриптам — nonce (одноразовый случайный токен в заголовке + атрибут nonce на <script>) или хеш sha256-... вместо unsafe-inline. strict-dynamic — разрешает скриптам, уже допущенным по nonce/хешу, грузить другие скрипты, и игнорирует whitelist хостов. Режим обкатки: Content-Security-Policy-Report-Only — нарушения только логируются, ничего не блокируется.',
+                'code_example' => "# Базовая жёсткая политика c nonce — рекомендация OWASP
+Content-Security-Policy: default-src 'self';
+  script-src 'self' 'nonce-r4nd0m' 'strict-dynamic';
+  style-src 'self' 'nonce-r4nd0m';
+  img-src 'self' data: https:;
+  connect-src 'self' https://api.example.com;
+  frame-ancestors 'none';
+  base-uri 'self';
+  form-action 'self';
+  report-to csp-endpoint
+
+# В Blade — генерим nonce на запрос и кладём в каждый <script>
+<script nonce=\"{{ \$nonce }}\">/* безопасный inline */</script>",
+                'code_language' => 'http',
                 'difficulty' => 3,
                 'topic' => 'security.web_attacks',
             ],
@@ -92,8 +106,24 @@ User::where('id', \$request->id)->first();",
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое SSRF простыми словами?',
-                'answer' => 'Server-Side Request Forgery — атакующий заставляет твой сервер послать запрос куда ему нужно. Пример: на твоём сайте есть «предпросмотр URL», пользователь даёт http://localhost:6379/ — сервер из своей сети дёргает внутренний Redis. Особенно опасно в облаках — доступ к metadata-эндпоинту (169.254.169.254) даёт IAM-токены. Защита: whitelist разрешённых доменов, блок 127.0.0.1 и приватных IP.',
+                'question' => 'Что такое SSRF и как от него защититься?',
+                'answer' => 'Server-Side Request Forgery — атакующий заставляет твой сервер послать HTTP-запрос туда, куда ему нужно. Типичный путь — фичи «предпросмотр URL», «импорт по ссылке», webhook callback, аватарка по URL. Подсунули http://localhost:6379/ — твой PHP из доверенной сети дёргает внутренний Redis в обход firewall. Особо опасно в облаках: AWS/GCP metadata-эндпоинт 169.254.169.254 раздаёт IAM-токены инстансу — SSRF превращается в полный доступ к облаку (так взламывали Capital One). Защита в несколько слоёв: 1) Whitelist схем (только http/https) и доменов. 2) Резолвим DNS сами и блочим приватные диапазоны: 127.0.0.0/8, 10.0.0.0/8, 172.16/12, 192.168/16, 169.254/16, ::1, fc00::/7. 3) Защита от DNS-rebinding — резолвим один раз, шлём запрос по IP с заголовком Host. 4) Отдельный egress firewall, который вообще не пускает наружу из приложения. 5) Запрет редиректов или повторная проверка на каждом hop. 6) Для AWS — IMDSv2 (требует токена, защищён от SSRF).',
+                'code_example' => "<?php
+function fetchSafe(string \$url): string {
+    \$parts = parse_url(\$url);
+    if (!in_array(\$parts['scheme'] ?? '', ['http','https'], true)) abort(400);
+
+    // Резолвим хост и проверяем все A-записи
+    \$ips = gethostbynamel(\$parts['host']) ?: abort(400);
+    foreach (\$ips as \$ip) {
+        if (filter_var(\$ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            abort(400, 'private IP blocked');
+        }
+    }
+    \$res = Http::withOptions(['allow_redirects' => false, 'timeout' => 5])->get(\$url);
+    return \$res->body();
+}",
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.web_attacks',
             ],
@@ -192,7 +222,24 @@ header('Location: '.\$target);",
             [
                 'category' => 'Безопасность',
                 'question' => 'Какие риски при загрузке файлов от пользователей и как защититься?',
-                'answer' => 'Риски: 1) Загрузка PHP-файла в публичную папку → RCE при обращении к нему. 2) Загрузка XSS в svg/html. 3) Подделка Content-Type. 4) Zip-bomb / огромные файлы. 5) Path traversal в имени файла. Защита: whitelist расширений по реальному содержимому (mime_content_type, finfo), хранение вне webroot или в S3, выдача через контроллер, лимит размера, генерация нового имени (не доверять пользовательскому), запрет выполнения PHP в папке загрузок.',
+                'answer' => 'Риски: 1) Заливка .php в публичную папку → RCE при обращении (классика — shell.php.jpg, который nginx с двойным executor отдаёт PHP-FPM). 2) XSS-полезная нагрузка в svg/html/xml (SVG умеет <script>). 3) Подделка Content-Type клиентом — нельзя ему верить. 4) ZIP/PDF/PNG-бомбы (распаковка 4KB → 4GB). 5) Path traversal в имени файла (../../../). 6) Polyglot-файлы (валидный JPEG + валидный PHP одновременно). Защита по слоям: a) Whitelist расширений + проверка реального MIME через finfo_file. b) Генерим новое имя (Str::uuid()) — не доверяем оригиналу. c) Хранение вне webroot или в S3, отдача через подписанный контроллер. d) В nginx/Apache — явный запрет выполнения PHP в папке загрузок (location ~ ^/uploads { ... }). e) Лимит размера на nginx и в PHP. f) Для картинок — ре-кодировать через Intervention Image: «прогон через imagecreatefromjpeg + imagejpeg» уничтожает любую вшитую полезную нагрузку. g) Антивирус (ClamAV) для пользовательских файлов.',
+                'code_example' => "<?php
+\$request->validate([
+    'avatar' => ['required', 'image', 'mimes:jpg,png', 'max:2048'], // KB
+]);
+
+\$file = \$request->file('avatar');
+\$mime = \$file->getMimeType(); // читает РЕАЛЬНЫЙ MIME через finfo, не Content-Type
+if (!in_array(\$mime, ['image/jpeg','image/png'], true)) abort(422);
+
+// Ре-кодируем — убираем любые вшитые скрипты/exif-payloads
+\$img = \\Intervention\\Image\\Laravel\\Facades\\Image::read(\$file)->encodeByMediaType('image/jpeg', quality: 85);
+
+// Имя — uuid, расширение фиксированное
+\$path = 'avatars/'.\\Str::uuid().'.jpg';
+Storage::disk('s3')->put(\$path, (string) \$img, 'private');
+return Storage::disk('s3')->temporaryUrl(\$path, now()->addMinutes(10));",
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'security.web_attacks',
             ],

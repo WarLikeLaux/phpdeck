@@ -130,7 +130,46 @@ defineProps({ users: Array })
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Volt и как он связан с Livewire?',
-                'answer' => 'Volt — single-file API для Livewire-компонентов: класс компонента и Blade-шаблон описываются в одном .blade.php-файле через функции state(), computed(), mount(). Это синтаксический сахар поверх обычного Livewire — рендерится тот же компонент. Удобен для небольших страниц и связки с Folio, для крупных компонентов часто оставляют классический class-based подход.',
+                'answer' => 'Volt - single-file API для Livewire 3-компонентов: класс компонента и Blade-шаблон описываются в ОДНОМ .blade.php-файле через функции state(), computed(), mount(), rules(). Это синтаксический сахар поверх обычного Livewire - под капотом Volt анонимно генерирует тот же Livewire-класс. Похоже на single-file components Vue (<script setup>). Удобен для небольших страниц и идеально связывается с Laravel Folio (page-based routing): один файл резко увеличивает density компонента. Для крупных компонентов часто остаются на классическом class-based Livewire (отдельный класс + view) - проще тестировать и поддерживать. Есть два варианта Volt: functional (через top-level вызовы функций - как в примере) и class-based (анонимный класс через new class extends Component внутри файла). Не путать с Laravel Volt 1.0 и Vue Volt (это другое). Появился в 2023 году.',
+                'code_example' => '<?php
+// composer require livewire/volt
+// php artisan volt:install
+
+// resources/views/livewire/counter.blade.php - functional Volt
+use function Livewire\\Volt\\{state, computed, mount, on};
+
+state([
+    "count" => 0,
+    "step"  => 1,
+]);
+
+mount(function () {
+    $this->count = session("counter", 0);
+});
+
+$double = computed(fn () => $this->count * 2);
+
+$increment = fn () => $this->count += $this->step;
+
+on(["echo:counter,Reset" => fn () => $this->count = 0]);
+?>
+
+<div>
+    <h1>Count: {{ $count }} (x2 = {{ $this->double }})</h1>
+    <button wire:click="increment">+ {{ $step }}</button>
+
+    <input wire:model.live="step" type="number">
+</div>
+
+{{-- Использование в Blade --}}
+<livewire:counter />
+
+{{-- Или в Folio-странице: --}}
+{{-- resources/views/pages/counter.blade.php --}}
+<x-layout>
+    <livewire:counter />
+</x-layout>',
+                'code_language' => 'blade',
                 'difficulty' => 3,
                 'topic' => 'laravel.inertia_frontend',
             ],

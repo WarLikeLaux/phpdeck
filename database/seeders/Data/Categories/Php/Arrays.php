@@ -401,6 +401,15 @@ while (!$queue->isEmpty()) {
                 'category' => 'PHP',
                 'question' => 'Как использовать распаковку массивов со строковыми ключами через ...?',
                 'answer' => 'С PHP 8.1 оператор ... внутри литерала массива поддерживает строковые ключи, поэтому [...$defaults, ...$custom] работает как слияние с приоритетом правого операнда. До 8.1 такой код вызывал фатальную ошибку, и приходилось использовать array_merge.',
+                'code_example' => '<?php
+$defaults = ["timeout" => 30, "retries" => 3];
+$custom   = ["timeout" => 10, "ssl" => true];
+
+// PHP 8.1+
+$config = [...$defaults, ...$custom];
+// ["timeout" => 10, "retries" => 3, "ssl" => true]
+// timeout перебит правым (как и в array_merge)',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.arrays',
             ],
@@ -408,6 +417,18 @@ while (!$queue->isEmpty()) {
                 'category' => 'PHP',
                 'question' => 'Что делает функция array_is_list()?',
                 'answer' => 'Появившаяся в PHP 8.1 функция возвращает true, если массив имеет последовательные целочисленные ключи начиная с нуля и без пропусков, то есть является списком. Она удобнее ручных проверок через array_keys() и используется при сериализации в JSON, где список и объект различаются.',
+                'code_example' => '<?php
+array_is_list([1, 2, 3]);                  // true
+array_is_list([]);                          // true
+array_is_list([0 => "a", 1 => "b"]);        // true
+array_is_list([1 => "a", 2 => "b"]);        // false — не с 0
+array_is_list(["a" => 1]);                  // false — строковые ключи
+array_is_list([0 => "a", 2 => "b"]);        // false — пропуск
+
+// json_encode серилизует list как [...], а dict как {...}
+echo json_encode([1, 2, 3]);                // "[1,2,3]"
+echo json_encode([0 => "a", 2 => "b"]);     // \'{"0":"a","2":"b"}\'',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.arrays',
             ],
@@ -415,6 +436,22 @@ while (!$queue->isEmpty()) {
                 'category' => 'PHP',
                 'question' => 'Как работает деструктуризация массива со строковыми ключами?',
                 'answer' => 'Синтаксис [\'name\' => $name, \'age\' => $age] = $person извлекает значения по ключам из ассоциативного массива в одноимённые переменные. Поддержка ключей появилась в PHP 7.1 и заменяет вызовы list() с явными именами, а отсутствующие ключи дают предупреждение и null.',
+                'code_example' => '<?php
+$person = ["name" => "Иван", "age" => 30, "email" => "i@i.ru"];
+
+["name" => $name, "age" => $age] = $person;
+echo $name; // "Иван"
+
+// Вложенная деструктуризация
+$data = ["user" => ["id" => 42, "name" => "Аня"]];
+["user" => ["id" => $id, "name" => $name]] = $data;
+
+// В foreach
+$users = [["id" => 1, "name" => "A"], ["id" => 2, "name" => "B"]];
+foreach ($users as ["id" => $id, "name" => $name]) {
+    echo "$id: $name ";
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'php.arrays',
             ],

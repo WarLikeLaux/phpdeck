@@ -131,7 +131,35 @@ axios.defaults.headers.common[\'X-CSRF-TOKEN\'] =
             [
                 'category' => 'Laravel',
                 'question' => 'В чём практическая разница между auth middleware и Authentication Guard?',
-                'answer' => 'Guard — это стратегия идентификации пользователя (session, token, sanctum) и определяется в config/auth.php; он отвечает за вопрос "кто этот пользователь". Middleware auth:web проверяет, что guard "web" вернул пользователя, и иначе бросает AuthenticationException, редиректя на login. Guard можно использовать без middleware (Auth::guard("api")->user()), а middleware всегда работает поверх какого-то guard.',
+                'answer' => 'Это разные слои - часто путают. Guard - стратегия идентификации пользователя (session, token, sanctum, кастомные), определяется в config/auth.php. Отвечает на вопрос "кто этот пользователь" - читает сессию/токен/cookie и возвращает Authenticatable или null. Сам по себе ничего не блокирует. Auth-middleware (auth, auth:web, auth:sanctum, auth.basic) - HTTP-сторож: проверяет, что указанный guard вернул пользователя, и если null - бросает AuthenticationException, который для web-запросов превращается в редирект на /login, для JSON-запросов в 401. То есть guard - КТО, middleware - ПУСКАТЬ ЛИ. Guard можно использовать в коде без middleware (Auth::guard("admin")->user() в контроллере), middleware всегда работает поверх какого-то guard. Сценарий: один роут принимает И session, И api-токен - middleware("auth:web,sanctum") пробует оба guard-а по очереди, пускает если хотя бы один опознал пользователя.',
+                'code_example' => '<?php
+// config/auth.php - два guard-а
+"guards" => [
+    "web" => ["driver" => "session", "provider" => "users"],
+    "api" => ["driver" => "sanctum", "provider" => "users"],
+],
+
+// 1) Middleware - запретить доступ если не залогинен
+Route::middleware("auth")->get("/dashboard", ...);             // дефолтный guard
+Route::middleware("auth:web")->get("/profile", ...);            // явно web
+Route::middleware("auth:sanctum")->get("/api/me", ...);         // API
+Route::middleware("auth:web,sanctum")->get("/hybrid", ...);     // оба варианта ОК
+
+// 2) Guard - в коде, без блокировки доступа
+$admin = Auth::guard("admin")->user();    // null если не залогинен админ
+if ($admin) { /* ... */ }
+
+// 3) Сценарий "залогинен ли в принципе" без middleware
+if (! auth("web")->check()) {
+    return redirect("/login");
+}
+
+// 4) Логин в произвольный guard
+Auth::guard("admin")->attempt([
+    "email"    => $request->email,
+    "password" => $request->password,
+]);',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.auth_authorization',
             ],
@@ -159,14 +187,90 @@ axios.defaults.headers.common[\'X-CSRF-TOKEN\'] =
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Spatie Laravel-Permission и какую задачу он решает?',
-                'answer' => 'Spatie Laravel-Permission — самый популярный community-пакет для ролей и разрешений в Laravel. Добавляет трейты HasRoles и HasPermissions модели User, таблицы roles, permissions, model_has_roles, кэширует разрешения и интегрируется с Gate/Policy через canAny, hasRole, hasPermissionTo. Поддерживает множественные guards и teams для мультиарендных приложений.',
+                'answer' => 'spatie/laravel-permission - самый популярный community-пакет для ролей и разрешений в Laravel (RBAC). Решает задачу гибкой системы доступа без написания своих таблиц и логики. Что даёт: 1) Таблицы roles, permissions, model_has_roles, model_has_permissions, role_has_permissions, миграции из коробки. 2) Трейт HasRoles на модели User добавляет методы assignRole(), removeRole(), hasRole(), hasAnyRole(), syncRoles(), givePermissionTo(), hasPermissionTo(). 3) Интеграция с Gate/Policy: если пермишен есть в БД, $user->can("edit posts") уже работает, не надо регистрировать каждый в AuthServiceProvider. 4) Blade-директивы @role, @hasrole, @hasanyrole, @can. 5) Middleware role:admin, permission:edit-posts, role_or_permission:admin|publish-articles. 6) Кеширование пермишенов в Redis - проверка прав не бьёт в БД. 7) Поддержка нескольких guards (web/api отдельные роли) и teams (multi-tenancy: одна роль "admin" в разных командах).',
+                'code_example' => '<?php
+// composer require spatie/laravel-permission
+// php artisan vendor:publish --provider="Spatie\\Permission\\PermissionServiceProvider"
+// php artisan migrate
+
+use Spatie\\Permission\\Traits\\HasRoles;
+
+class User extends Authenticatable {
+    use HasRoles;
+}
+
+// Создание ролей и пермишенов (обычно в seeder)
+use Spatie\\Permission\\Models\\Role;
+use Spatie\\Permission\\Models\\Permission;
+
+Permission::create(["name" => "edit articles"]);
+Permission::create(["name" => "delete articles"]);
+
+$role = Role::create(["name" => "writer"]);
+$role->givePermissionTo("edit articles");
+
+// Назначение
+$user->assignRole("writer");
+$user->givePermissionTo("delete articles");
+
+// Проверки
+$user->hasRole("writer");
+$user->hasPermissionTo("edit articles");
+$user->can("delete articles");  // тот же Gate::allows
+
+// Middleware
+Route::middleware("role:admin")->get("/admin", ...);
+Route::middleware("permission:edit articles")->put("/articles/{id}", ...);
+
+// Blade
+@role("admin")
+    <a href="/admin">Админка</a>
+@endrole
+
+@can("edit articles")
+    <button>Редактировать</button>
+@endcan',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.auth_authorization',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Fortify и как он связан с Breeze и Jetstream?',
-                'answer' => 'Fortify — backend-агностик аутентификации без UI: реализует роуты и контроллеры для логина, регистрации, сброса пароля, 2FA, подтверждения email. Jetstream использует Fortify под капотом, добавляя сверху Livewire/Inertia-вьюхи. Breeze, наоборот, не использует Fortify и идёт со своим набором контроллеров. Fortify выбирают, когда нужна готовая логика аутентификации, но UI пишется самостоятельно (например, для headless API).',
+                'answer' => 'Fortify - backend-агностичная реализация аутентификации без UI. Регистрирует роуты и контроллеры для логина, регистрации, сброса пароля, подтверждения email, двухфакторной аутентификации (2FA), confirmable password. UI - на тебе: рендерь любой Blade/Vue/React-фронт. Это позволяет переиспользовать одну backend-логику auth и для SPA, и для серверного рендера, и для мобильного клиента. Связь со стартерами: Jetstream использует Fortify под капотом и добавляет сверху Livewire или Inertia+Vue вьюшки, профиль, 2FA UI, командные функции; Breeze, наоборот, НЕ использует Fortify - идёт со своими простыми контроллерами и вьюшками (так задумано: Breeze минималистичен, Fortify оверкилл для простых случаев). Когда выбирать Fortify напрямую: 1) Headless API - бэкенд для мобильного приложения. 2) Кастомный UI на собственном фронте, но не хочется писать password-reset/2FA вручную. 3) Микросервисная архитектура с auth-сервисом. Минус Fortify: без UI его сложно "потрогать" - надо самому строить фронт.',
+                'code_example' => '<?php
+// composer require laravel/fortify
+// php artisan vendor:publish --provider="Laravel\\Fortify\\FortifyServiceProvider"
+// php artisan migrate
+
+// app/Providers/FortifyServiceProvider.php
+public function boot(): void
+{
+    // Какие фичи включаем
+    Fortify::createUsersUsing(CreateNewUser::class);
+    Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
+
+    // Какой view рендерить на каждом эндпоинте
+    Fortify::loginView(fn () => view("auth.login"));
+    Fortify::registerView(fn () => view("auth.register"));
+    Fortify::twoFactorChallengeView(fn () => view("auth.2fa"));
+
+    // Rate limiting
+    RateLimiter::for("login", function (Request $request) {
+        return Limit::perMinute(5)->by($request->email . $request->ip());
+    });
+}
+
+// config/fortify.php - какие фичи включить
+"features" => [
+    Features::registration(),
+    Features::resetPasswords(),
+    Features::emailVerification(),
+    Features::updateProfileInformation(),
+    Features::updatePasswords(),
+    Features::twoFactorAuthentication(),
+],',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.auth_authorization',
             ],

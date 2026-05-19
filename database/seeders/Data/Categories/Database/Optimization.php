@@ -17,7 +17,20 @@ class Optimization
             [
                 'category' => 'Базы данных',
                 'question' => 'Почему слишком много индексов - это плохо?',
-                'answer' => 'Каждый индекс: занимает место на диске, замедляет INSERT/UPDATE/DELETE (БД должна обновлять все индексы), увеличивает время бэкапов, может запутать планировщик и привести к выбору не самого быстрого. Правило: индексируй только то, что реально часто запрашивается. Удаляй неиспользуемые индексы (в PG: pg_stat_user_indexes).',
+                'answer' => 'Индекс — это не бесплатная "галочка ускорения", а вторая структура данных, которую БД обязана поддерживать. Каждый дополнительный индекс: 1) занимает место на диске (часто сопоставимое с самой таблицей при широких составных индексах), 2) замедляет INSERT/UPDATE/DELETE — при каждой модификации надо обновлять все индексы, по которым проходят изменённые колонки, 3) увеличивает время и объём бэкапов и репликации (WAL/binlog растут), 4) может запутать планировщик: если есть три похожих индекса, оптимизатор иногда выбирает не самый эффективный или начинает дольше выбирать план. Правило: индексируй только реально частые запросы, периодически удаляй неиспользуемые. В PG смотрят pg_stat_user_indexes (idx_scan = 0 — кандидат на удаление), в MySQL — sys.schema_unused_indexes / performance_schema.',
+                'code_example' => '-- PostgreSQL: индексы, которыми ни разу не воспользовались
+SELECT schemaname, relname, indexrelname, idx_scan, pg_size_pretty(pg_relation_size(indexrelid))
+FROM pg_stat_user_indexes
+WHERE idx_scan = 0
+ORDER BY pg_relation_size(indexrelid) DESC;
+
+-- MySQL: то же
+SELECT object_schema, object_name, index_name
+FROM sys.schema_unused_indexes;
+
+-- Удаление лишнего индекса
+DROP INDEX CONCURRENTLY orders_legacy_idx ON orders; -- PG, без блокировок',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.optimization',
             ],
@@ -143,7 +156,20 @@ EXPLAIN FORMAT=TREE SELECT * FROM users WHERE email = ?;
             [
                 'category' => 'Базы данных',
                 'question' => 'На какие столбцы вывода EXPLAIN в MySQL стоит смотреть в первую очередь?',
-                'answer' => 'Главный столбец — type: значения system, const, eq_ref, ref означают точечный доступ по индексу, range — диапазон, index — полный скан индекса, ALL — полный скан таблицы и обычно красный флаг. key показывает фактически использованный индекс, key_len — сколько байтов индекса задействовано (важно для составных). rows — оценка прочитанных строк, filtered — процент после фильтрации. Extra сигналит о проблемах: Using filesort означает сортировку без индекса, Using temporary — внутреннюю временную таблицу под GROUP BY/DISTINCT, Using index — наоборот, отличный признак covering-плана.',
+                'answer' => 'Главный столбец — type, он же тип доступа, упорядочен от лучшего к худшему: system/const (одна строка по PK) → eq_ref/ref (точечный доступ по индексу при JOIN) → range (диапазон по индексу) → index (полный скан индекса) → ALL (полный скан таблицы, обычно красный флаг на большой таблице). key — какой индекс реально выбран (NULL — индекс не использован). key_len — сколько байтов составного индекса задействовано (можно понять, сколько колонок реально работают). rows — оценка прочитанных строк, filtered — процент строк, оставшихся после WHERE. Extra — место с подсказками: Using filesort (сортировка без индекса — добавь индекс под ORDER BY), Using temporary (внутренняя временная таблица под GROUP BY/DISTINCT/UNION — тоже плохо), Using index (covering index, отлично), Using where (WHERE применён после чтения — норма).',
+                'code_example' => 'EXPLAIN SELECT id, email FROM users WHERE email = \'a@b.c\';
+-- id | select_type | table | type | key             | key_len | rows | Extra
+--  1 | SIMPLE      | users | ref  | users_email_idx | 767     |    1 | Using index
+
+-- Плохой пример: type=ALL, нет ключа
+EXPLAIN SELECT * FROM orders WHERE LOWER(email) = \'a@b.c\';
+-- ... | type=ALL | key=NULL | rows=1000000 | Using where
+-- Решение: индекс на выражение LOWER(email) или нормализовать данные
+
+-- Современный формат
+EXPLAIN FORMAT=TREE SELECT ...;
+EXPLAIN ANALYZE  SELECT ...; -- MySQL 8.0.18+, реальные времена',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.optimization',
             ],
@@ -157,14 +183,45 @@ EXPLAIN FORMAT=TREE SELECT * FROM users WHERE email = ?;
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое slow query log и как им пользоваться?',
-                'answer' => 'Slow query log — встроенный журнал MySQL, куда пишутся запросы, чьё время выполнения превысило long_query_time (по умолчанию 10 секунд, на проде обычно ставят 0.1-1). Включают через slow_query_log=1 и slow_query_log_file=/path. Опция log_queries_not_using_indexes дополнительно ловит запросы без индекса. Анализируют лог утилитой pt-query-digest или mysqldumpslow — они группируют запросы по форме и показывают топ по сумме времени, что важнее, чем "самый медленный единичный запрос". Это первый инструмент при жалобах на тормоза до подключения APM.',
+                'answer' => 'Slow query log — встроенный журнал MySQL, куда пишутся все запросы, выполнявшиеся дольше порога long_query_time (по умолчанию 10 секунд, на проде обычно ставят 0.1-1с — иначе ничего не поймаешь). Включают через slow_query_log=1 и slow_query_log_file=/path/file.log; дополнительная опция log_queries_not_using_indexes ловит запросы без индекса, даже если они быстрые сейчас (вырастут с объёмом данных). Анализируют не глазами, а утилитами pt-query-digest (из Percona Toolkit) или mysqldumpslow: они группируют запросы по нормализованной форме и сортируют по суммарному времени, а это правильная метрика — частый "быстрый" запрос на 50мс в 10000 раз в минуту страшнее одного на 5 секунд. В PostgreSQL аналог называется log_min_duration_statement плюс расширение pg_stat_statements. Это первый инструмент при жалобах на тормоза до подключения APM.',
+                'code_example' => '-- Включить slow log на лету (MySQL)
+SET GLOBAL slow_query_log = ON;
+SET GLOBAL long_query_time = 0.2; -- 200 мс
+SET GLOBAL log_queries_not_using_indexes = ON;
+
+-- Постоянно — в my.cnf
+-- slow_query_log = 1
+-- long_query_time = 0.2
+-- slow_query_log_file = /var/log/mysql/slow.log
+
+-- Анализ лога (bash)
+-- pt-query-digest /var/log/mysql/slow.log | head -100
+
+-- PostgreSQL аналог: pg_stat_statements
+SELECT query, calls, total_exec_time, mean_exec_time
+FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 20;',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.optimization',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Зачем нужен ANALYZE TABLE и чем он отличается от EXPLAIN?',
-                'answer' => 'ANALYZE TABLE пересчитывает статистику распределения значений в индексах: cardinality, гистограммы, плотность ключей. На основе этой статистики оптимизатор решает, какой индекс использовать и в каком порядке соединять таблицы. EXPLAIN, наоборот, ничего не пересчитывает — он только показывает план для конкретного запроса. Если после массовой загрузки или DELETE планы выглядят странно ("оптимизатор берёт ALL вместо очевидного индекса"), часто помогает именно ANALYZE TABLE. EXPLAIN ANALYZE — отдельная команда MySQL 8, она выполняет запрос и показывает фактические времена и количества строк рядом с оценками.',
+                'answer' => 'ANALYZE TABLE пересчитывает статистику распределения значений в таблице и индексах: cardinality (сколько уникальных значений в колонке), гистограммы распределения, плотность ключей. На этой статистике оптимизатор строит cost-модель — решает, какой индекс брать, в каком порядке соединять таблицы, делать ли Hash Join или Nested Loop. EXPLAIN ничего не пересчитывает, он только показывает план для конкретного запроса на основе уже имеющейся статистики. Если после массовой загрузки, большого DELETE или TRUNCATE+INSERT планы вдруг становятся "тупыми" (оптимизатор берёт ALL вместо очевидного индекса) — почти всегда это устаревшая статистика, и помогает ANALYZE TABLE. EXPLAIN ANALYZE — отдельная команда (MySQL 8.0.18+ и PostgreSQL), которая выполняет запрос и показывает фактические rows/time рядом с оценками, чтобы найти расхождения. PostgreSQL запускает ANALYZE автоматически через autovacuum, но после большой загрузки часто запускают вручную.',
+                'code_example' => '-- Обновить статистику
+ANALYZE TABLE orders;                 -- MySQL
+ANALYZE orders;                       -- PostgreSQL
+ANALYZE VERBOSE orders;               -- PG, с прогрессом
+
+-- Сравнить план до и после
+EXPLAIN SELECT * FROM orders WHERE user_id = 42; -- может быть ALL
+ANALYZE TABLE orders;
+EXPLAIN SELECT * FROM orders WHERE user_id = 42; -- ожидаем ref/Index Scan
+
+-- Проверить расхождение оценок и факта (PG)
+EXPLAIN (ANALYZE) SELECT ... ;
+-- Plan rows=1 vs Actual rows=500000 → нужен ANALYZE',
+                'code_language' => 'sql',
                 'difficulty' => 3,
                 'topic' => 'database.optimization',
             ],
