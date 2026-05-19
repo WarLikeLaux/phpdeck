@@ -54,7 +54,25 @@ require __DIR__ . "/vendor/autoload.php";',
             [
                 'category' => 'PHP',
                 'question' => 'Что лежит в папке vendor/?',
-                'answer' => 'Все установленные сторонние пакеты + автоген-файл autoload.php. Папка генерируется командой composer install и НЕ коммитится в git (есть в .gitignore). На сервере и в CI её создают заново через composer install --no-dev.',
+                'answer' => 'Все установленные сторонние пакеты + автоген-файл vendor/autoload.php — единственная точка входа автозагрузчика Composer. Папка генерируется командой composer install и НЕ коммитится в git (она есть в .gitignore любого нормального шаблона). На сервере и в CI её создают заново через composer install (а для прода — composer install --no-dev --optimize-autoloader, чтобы не ставить dev-пакеты и собрать оптимизированный classmap). В коде vendor подключают одной строкой в bootstrap-файле.',
+                'code_example' => '# Структура проекта
+project/
+├── composer.json
+├── composer.lock
+├── src/                ← твой код
+├── vendor/             ← всё от Composer (в .gitignore!)
+│   ├── autoload.php   ← точка входа
+│   ├── composer/
+│   └── guzzlehttp/
+└── public/index.php
+
+# Bootstrap — одна строка подключает ВСЁ
+# public/index.php:
+# require __DIR__ . "/../vendor/autoload.php";
+
+# На сервере
+composer install --no-dev --optimize-autoloader',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'php.composer_autoload',
             ],
@@ -122,7 +140,25 @@ spl_autoload_register(function (string $class) {
             [
                 'category' => 'PHP',
                 'question' => 'Как искать и устанавливать пакеты в Composer?',
-                'answer' => 'Каталог пакетов — packagist.org. Установка: composer require vendor/package. Для dev: composer require --dev phpunit/phpunit. Удаление: composer remove vendor/package. После — обновятся composer.json и composer.lock.',
+                'answer' => 'Главный каталог пакетов PHP — packagist.org, там лежит описание пакета, версии, статистика. Поиск с командной строки — composer search keyword. Установка пакета в проект — composer require vendor/package (он сам добавит запись в composer.json и обновит composer.lock). Для зависимостей только для разработки — composer require --dev (типичный пример: phpunit/phpunit, laravel/pint). Удаление — composer remove vendor/package. Обновить пакет до новой версии в рамках допустимого диапазона — composer update vendor/package.',
+                'code_example' => '# Поиск
+composer search guzzle
+
+# Установка в основные зависимости (попадёт в require)
+composer require guzzlehttp/guzzle
+
+# Установка в dev (попадёт в require-dev)
+composer require --dev phpunit/phpunit
+
+# Указать версию явно
+composer require laravel/framework:^11.0
+
+# Удаление
+composer remove guzzlehttp/guzzle
+
+# Обновить только один пакет
+composer update guzzlehttp/guzzle',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'php.composer_autoload',
             ],

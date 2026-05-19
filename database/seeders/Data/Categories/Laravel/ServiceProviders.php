@@ -78,7 +78,28 @@ class WrongDeferredProvider extends ServiceProvider implements DeferrableProvide
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Service Provider простыми словами?',
-                'answer' => 'Класс, описывающий, как фреймворку поднять и связать сервисы при старте приложения. Лежит в app/Providers, регистрируется в bootstrap/providers.php (Laravel 11+) или в config/app.php (Laravel 10 и старше). В Laravel 11 дефолтный скаффолд оставил только AppServiceProvider — задачи Auth/Route/Event/BroadcastServiceProvider перенесены в bootstrap/app.php и атрибуты/auto-discovery. Их можно вернуть руками, если нужно: php artisan make:provider FooServiceProvider.',
+                'answer' => 'Класс, описывающий, как фреймворку поднять и связать сервисы при старте приложения. Каждый запрос Laravel пробегает по списку провайдеров, вызывает у каждого register() (где регистрируются биндинги в контейнер), а потом boot() (где можно использовать другие сервисы — слушать события, добавлять Blade-директивы, ViewComposer, маршруты пакетов). Лежит в app/Providers, регистрируется в bootstrap/providers.php (Laravel 11+) или в config/app.php (Laravel 10 и старше). В Laravel 11 дефолтный скаффолд оставил только AppServiceProvider — задачи Auth/Route/Event/BroadcastServiceProvider перенесены в bootstrap/app.php и атрибуты/auto-discovery. Свой провайдер создаётся через php artisan make:provider PaymentServiceProvider.',
+                'code_example' => 'namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Blade;
+
+class AppServiceProvider extends ServiceProvider
+{
+    // Только биндинги в контейнер - НИКАКИХ обращений к другим сервисам
+    public function register(): void
+    {
+        $this->app->singleton(PaymentGateway::class, StripeGateway::class);
+    }
+
+    // Запускается после регистрации ВСЕХ провайдеров - тут можно всё
+    public function boot(): void
+    {
+        Blade::directive(\'money\', fn ($amount) =>
+            "<?= number_format($amount, 2, \',\', \' \') ?> ₽");
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.service_providers',
             ],

@@ -12,7 +12,7 @@ class BasicQa
                 'topic' => 'oop.basic_qa',
                 'difficulty' => 1,
                 'question' => 'Что такое полиморфизм простыми словами?',
-                'answer' => 'Один вызов — разное поведение в зависимости от типа объекта. Если есть интерфейс Shape с методом area() и классы Circle, Square, Triangle, его реализующие, — функция printArea(Shape $s) одинаково работает со всеми, не зная конкретного класса. Добавил Hexagon — старая функция работает без изменений.',
+                'answer' => 'Один вызов — разное поведение в зависимости от типа объекта. Если есть интерфейс Shape с методом area() и классы Circle, Square, Triangle, его реализующие, — функция printArea(Shape $s) одинаково работает со всеми, не зная конкретного класса. Добавил Hexagon — старая функция работает без изменений. Это даёт расширяемость: новый тип = новый класс, существующий код не трогаем. Полиморфизм опирается на наследование или интерфейсы.',
                 'code_example' => '<?php
 interface Shape { public function area(): float; }
 
@@ -26,7 +26,14 @@ class Square implements Shape {
     public function area(): float { return $this->side ** 2; }
 }
 
-function printArea(Shape $s): void { echo $s->area(); }',
+function printArea(Shape $s): void
+{
+    // тот же $s->area() даёт РАЗНЫЙ результат в зависимости от класса
+    echo $s->area() . PHP_EOL;
+}
+
+printArea(new Circle(5));  // 78.54...
+printArea(new Square(4));  // 16',
                 'code_language' => 'php',
             ],
             [
@@ -57,15 +64,37 @@ class Account
                 'topic' => 'oop.basic_qa',
                 'difficulty' => 1,
                 'question' => 'Что такое абстракция простыми словами?',
-                'answer' => 'Выделить ИЗ объекта только важное для задачи и спрятать остальное. Пользователь крутит руль и жмёт педали — детали работы двигателя ему не нужны. В коде это выражается интерфейсами и абстрактными классами: они описывают, что объект умеет, не раскрывая, как именно он это делает.',
+                'answer' => 'Выделить из объекта только важное для задачи и спрятать остальное. Пользователь крутит руль и жмёт педали — детали работы двигателя ему не нужны. В коде это выражается интерфейсами и абстрактными классами: они описывают, ЧТО объект умеет, не раскрывая, КАК именно он это делает. Благодаря этому клиентский код зависит от абстракции (PaymentGateway), а конкретную реализацию (Stripe, PayPal, мок в тесте) можно подменить.',
                 'code_example' => '<?php
+// Абстракция: только важный для клиента контракт
 interface PaymentGateway
 {
     public function pay(int $cents): bool;
 }
 
-// Клиенту достаточно знать про pay()
-function charge(PaymentGateway $g): void { $g->pay(100); }',
+// Конкретные реализации - детали скрыты
+class StripeGateway implements PaymentGateway
+{
+    public function pay(int $cents): bool
+    {
+        // обращение к API Stripe скрыто внутри
+        return true;
+    }
+}
+
+class PayPalGateway implements PaymentGateway
+{
+    public function pay(int $cents): bool { return true; }
+}
+
+// Клиенту достаточно знать про pay() - тип не важен
+function charge(PaymentGateway $g): void
+{
+    $g->pay(100);
+}
+
+charge(new StripeGateway());
+charge(new PayPalGateway());',
                 'code_language' => 'php',
             ],
             [

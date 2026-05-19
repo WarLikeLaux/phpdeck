@@ -141,14 +141,49 @@ $user->teams->first()->pivot->isOwner();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое hasMany простыми словами?',
-                'answer' => 'Отношение «один-ко-многим». У User много Post — в модели User: posts() { return $this->hasMany(Post::class); }. Доступ: $user->posts вернёт коллекцию постов. FK в таблице posts должен называться user_id (или явно указать второй аргумент hasMany).',
+                'answer' => 'Отношение «один-ко-многим»: у одной записи может быть много связанных. У User много Post — в модели User объявляется метод posts(), возвращающий $this->hasMany(Post::class). Доступ к коллекции: $user->posts (Collection моделей Post). FK по умолчанию ищется в таблице posts как user_id (имя родителя в snake_case + _id), PK по умолчанию — id. Если поля другие — указать вторым/третьим аргументом: hasMany(Post::class, \'author_id\', \'id\').',
+                'code_example' => 'class User extends Model {
+    public function posts() {
+        return $this->hasMany(Post::class);
+        // эквивалент: hasMany(Post::class, \'user_id\', \'id\')
+    }
+}
+
+// Использование
+$user = User::find(1);
+foreach ($user->posts as $post) {
+    echo $post->title;
+}
+
+// Создать связанный пост через relation - FK заполнится сам
+$user->posts()->create([\'title\' => \'Привет\', \'body\' => \'...\']);',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.eloquent_relations',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое belongsTo простыми словами?',
-                'answer' => 'Обратная сторона hasOne/hasMany. У Post один User — в модели Post: user() { return $this->belongsTo(User::class); }. Доступ: $post->user. FK хранится у этой же таблицы (posts.user_id).',
+                'answer' => 'Обратная сторона hasOne/hasMany. У Post один автор-User — в модели Post объявляется метод user(), возвращающий $this->belongsTo(User::class). Доступ: $post->user — одна модель User или null. FK хранится в ЭТОЙ таблице (posts.user_id), Laravel сам определяет имя по имени метода (user → user_id). Если имя поля другое — указать: belongsTo(User::class, \'author_id\').',
+                'code_example' => 'class Post extends Model {
+    public function user() {
+        return $this->belongsTo(User::class);
+        // эквивалент: belongsTo(User::class, \'user_id\', \'id\')
+    }
+}
+
+// Использование
+$post = Post::find(1);
+echo $post->user->name; // SELECT * FROM users WHERE id = posts.user_id
+
+// Привязать пост к юзеру
+$post->user()->associate($user);
+$post->save();
+
+// Отвязать
+$post->user()->dissociate();
+$post->save();',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.eloquent_relations',
             ],

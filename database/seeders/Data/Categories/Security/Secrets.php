@@ -10,7 +10,17 @@ class Secrets
             [
                 'category' => 'Безопасность',
                 'question' => 'Где НЕ хранить пароли БД и API-ключи простыми словами?',
-                'answer' => 'НЕ хранить: в коде (config.php, hardcoded), в git (даже в private repo — git history помнит), в логах, в URL (попадают в access_log), в JS-бандле фронта (его любой может скачать). Хранить — в .env (в .gitignore), переменных окружения, секрет-менеджере (HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager).',
+                'answer' => 'НЕЛЬЗЯ: 1) В коде хардкодом ($apiKey = "sk_live_..."). 2) В git — даже в приватном репо, даже если потом удалить: git history помнит, боты регулярно сканируют GitHub и подбирают утёкшие ключи за минуты. 3) В URL и query-параметрах — попадут в access_log nginx, history браузера, заголовок Referer. 4) В логах приложения (Log::info($payload) с токеном внутри). 5) В JS-бандле фронта — любой откроет DevTools и увидит. 6) В Slack/Telegram/тикетах. ПРАВИЛЬНО: 1) Локально — в .env, который лежит в .gitignore, коммитится только .env.example без значений. 2) На сервере — переменные окружения, файл с правами 600 у пользователя приложения. 3) На проде серьёзных систем — секрет-менеджер (HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager, Doppler), который выдаёт секреты по запросу с аудитом и ротацией. В Laravel секреты читаются через env() в config-файлах, а в коде — только config(\'services.stripe.secret\').',
+                'code_example' => "# .env (НЕ коммитим, в .gitignore)
+DB_PASSWORD=real-secret-password
+STRIPE_SECRET=sk_live_abc123xyz
+JWT_SECRET=base64:Mn9k...
+
+# .env.example (коммитим — только ключи, без значений)
+DB_PASSWORD=
+STRIPE_SECRET=
+JWT_SECRET=",
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'security.secrets',
             ],
@@ -24,14 +34,21 @@ class Secrets
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое .env файл и почему он не должен коммититься?',
-                'answer' => 'Текстовый файл с переменными окружения для приложения: DB_PASSWORD=..., APP_KEY=..., STRIPE_SECRET=.... В .gitignore по умолчанию. Коммитится только .env.example — шаблон БЕЗ реальных значений. В Laravel читается автоматически через env() (используется в config-файлах) и config() (используется в коде).',
-                'code_example' => "# .env (НЕ коммитим)
+                'answer' => 'Текстовый файл в корне проекта с переменными окружения: DB_PASSWORD=..., APP_KEY=..., STRIPE_SECRET=.... Каждое окружение (локалка, staging, prod) держит СВОЙ .env с подходящими значениями, поэтому коммитить его нельзя — это слило бы боевые секреты в git навсегда. Поэтому .env лежит в .gitignore по умолчанию, а в репозиторий коммитят .env.example — шаблон с теми же ключами, но БЕЗ значений или с placeholder. Новый разработчик клонирует репо, копирует cp .env.example .env, заполняет своими значениями. В Laravel .env читается автоматически на старте: в config-файлах вызывают env(\'DB_PASSWORD\') (только там!), а в коде приложения используют config(\'database.connections.mysql.password\') — так после php artisan config:cache всё работает быстро, потому что env() после кеша конфига уже не возвращает значений.',
+                'code_example' => "# .env (НЕ коммитим — в .gitignore по умолчанию)
+APP_KEY=base64:r4nd0mGenerated...
 DB_PASSWORD=real-prod-password
 STRIPE_SECRET=sk_live_abc123
 
-# .env.example (коммитим, шаблон)
+# .env.example (коммитим — шаблон с ключами без значений)
+APP_KEY=
 DB_PASSWORD=
-STRIPE_SECRET=",
+STRIPE_SECRET=
+
+# Поток для нового разработчика:
+cp .env.example .env
+php artisan key:generate   # сгенерирует APP_KEY
+# дальше руками заполняет DB_PASSWORD и т.п.",
                 'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'security.secrets',

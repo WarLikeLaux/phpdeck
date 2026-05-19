@@ -10,19 +10,28 @@ class Api
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое API простыми словами?',
-                'answer' => 'API (Application Programming Interface) — договор о том, как одна программа просит что-то у другой. Простыми словами: розетка в стене — ты не знаешь, как устроена электростанция, но знаешь форму вилки и напряжение, и этого хватает. Веб-API обычно работает по HTTP: клиент шлёт запрос на URL с методом GET/POST/..., сервер отвечает JSON-данными и статус-кодом. Бывает публичный (открытый всем), приватный (внутри компании), партнёрский (по договору).',
+                'answer' => 'API (Application Programming Interface) — это контракт, по которому одна программа просит что-то у другой. Аналогия: розетка — ты не знаешь, как устроена электростанция, но знаешь форму вилки и напряжение, и этого хватает. Веб-API обычно работает по HTTP: клиент шлёт запрос на URL с методом (GET/POST/PUT/DELETE) и телом, сервер отвечает данными в JSON и статус-кодом (200, 404, 500). Бывает публичный (открыт всем, например GitHub API), приватный (внутри компании, для своего фронта/мобилки) и партнёрский (по договору). Главное: API скрывает внутренности и даёт стабильный интерфейс — внутри можно переписать что угодно, клиент не сломается.',
+                'code_example' => 'GET /api/users/42 HTTP/1.1
+Host: api.example.com
+Authorization: Bearer abc123
+
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"id":42,"name":"Vasya","email":"v@example.com"}',
+                'code_language' => 'http',
                 'difficulty' => 1,
                 'topic' => 'system_design.api',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Из чего состоит HTTP-запрос и ответ?',
-                'answer' => 'Запрос: 1) стартовая строка — метод + URL + версия (GET /users/42 HTTP/1.1), 2) заголовки (Host, Authorization, Content-Type, ...), 3) пустая строка, 4) тело (опциональное, для POST/PUT/PATCH). Ответ: 1) статусная строка (HTTP/1.1 200 OK), 2) заголовки (Content-Type, Cache-Control, Set-Cookie), 3) пустая строка, 4) тело с данными (JSON, HTML и т.п.). Это базовая структура — её видит браузер и любой HTTP-клиент.',
+                'answer' => 'И запрос, и ответ состоят из четырёх частей одинаковой структуры. Запрос: 1) стартовая строка — метод + путь + версия протокола (POST /api/users HTTP/1.1), 2) заголовки (Host, Authorization, Content-Type, Content-Length), 3) пустая строка-разделитель, 4) тело — опционально, обычно у POST/PUT/PATCH. Ответ: 1) статусная строка — версия + код + текст (HTTP/1.1 201 Created), 2) заголовки (Content-Type, Cache-Control, Set-Cookie, Location), 3) пустая строка, 4) тело с данными (JSON, HTML, картинка). Запомни ключевое: пустая строка отделяет заголовки от тела — её видят и браузер, и curl, и Postman, и любой HTTP-клиент.',
                 'code_example' => 'POST /api/users HTTP/1.1
 Host: api.example.com
 Authorization: Bearer abc123
 Content-Type: application/json
-Content-Length: 27
+Content-Length: 25
 
 {"name":"Vasya","age":30}
 

@@ -107,8 +107,44 @@ interface HttpStatus
                 'difficulty' => 1,
                 'question' => 'Когда брать абстрактный класс, а когда интерфейс — простыми словами?',
                 'answer' => 'Интерфейс — когда нужно описать ЧТО объект умеет делать, а как — пусть каждый решает сам. Можно реализовать сколько угодно интерфейсов сразу. Абстрактный класс — когда есть общий КОД и общие СВОЙСТВА для группы классов, и часть методов уже реализована, а часть оставлена на потомков. У класса может быть только один абстрактный родитель. Если сомневаешься — начни с интерфейса, он гибче.',
-                'code_example' => null,
-                'code_language' => null,
+                'code_example' => '<?php
+// ✅ Интерфейс - просто контракт без реализации
+interface Logger
+{
+    public function log(string $message): void;
+}
+
+class FileLogger implements Logger
+{
+    public function log(string $message): void { /* пишем в файл */ }
+}
+
+class NullLogger implements Logger
+{
+    public function log(string $message): void { /* ничего */ }
+}
+
+// ✅ Абстрактный класс - общий код + абстрактные методы для потомков
+abstract class HttpController
+{
+    // общая реализация для всех потомков
+    protected function json(array $data): string
+    {
+        return json_encode($data);
+    }
+
+    // потомок ОБЯЗАН реализовать
+    abstract public function handle(): string;
+}
+
+class UserController extends HttpController
+{
+    public function handle(): string
+    {
+        return $this->json([\'user\' => \'Иван\']);
+    }
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

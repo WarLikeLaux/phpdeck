@@ -30,21 +30,59 @@ $stmt->execute();',
             [
                 'category' => 'Базы данных',
                 'question' => 'Зачем нужен первичный ключ простыми словами?',
-                'answer' => 'Чтобы каждую строку можно было однозначно отличить от других. Без PK ты не можешь сказать «обнови вот ЭТУ строку» — БД не поймёт какую. Обычно это id с автоинкрементом или UUID. Не может быть NULL и не может повторяться.',
+                'answer' => 'Чтобы каждую строку можно было однозначно отличить от других. Без PK ты не можешь сказать «обнови вот ЭТУ строку» — БД не поймёт какую. Обычно это id с автоинкрементом или UUID. Свойства: всегда уникальный, не может быть NULL, в таблице только один PK (но он может состоять из нескольких колонок — составной ключ). Под PK автоматически создаётся индекс — поиск по нему очень быстрый.',
+                'code_example' => '-- Один числовой PK (самый частый случай)
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    email VARCHAR(255) NOT NULL
+);
+
+-- Составной PK: уникальна пара (order_id, product_id)
+CREATE TABLE order_items (
+    order_id BIGINT,
+    product_id BIGINT,
+    quantity INT,
+    PRIMARY KEY (order_id, product_id)
+);',
+                'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.basic_qa',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Зачем нужен внешний ключ простыми словами?',
-                'answer' => 'Чтобы связывать таблицы и не давать создавать «висячие» ссылки. orders.user_id ссылается на users.id — БД не даст вставить заказ для несуществующего юзера и не даст удалить юзера, у которого есть заказы (либо удалит каскадно, по настроенному правилу).',
+                'answer' => 'Чтобы связывать таблицы и не давать создавать «висячие» ссылки. orders.user_id ссылается на users.id — БД не даст вставить заказ для несуществующего юзера и не даст удалить юзера, у которого есть заказы. Поведение при удалении настраивается через ON DELETE: CASCADE (удалить связанные заказы вслед за юзером), SET NULL (оставить заказ, обнулить user_id), RESTRICT (запретить удаление, если есть заказы).',
+                'code_example' => 'CREATE TABLE orders (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    total DECIMAL(10, 2),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
+);
+
+-- Попытка вставить заказ несуществующему юзеру упадёт
+INSERT INTO orders (user_id, total) VALUES (9999, 100);
+-- ERROR: foreign key violation',
+                'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.basic_qa',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое SQL?',
-                'answer' => 'SQL (Structured Query Language) — декларативный язык работы с реляционными БД: ты описываешь, ЧТО хочешь получить, а как искать — решает СУБД. Команды делят на три группы: DML (работа с данными — SELECT, INSERT, UPDATE, DELETE), DDL (схема — CREATE, ALTER, DROP) и DCL/TCL (права и транзакции — GRANT, COMMIT, ROLLBACK). Это стандарт ANSI/ISO, поэтому базовый синтаксис почти одинаково работает в PostgreSQL, MySQL, SQLite, Oracle и SQL Server, а отличия — в диалектах (типы данных, функции, оконные расширения).',
+                'answer' => 'SQL (Structured Query Language) — язык работы с реляционными базами данных. Он декларативный: ты описываешь, ЧТО хочешь получить, а КАК искать — решает сама СУБД. Команды делят на группы: DML — работа с данными (SELECT, INSERT, UPDATE, DELETE); DDL — описание схемы (CREATE, ALTER, DROP); DCL/TCL — права и транзакции (GRANT, COMMIT, ROLLBACK). SQL — это стандарт, поэтому базовый синтаксис почти одинаково работает в PostgreSQL, MySQL, SQLite, Oracle и SQL Server (отличия — в типах данных и функциях).',
+                'code_example' => '-- DDL: создать таблицу
+CREATE TABLE users (id BIGSERIAL PRIMARY KEY, name VARCHAR(255));
+
+-- DML: добавить и выбрать данные
+INSERT INTO users (name) VALUES (\'Иван\');
+SELECT * FROM users WHERE name = \'Иван\';
+
+-- TCL: транзакция
+BEGIN;
+UPDATE users SET name = \'Пётр\' WHERE id = 1;
+COMMIT;',
+                'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.basic_qa',
             ],
@@ -66,18 +104,25 @@ TRUNCATE TABLE orders;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое СУБД и чем она отличается от базы данных?',
-                'answer' => 'База данных (БД) — это сами данные, организованные определённым образом (таблицы, документы, ключ-значение). СУБД (Система Управления Базами Данных, DBMS) — это ПРОГРАММА, которая управляет БД: принимает запросы, хранит, индексирует, обеспечивает транзакции, контролирует доступ. Примеры СУБД: PostgreSQL, MySQL, SQLite, MongoDB, Redis. Часто «БД» и «СУБД» используют как синонимы, но строго это разное.',
+                'answer' => 'База данных (БД) — это сами данные, организованные определённым образом (таблицы, документы, пары ключ-значение). СУБД (Система Управления Базами Данных, DBMS) — это ПРОГРАММА, которая управляет БД: принимает запросы, хранит данные, индексирует их, выполняет транзакции, контролирует доступ. Аналогия: БД — это сами книги в библиотеке, СУБД — библиотекарь, который умеет их искать и выдавать. Примеры СУБД: PostgreSQL, MySQL, SQLite, MongoDB, Redis. В разговоре «БД» и «СУБД» часто говорят как синонимы, но строго это разные вещи.',
                 'difficulty' => 1,
                 'topic' => 'database.basic_qa',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Что делает WHERE в SQL-запросе?',
-                'answer' => 'WHERE фильтрует строки таблицы по условию: в результат попадут только те, для которых условие истинно. Условия комбинируются через AND и OR, отрицание — через NOT. Сравнения: =, <>, <, >, <=, >=, BETWEEN, IN, LIKE, IS NULL. Пример: SELECT * FROM users WHERE age >= 18 AND country = \'RU\'.',
-                'code_example' => 'SELECT id, name FROM users
+                'answer' => 'WHERE фильтрует строки таблицы по условию: в результат попадут только те, для которых условие истинно. Условия можно комбинировать через AND (оба должны выполняться) и OR (хотя бы одно), отрицание — через NOT. Операторы сравнения: = (равно), <> или != (не равно), <, >, <=, >=, BETWEEN a AND b (диапазон), IN (значение из списка), LIKE (шаблон), IS NULL / IS NOT NULL (проверка на NULL). Без WHERE команда применится ко ВСЕЙ таблице — это особенно опасно с UPDATE и DELETE.',
+                'code_example' => '-- Найти взрослых из России или Беларуси, не удалённых
+SELECT id, name FROM users
 WHERE age >= 18
   AND country IN (\'RU\', \'BY\')
-  AND deleted_at IS NULL;',
+  AND deleted_at IS NULL;
+
+-- Диапазон через BETWEEN
+SELECT * FROM orders WHERE total BETWEEN 100 AND 1000;
+
+-- Поиск по началу строки
+SELECT * FROM products WHERE name LIKE \'iPhone%\';',
                 'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.basic_qa',
@@ -85,7 +130,16 @@ WHERE age >= 18
             [
                 'category' => 'Базы данных',
                 'question' => 'Какие базовые типы данных есть в SQL?',
-                'answer' => 'Числовые: INT (целое), BIGINT (большое целое), DECIMAL(p, s) (точное дробное, для денег), FLOAT/DOUBLE (приближённое дробное). Строки: CHAR(n) (фиксированной длины), VARCHAR(n) (переменной), TEXT (длинный текст без лимита). Даты-время: DATE (только дата), TIME (только время), TIMESTAMP/DATETIME (дата и время). Логический: BOOLEAN. Бинарный: BLOB. Конкретные типы и их размеры зависят от СУБД, но общая картина одинаковая.',
+                'answer' => 'Числовые: INT (обычное целое), BIGINT (большое целое для id), DECIMAL(p, s) (точное дробное — для денег), FLOAT/DOUBLE (приближённое дробное — для научных расчётов, НЕ для денег). Строки: CHAR(n) (фиксированной длины), VARCHAR(n) (переменной длины с лимитом), TEXT (длинный текст). Даты и время: DATE (только дата), TIME (только время), TIMESTAMP/DATETIME (дата и время вместе). Логический: BOOLEAN (true/false). Бинарный: BLOB/BYTEA (файлы, картинки). Конкретные имена и размеры чуть отличаются между MySQL и PostgreSQL, но идея одинаковая.',
+                'code_example' => 'CREATE TABLE products (
+    id          BIGSERIAL PRIMARY KEY,        -- большое целое, автоинкремент
+    name        VARCHAR(255) NOT NULL,        -- строка до 255 символов
+    description TEXT,                          -- длинный текст
+    price       DECIMAL(10, 2) NOT NULL,      -- точное дробное для денег
+    in_stock    BOOLEAN DEFAULT true,         -- логическое
+    created_at  TIMESTAMP DEFAULT NOW()       -- дата + время
+);',
+                'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.basic_qa',
             ],

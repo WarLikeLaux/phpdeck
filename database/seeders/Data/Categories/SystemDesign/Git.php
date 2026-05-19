@@ -241,91 +241,213 @@ git commit -m "stop tracking .env"',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое git простыми словами?',
-                'answer' => 'Распределённая система контроля версий. Сохраняет «снимки» проекта (коммиты), позволяет смотреть историю изменений, откатываться назад, работать параллельно в ветках и сливать изменения. У каждого разработчика своя полная копия истории.',
+                'answer' => 'Git — это распределённая система контроля версий (VCS), которая сохраняет «снимки» состояния проекта (коммиты) и позволяет работать с историей изменений. Что она даёт: видеть кто, когда и что менял (git log, git blame), откатываться к любой прошлой версии, работать параллельно в нескольких ветках (фича, багфикс), сливать изменения коллег без потери своих. Слово «распределённая» означает, что у каждого разработчика на машине полная копия истории — можно коммитить и смотреть прошлое без интернета, а GitHub/GitLab — это просто общий удалённый репозиторий для синхронизации. Создал git Линус Торвальдс в 2005 для разработки ядра Linux.',
+                'code_example' => '# Типовой ежедневный цикл
+git status                  # что изменилось
+git add .                   # подготовить к коммиту
+git commit -m "Add feature" # сохранить снимок
+git push                    # выложить на GitHub',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делает git init?',
-                'answer' => 'Создаёт пустой git-репозиторий в текущей папке. Появляется скрытая папка .git, где хранится вся история и метаданные. Делается один раз для нового проекта.',
+                'answer' => 'Создаёт пустой git-репозиторий в текущей папке. Появляется скрытая папка .git, в которой git хранит всю историю, объекты коммитов, ветки, конфиг — это и есть «репозиторий». Делается один раз в момент старта нового проекта. После init папка проекта становится git-репозиторием, но коммитов в ней пока нет — нужно сделать git add и git commit. Альтернативный сценарий — git clone, который сразу скачивает существующий репозиторий с GitHub и тоже создаёт папку .git.',
+                'code_example' => '$ mkdir my-project && cd my-project
+$ git init
+Initialized empty Git repository in /home/user/my-project/.git/
+
+$ ls -la
+.git/  (теперь это git-репозиторий)',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делает git clone?',
-                'answer' => 'Скачивает удалённый репозиторий локально: git clone https://github.com/user/repo.git. Создаёт папку repo с полной копией истории и автоматически настраивает remote origin на указанный URL.',
+                'answer' => 'Скачивает удалённый репозиторий целиком на локальную машину: git clone <url>. Создаёт папку с именем репозитория, кладёт туда весь код и полную историю коммитов и веток, и автоматически настраивает remote с именем origin, указывающий на этот URL. После clone сразу можно делать git pull / git push без дополнительной настройки. Два способа подключения: HTTPS (git clone https://github.com/user/repo.git, при пуше спросит токен) или SSH (git clone git@github.com:user/repo.git, аутентификация по SSH-ключу). Часто хочется сменить имя папки — git clone <url> my-folder.',
+                'code_example' => '$ git clone https://github.com/laravel/laravel.git
+Cloning into "laravel"...
+
+$ cd laravel
+$ git remote -v
+origin  https://github.com/laravel/laravel.git (fetch)
+origin  https://github.com/laravel/laravel.git (push)',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делает git add?',
-                'answer' => 'Помещает изменения в «область подготовки» (staging area) — это файлы, которые попадут в следующий коммит. git add file.php — конкретный файл, git add . — всё изменённое в текущей папке.',
+                'answer' => 'Помещает изменения в «область подготовки» (staging area, index) — это промежуточное место между working directory и историей. Только то, что в staging, попадёт в следующий коммит. Зачем такой промежуточный этап: можно собрать коммит не из всех изменений сразу, а выборочно — например, разделить два смысловых изменения на два коммита. Варианты: git add file.php — конкретный файл, git add . — всё изменённое в текущей папке и ниже, git add -A — всё изменённое во всём репозитории включая удалённые, git add -p — интерактивно по кускам (patch mode), удобно когда в одном файле смешаны два разных изменения.',
+                'code_example' => '$ git status
+modified:   app/User.php
+modified:   routes/web.php
+
+$ git add app/User.php       # только один файл
+$ git add .                  # всё в текущей папке
+$ git add -p                 # выбрать куски интерактивно',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делает git commit?',
-                'answer' => 'Фиксирует подготовленные через git add изменения в историю с описанием: git commit -m "Описание". Создаётся новый коммит со своим SHA-хэшем, ссылающийся на предыдущий. Только после commit изменения «сохранены» в истории.',
+                'answer' => 'Фиксирует подготовленные через git add изменения в историю как новый коммит с описанием: git commit -m "Что сделано". Каждый коммит получает уникальный SHA-хэш (например 028b143...) и ссылается на родительский коммит — так образуется цепочка истории. До commit изменения существуют только в working directory и staging — после commit они уже «сохранены» и их можно вернуть из истории. Полезные флаги: -m "msg" — короткое описание одной строкой, без -m откроется редактор для длинного сообщения, -am — сразу add + commit для уже отслеживаемых файлов, --amend — изменить последний коммит (добавить файл или поправить сообщение). На проде форматы сообщений часто стандартизованы (Conventional Commits: feat:, fix:, refactor:).',
+                'code_example' => '$ git add app/User.php
+$ git commit -m "Add email verification to User"
+[main 7a2c3f1] Add email verification to User
+ 1 file changed, 5 insertions(+)
+
+# Поправить сообщение последнего коммита
+$ git commit --amend -m "Better message"',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делает git push?',
-                'answer' => 'Отправляет локальные коммиты на удалённый репозиторий: git push origin main. Без него никто другой не увидит твои изменения. Первый push в новую ветку — git push -u origin feature-x (-u запоминает связь).',
+                'answer' => 'Отправляет твои локальные коммиты на удалённый репозиторий (origin), чтобы их увидели коллеги и CI/CD: git push origin main. Пока не сделал push — коммиты живут только у тебя на машине, коллеги их не видят. Первый push новой ветки делается с флагом -u (или --set-upstream): git push -u origin feature-x — это запоминает связь локальной ветки с удалённой, после чего можно делать просто git push без аргументов. Если на удалённой ветке появились коммиты, которых нет у тебя — push будет отвергнут (non-fast-forward), сначала надо сделать git pull. Опасный вариант — git push --force, переписывает удалённую историю, на общих ветках использовать только с --force-with-lease.',
+                'code_example' => '# Первый push новой ветки
+git push -u origin feature-login
+
+# Обычный push после -u
+git push
+
+# Если pull обновил историю и push отвергнут
+git pull --rebase
+git push',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делает git pull?',
-                'answer' => 'Скачивает изменения с удалённого репо и сразу сливает их в твою локальную ветку. git pull = git fetch + git merge. Используется чтобы подтянуть свежие изменения коллег перед началом работы.',
+                'answer' => 'Скачивает изменения с удалённого репозитория и сразу сливает их в твою текущую локальную ветку. По сути это две команды одной: git pull = git fetch (скачать) + git merge (слить). Используется в начале рабочего дня или перед началом новой задачи, чтобы получить свежие коммиты коллег. По умолчанию делает merge-коммит, если истории разошлись — многие команды предпочитают git pull --rebase, чтобы переписать свои локальные коммиты поверх удалённых без merge-коммита (история чище). Если ты ничего не коммитил локально и просто хочешь подтянуть main — pull --ff-only откажется делать что-то странное и просто перемотает указатель вперёд.',
+                'code_example' => '# Обычный pull
+git pull
+
+# Rebase вместо merge — линейная история
+git pull --rebase
+
+# Только fast-forward, без merge-коммитов
+git pull --ff-only',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что показывает git status?',
-                'answer' => 'Текущее состояние рабочей папки: какие файлы изменены, какие в staging, какие untracked, на какой ветке находишься, отстаёт/опережает ли она удалённую. Самая используемая команда.',
+                'answer' => 'Текущее состояние рабочей папки относительно последнего коммита и удалённой ветки. Что видно: на какой ветке ты сейчас (например, On branch main), отстаёт или опережает ли она origin/main, какие файлы в staging (готовы к коммиту, секция Changes to be committed), какие изменены но не добавлены (Changes not staged), какие новые без отслеживания (Untracked files). Это самая часто запускаемая команда в git — её обычно дёргают перед каждым add и commit, чтобы убедиться, что попадёт в коммит именно то, что нужно. Краткий вариант: git status -s (короткие коды M/A/D/?? в начале строк).',
+                'code_example' => '$ git status
+On branch feature-login
+Your branch is ahead of "origin/feature-login" by 1 commit.
+
+Changes to be committed:
+  modified:   app/Http/Controllers/AuthController.php
+
+Changes not staged for commit:
+  modified:   routes/web.php
+
+Untracked files:
+  app/Services/TokenService.php',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делает git diff?',
-                'answer' => 'Показывает разницу между версиями файлов. Без аргументов — что изменено в working directory против staging. git diff --staged — staging против последнего коммита. git diff main feature — разница между ветками.',
+                'answer' => 'Показывает построчную разницу между двумя версиями файлов (унифицированный формат: красное со знаком минус — было, зелёное со знаком плюс — стало). Без аргументов сравнивает working directory со staging — то есть «что я ещё не успел добавить в индекс». git diff --staged (или --cached) — staging с последним коммитом, то есть «что попадёт в коммит». git diff HEAD — все изменения с последнего коммита целиком. git diff main feature-x — разница между двумя ветками. git diff <sha1> <sha2> — между двумя любыми коммитами. Перед каждым commit полезно делать git diff --staged, чтобы убедиться что коммитишь именно то.',
+                'code_example' => '$ git diff
+diff --git a/app/User.php b/app/User.php
+@@ -10,3 +10,5 @@ class User
+-    protected $fillable = ["name"];
++    protected $fillable = ["name", "email"];
+
+# Разница staging vs последний коммит
+git diff --staged
+
+# Разница между ветками
+git diff main..feature-login',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что показывает git log?',
-                'answer' => 'Историю коммитов: SHA, автор, дата, сообщение. git log --oneline — компактно по одной строке. git log --graph --all — со всеми ветками и графиком. Стрелки ↑↓ листают, q — выход.',
+                'answer' => 'Историю коммитов текущей ветки от свежих к старым: SHA-хэш, автор, дата, сообщение. По умолчанию открывается в постраничном просмотрщике (less): стрелки и Page Up/Down — листать, q — выход. Полезные варианты: git log --oneline — каждый коммит одной строкой (SHA + сообщение), git log --graph --all --oneline — со всеми ветками и графиком слияний, git log -10 — только последние 10, git log --author="Vasya" — коммиты конкретного человека, git log -- path/to/file — история одного файла, git log -S"functionName" — коммиты, где появилась/исчезла строка. Сравни с git reflog — это история действий с HEAD (включая reset, checkout), помогает откатить «потерянные» коммиты.',
+                'code_example' => '$ git log --oneline -5
+7a2c3f1 Add email verification
+4b1d8a2 Fix typo in login
+9c5f4e3 Add password reset
+2e8a1d7 Initial commit
+
+# История с графиком и ветками
+git log --graph --oneline --all',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое ветка (branch) в git простыми словами?',
-                'answer' => 'Независимая линия разработки. Создаёшь ветку — продолжаешь экспериментировать, не трогая main. Когда готово — сливаешь обратно. По сути это просто указатель на коммит, который двигается с каждым новым коммитом.',
+                'answer' => 'Ветка — это независимая линия разработки. Создаёшь ветку (например feature-login) — пишешь в ней код и коммитишь, не трогая основную main. Когда фича готова и проверена — сливаешь ветку обратно в main (merge или pull request). По сути ветка — это всего лишь подвижный указатель на коммит, который сам сдвигается вперёд при каждом новом commit. Поэтому ветки в git очень дешёвые — создаются мгновенно, не копируют файлы. Стандартный flow: main всегда стабильна, каждая задача делается в своей feature-ветке, ревью через Pull Request, после merge ветка удаляется. Список веток — git branch (звёздочка — текущая), удалить — git branch -d feature-x.',
+                'code_example' => '$ git branch
+* main
+  feature-login
+  bugfix-cart
+
+# Создать новую ветку
+git switch -c feature-checkout
+
+# Удалить локальную ветку после merge
+git branch -d feature-login',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как создать и переключиться на новую ветку?',
-                'answer' => 'Современный способ: git switch -c feature-x (создать и переключиться). Старый: git checkout -b feature-x. Просто переключиться на существующую: git switch feature-x (или git checkout feature-x). Список веток: git branch.',
+                'answer' => 'Современный способ (с git 2.23): git switch -c feature-x — создать новую ветку от текущей позиции и сразу на неё переключиться. Флаг -c означает create. Старый, до сих пор работающий способ: git checkout -b feature-x — то же самое. Просто переключиться на существующую ветку: git switch feature-x (или git checkout feature-x). Посмотреть список локальных веток: git branch. Все ветки включая удалённые: git branch -a. Команды switch и restore разделили функции старого checkout (который умел и ветки переключать, и файлы восстанавливать) — теперь switch отвечает только за ветки, restore — за файлы, ошибиться сложнее.',
+                'code_example' => '# Создать ветку и переключиться
+git switch -c feature-checkout
+
+# Переключиться на существующую
+git switch main
+
+# Старый способ (всё ещё работает)
+git checkout -b feature-checkout
+git checkout main',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое remote простыми словами?',
-                'answer' => 'Удалённый репозиторий, с которым связан твой локальный (обычно GitHub/GitLab/Bitbucket). Стандартное имя — origin. git remote -v — посмотреть список и URL. git push origin main — отправить ветку main в origin.',
+                'answer' => 'Remote — это удалённый репозиторий, с которым связан твой локальный (обычно на GitHub, GitLab или Bitbucket). По сути это просто именованная ссылка на URL чужого репозитория. Стандартное имя первого remote — origin, оно создаётся автоматически при git clone и указывает на тот URL, откуда ты клонировал. Можно добавить несколько remote: например upstream — оригинальный репозиторий, который ты форкнул, и origin — твой форк. Команды: git remote -v — посмотреть список remote и их URL, git remote add upstream <url> — добавить второй remote, git remote remove <name> — удалить, git push origin main — отправить ветку main в remote origin, git fetch upstream — скачать изменения из upstream.',
+                'code_example' => '$ git remote -v
+origin    git@github.com:me/laravel.git (fetch)
+origin    git@github.com:me/laravel.git (push)
+
+# Добавить upstream (оригинал форка)
+$ git remote add upstream https://github.com/laravel/laravel.git
+
+# Подтянуть свежие коммиты из оригинала
+$ git fetch upstream
+$ git merge upstream/main',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'system_design.git',
             ],

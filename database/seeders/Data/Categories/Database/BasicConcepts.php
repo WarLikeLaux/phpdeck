@@ -10,20 +10,37 @@ class BasicConcepts
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое база данных простыми словами?',
-                'answer' => 'База данных (БД) - это организованное хранилище данных, к которому удобно обращаться, добавлять, изменять и удалять записи. Простыми словами: представь огромный шкаф с папками, где всё разложено по полочкам и есть быстрый способ найти нужное. СУБД (Система Управления Базами Данных) - это программа, которая управляет этим шкафом: PostgreSQL, MySQL, SQLite, Oracle и т.д.',
+                'answer' => 'База данных (БД) — это организованное хранилище данных, из которого удобно искать, добавлять, изменять и удалять записи. Аналогия: огромный шкаф с папками, где всё разложено по полочкам по правилам, и есть быстрый способ найти нужное. Для работы с БД используют СУБД (Систему Управления Базами Данных) — это программа, которая управляет шкафом: PostgreSQL, MySQL, SQLite, MongoDB, Redis. В приложении мы шлём СУБД запросы (например, на SQL), а она возвращает данные.',
+                'code_example' => '-- Простой пример: создаём БД, таблицу, добавляем и читаем запись
+CREATE DATABASE shop;
+
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);
+
+INSERT INTO users (name) VALUES (\'Иван\');
+SELECT * FROM users;
+-- id | name
+--  1 | Иван',
+                'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.basic_concepts',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое таблица, строка и столбец?',
-                'answer' => 'Таблица - это набор данных в виде сетки (как Excel-лист). Строка (row, record, кортеж) - одна запись, например один пользователь. Столбец (column, поле, атрибут) - характеристика записи, например имя или email. Каждый столбец имеет тип данных (integer, varchar, timestamp и т.д.).',
+                'answer' => 'Таблица — это набор данных в виде сетки, как Excel-лист (например, таблица users). Строка (row, record, запись) — одна конкретная сущность: один пользователь со своим id, именем и email. Столбец (column, поле, атрибут) — одна характеристика всех записей: «имя», «email», «дата регистрации». У каждого столбца есть тип данных (INT, VARCHAR, TIMESTAMP), и для столбца можно задать правила: NOT NULL (обязательное), UNIQUE (без повторений), DEFAULT (значение по умолчанию).',
                 'code_example' => 'CREATE TABLE users (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);',
+    id BIGSERIAL PRIMARY KEY,            -- столбец id (большое целое)
+    name VARCHAR(255) NOT NULL,           -- столбец name (строка, обязательный)
+    email VARCHAR(255) UNIQUE NOT NULL,   -- столбец email (уникальный)
+    created_at TIMESTAMP DEFAULT NOW()    -- столбец с дефолтом
+);
+
+-- Каждая INSERT-команда добавляет ОДНУ строку
+INSERT INTO users (name, email) VALUES (\'Иван\', \'ivan@example.com\');
+INSERT INTO users (name, email) VALUES (\'Анна\', \'anna@example.com\');',
                 'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.basic_concepts',
@@ -31,7 +48,24 @@ class BasicConcepts
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое реляционная база данных?',
-                'answer' => 'Реляционная БД хранит данные в таблицах (отношениях) со строгой схемой: типы и обязательность столбцов известны заранее. Таблицы связаны друг с другом через ключи: PRIMARY KEY уникально идентифицирует строку, FOREIGN KEY ссылается на PK другой таблицы (например, orders.user_id -> users.id). Работают через SQL, поддерживают ACID-транзакции и обеспечивают ссылочную целостность. Примеры: PostgreSQL, MySQL, Oracle, SQL Server, SQLite. Альтернатива — NoSQL (MongoDB, Redis), где жёсткой схемы и SQL обычно нет.',
+                'answer' => 'Реляционная БД хранит данные в таблицах со строгой схемой: типы колонок и их обязательность заданы заранее (если колонка email — VARCHAR NOT NULL, то записать туда число или NULL не получится). Таблицы связываются между собой через ключи: PRIMARY KEY уникально идентифицирует строку, FOREIGN KEY ссылается на PK другой таблицы (orders.user_id → users.id). Работают через язык SQL, поддерживают транзакции и не дают создать «висячие» ссылки. Примеры: PostgreSQL, MySQL, Oracle, SQL Server, SQLite. Альтернатива — NoSQL (MongoDB, Redis), где жёсткой схемы и SQL обычно нет.',
+                'code_example' => '-- Две связанные таблицы
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE orders (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id),   -- FK на users
+    total DECIMAL(10, 2)
+);
+
+-- Заказ может существовать только у реального юзера
+INSERT INTO users (name) VALUES (\'Иван\');             -- id = 1
+INSERT INTO orders (user_id, total) VALUES (1, 500);   -- OK
+INSERT INTO orders (user_id, total) VALUES (999, 500); -- ERROR: нет user 999',
+                'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.basic_concepts',
             ],

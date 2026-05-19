@@ -217,7 +217,20 @@ window.Echo.join(`room.${roomId}`)
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое событие (event) в Laravel простыми словами?',
-                'answer' => 'Объект, описывающий «что-то произошло»: UserRegistered, OrderPaid. Код, инициирующий событие, не знает, кто на него отреагирует — он просто бросает event(new UserRegistered($user)). На событие могут быть подписаны несколько слушателей.',
+                'answer' => 'Объект, описывающий «что-то произошло»: UserRegistered, OrderPaid, MessageSent. Это обычный PHP-класс, обычно создаётся через php artisan make:event с трейтом Dispatchable. Код, инициирующий событие, не знает, кто на него отреагирует — он просто бросает event(new UserRegistered($user)) или UserRegistered::dispatch($user). На событие могут быть подписаны несколько слушателей (listeners), каждый из них получит объект события в handle(). Это даёт развязку: добавить новую реакцию (отправить SMS) = просто добавить новый listener, не трогая код регистрации.',
+                'code_example' => 'use Illuminate\Foundation\Events\Dispatchable;
+
+class UserRegistered
+{
+    use Dispatchable;
+
+    public function __construct(public User $user) {}
+}
+
+// Где-то в RegisterController после создания юзера
+UserRegistered::dispatch($user);
+// эквивалент: event(new UserRegistered($user));',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.events_listeners',
             ],

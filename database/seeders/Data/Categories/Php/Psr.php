@@ -160,7 +160,7 @@ class AuthMiddleware implements MiddlewareInterface
             [
                 'category' => 'PHP',
                 'question' => 'Что такое PSR простыми словами?',
-                'answer' => 'PHP Standards Recommendations — набор стандартов от PHP-FIG (Framework Interop Group), которые принимают крупные фреймворки и библиотеки. Цель — чтобы код от разных авторов мог работать вместе: одинаковая автозагрузка, одинаковые интерфейсы для логирования, кэша, HTTP.',
+                'answer' => 'PHP Standards Recommendations — набор стандартов от PHP-FIG (Framework Interop Group), которые принимают крупные фреймворки и библиотеки. Цель — чтобы код от разных авторов мог работать вместе. Самые ходовые: PSR-1 и PSR-12 — стиль кода (PascalCase для классов, отступы, фигурные скобки), PSR-4 — автозагрузка (namespace → путь к файлу), PSR-3 — единый интерфейс логгера (LoggerInterface), PSR-7 — HTTP-запросы и ответы, PSR-11 — DI-контейнер, PSR-15 — middleware. Знание PSR делает код переносимым между Laravel, Symfony и любыми другими совместимыми библиотеками без переписывания.',
                 'difficulty' => 1,
                 'topic' => 'php.psr',
             ],

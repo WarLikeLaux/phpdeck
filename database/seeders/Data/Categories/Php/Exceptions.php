@@ -154,7 +154,22 @@ set_error_handler(function ($severity, $msg, $file, $line) {
             [
                 'category' => 'PHP',
                 'question' => 'Что такое исключение (exception) простыми словами?',
-                'answer' => 'Объект, описывающий ошибочную ситуацию в коде. Когда что-то идёт не так (нет файла, неверный ввод, упала БД), вместо «тихого» return false выбрасывается исключение, которое прерывает обычный поток выполнения, пока его не поймают через try/catch.',
+                'answer' => 'Объект, описывающий ошибочную ситуацию в коде. Когда что-то идёт не так (нет файла, неверный ввод, упала БД), вместо «тихого» return false выбрасывается исключение командой throw new SomeException("message"). Оно прерывает обычный поток выполнения и «поднимается» вверх по стеку вызовов, пока его не поймают через try/catch. Если не поймали — программа упадёт с сообщением «Uncaught Exception» и трассировкой стека. У всех исключений есть полезные методы: getMessage() — текст, getCode() — код, getFile() / getLine() — где случилось, getTrace() — где «росла» цепочка вызовов. Главные плюсы перед return false: ошибку нельзя случайно проигнорировать, и логика «всё хорошо» не смешивается с обработкой ошибок.',
+                'code_example' => '<?php
+function divide(int $a, int $b): int {
+    if ($b === 0) {
+        throw new InvalidArgumentException("Деление на ноль");
+    }
+    return intdiv($a, $b);
+}
+
+try {
+    echo divide(10, 0);
+} catch (InvalidArgumentException $e) {
+    echo "Ошибка: " . $e->getMessage();   // "Ошибка: Деление на ноль"
+    echo " в " . $e->getFile() . ":" . $e->getLine();
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.exceptions',
             ],

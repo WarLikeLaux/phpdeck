@@ -10,12 +10,17 @@ class SqlBasics
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое SELECT и из чего состоит базовый запрос?',
-                'answer' => 'SELECT - это команда выборки данных. Базовая структура: SELECT столбцы FROM таблица WHERE условие ORDER BY столбец LIMIT N OFFSET M. Порядок логического выполнения (важно для понимания, что в WHERE нельзя использовать алиасы из SELECT): FROM/JOIN -> WHERE -> GROUP BY -> HAVING -> SELECT (включая оконные функции и DISTINCT) -> ORDER BY -> LIMIT/OFFSET.',
-                'code_example' => 'SELECT id, name, email
+                'answer' => 'SELECT — команда выборки данных из таблицы. Базовая структура: SELECT какие_столбцы FROM из_какой_таблицы WHERE по_какому_условию ORDER BY по_чему_сортировать LIMIT сколько_строк OFFSET сколько_пропустить. Звёздочка SELECT * означает «все столбцы», но в продакшен-коде её обычно не используют — лучше явно перечислять нужные поля (быстрее и понятнее). WHERE, ORDER BY, LIMIT/OFFSET — необязательные части, можно ставить только то, что нужно.',
+                'code_example' => '-- Берём конкретные столбцы у активных юзеров,
+-- сортируем по дате регистрации и берём 10 свежих
+SELECT id, name, email
 FROM users
 WHERE created_at > \'2024-01-01\'
 ORDER BY created_at DESC
-LIMIT 10 OFFSET 20;',
+LIMIT 10 OFFSET 20;
+
+-- Самый простой SELECT
+SELECT * FROM users;',
                 'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.sql_basics',
@@ -47,10 +52,15 @@ GROUP BY category_id;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое ORDER BY и как сортировать по нескольким полям?',
-                'answer' => 'ORDER BY сортирует результат. ASC - по возрастанию (по умолчанию), DESC - по убыванию. Можно сортировать по нескольким столбцам - сначала по первому, затем по второму при равенстве. Также можно сортировать по выражениям и порядковому номеру столбца в SELECT.',
-                'code_example' => 'SELECT name, age, salary
+                'answer' => 'ORDER BY сортирует строки в результате. ASC — по возрастанию (по умолчанию, можно не писать), DESC — по убыванию. Можно сортировать сразу по нескольким столбцам через запятую: сначала по первому, а при равенстве — по второму, и так далее (как алфавитный порядок: сперва по фамилии, при совпадении — по имени). Без ORDER BY порядок строк в выдаче БД не гарантирует.',
+                'code_example' => '-- По убыванию зарплаты, при равной зарплате — по возрастанию возраста,
+-- затем по имени
+SELECT name, age, salary
 FROM employees
-ORDER BY salary DESC, age ASC, name;',
+ORDER BY salary DESC, age ASC, name;
+
+-- Свежие записи сверху — типичный шаблон
+SELECT * FROM posts ORDER BY created_at DESC;',
                 'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.sql_basics',
@@ -125,16 +135,24 @@ WHERE o.id IS NULL;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое INSERT, UPDATE, DELETE?',
-                'answer' => 'INSERT добавляет новые строки. UPDATE изменяет существующие. DELETE удаляет. UPDATE и DELETE без WHERE применяются ко всей таблице - очень опасно! Всегда сначала пиши SELECT с тем же WHERE, чтобы убедиться, что попал в нужные строки.',
-                'code_example' => 'INSERT INTO users (name, email) VALUES (\'Иван\', \'ivan@example.com\');
+                'answer' => 'INSERT добавляет НОВЫЕ строки в таблицу. UPDATE МЕНЯЕТ значения в уже существующих строках. DELETE УДАЛЯЕТ строки. UPDATE и DELETE без WHERE применятся ко всей таблице целиком — это очень опасно (в проде так можно случайно стереть или переписать миллион записей). Безопасная привычка: перед UPDATE/DELETE сначала запусти SELECT с тем же WHERE, посмотри, какие строки попадают, и только потом меняй или удаляй.',
+                'code_example' => '-- Добавить одну строку
+INSERT INTO users (name, email) VALUES (\'Иван\', \'ivan@example.com\');
 
+-- Добавить сразу несколько
 INSERT INTO users (name, email) VALUES
     (\'Анна\', \'anna@example.com\'),
     (\'Пётр\', \'petr@example.com\');
 
+-- Сначала проверь, потом меняй
+SELECT * FROM users WHERE id = 1;                       -- проверка
 UPDATE users SET email = \'new@example.com\' WHERE id = 1;
 
-DELETE FROM users WHERE created_at < \'2020-01-01\';',
+-- Удалить старые записи
+DELETE FROM users WHERE created_at < \'2020-01-01\';
+
+-- ОПАСНО: без WHERE удалит ВСЁ
+-- DELETE FROM users;',
                 'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.sql_basics',
@@ -535,15 +553,18 @@ ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое DROP TABLE и в чём опасность?',
-                'answer' => 'DROP TABLE удаляет таблицу целиком — и саму структуру, и все данные. Никакой «корзины» нет, откатить можно только из бэкапа, поэтому в проде команду запускают сознательно. IF EXISTS защищает от падения, если таблицы уже нет. Если нужно стереть только строки, оставив структуру — это TRUNCATE TABLE (быстрая чистка) или DELETE (с WHERE и в транзакции).',
-                'code_example' => '-- Удалить таблицу целиком (структура + данные)
+                'answer' => 'DROP TABLE удаляет таблицу ЦЕЛИКОМ — и все строки, и саму структуру (колонки, индексы, ограничения). Никакой «корзины» в БД нет, откатить можно только из бэкапа, поэтому в проде такую команду запускают сознательно и только в миграциях. IF EXISTS добавляют, чтобы команда не падала с ошибкой, если таблицы уже нет. Если нужно стереть ТОЛЬКО строки, а саму таблицу оставить — это TRUNCATE TABLE (быстрая полная очистка) или DELETE с WHERE (когда удаляем часть строк).',
+                'code_example' => '-- Удалить таблицу целиком: и структуру, и данные
 DROP TABLE users;
 
--- Безопаснее: не упадёт, если таблицы нет
+-- Не упадёт с ошибкой, даже если таблицы нет
 DROP TABLE IF EXISTS users;
 
--- Только данные, структуру оставляем
-TRUNCATE TABLE users;',
+-- Только очистить строки, структура остаётся
+TRUNCATE TABLE users;
+
+-- Удалить только нужные строки
+DELETE FROM users WHERE created_at < \'2020-01-01\';',
                 'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.sql_basics',

@@ -220,7 +220,30 @@ on(["echo:counter,Reset" => fn () => $this->count = 0]);
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое @csrf и зачем он нужен?',
-                'answer' => 'Директива Blade, вставляющая в форму скрытое поле _token с CSRF-токеном текущей сессии. Без неё Laravel вернёт 419 на POST/PUT/DELETE. Защищает от Cross-Site Request Forgery — другой сайт не сможет отправить запрос от имени твоего залогиненного юзера.',
+                'answer' => 'Директива Blade, вставляющая в форму скрытое поле <input type="hidden" name="_token" value="..."> с CSRF-токеном текущей сессии. Middleware VerifyCsrfToken (включён по умолчанию для web-роутов) сверяет _token из запроса с токеном сессии, при несовпадении возвращает 419 Page Expired. Так Laravel защищает от Cross-Site Request Forgery — со стороннего сайта невозможно отправить POST/PUT/DELETE-запрос от имени залогиненного юзера, так как в нём не будет валидного токена. Для AJAX-запросов токен передаётся через заголовок X-CSRF-TOKEN (берётся из <meta name="csrf-token">).',
+                'code_example' => '<form method="POST" action="{{ route(\'posts.store\') }}">
+    @csrf
+    <input name="title">
+    <button>Создать</button>
+</form>
+
+{{-- Что превратится в HTML --}}
+<input type="hidden" name="_token" value="aB3Xz...сессионный токен">
+
+{{-- Для AJAX --}}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+
+<script>
+fetch(\'/api/posts\', {
+    method: \'POST\',
+    headers: {
+        \'X-CSRF-TOKEN\': document.querySelector(\'meta[name="csrf-token"]\').content,
+        \'Content-Type\': \'application/json\',
+    },
+    body: JSON.stringify({ title: \'Hello\' }),
+});
+</script>',
+                'code_language' => 'blade',
                 'difficulty' => 1,
                 'topic' => 'laravel.inertia_frontend',
             ],

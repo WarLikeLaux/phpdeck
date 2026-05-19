@@ -135,7 +135,18 @@ php artisan make:test PostControllerTest',
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает php artisan serve?',
-                'answer' => 'Поднимает встроенный PHP-сервер для разработки на localhost:8000. Удобно для быстрого тестирования без настройки nginx/apache. Только для dev! В проде используется FPM/Octane.',
+                'answer' => 'Поднимает встроенный PHP-сервер для разработки на localhost:8000. Под капотом это обёртка над `php -S` — однопоточный dev-сервер, обрабатывает один запрос за раз. Удобно для быстрого локального запуска без nginx/apache. Только для dev! В проде используется FPM/Octane за nginx. Опции: --host (по умолчанию 127.0.0.1), --port (8000), --tries (попытки занять следующий свободный порт).',
+                'code_example' => '# Запустить на localhost:8000
+php artisan serve
+
+# Доступно с других машин в сети
+php artisan serve --host=0.0.0.0 --port=8080
+
+# В отдельных окнах одновременно: web-сервер + watcher Vite + очереди
+php artisan serve
+npm run dev
+php artisan queue:work',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'laravel.artisan',
             ],

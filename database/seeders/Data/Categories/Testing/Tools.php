@@ -10,8 +10,8 @@ class Tools
             [
                 'category' => 'Тестирование',
                 'question' => 'Что такое PHPUnit простыми словами?',
-                'answer' => 'Стандартный фреймворк для написания тестов на PHP. Тесты — это классы, наследующиеся от TestCase, методы которых начинаются с «test»: public function testCalculation(). Запуск через vendor/bin/phpunit. Используется в Laravel, Symfony, почти везде.',
-                'code_example' => "<?php\n\nuse PHPUnit\\Framework\\TestCase;\n\nclass CalculatorTest extends TestCase\n{\n    public function test_adds_two_numbers(): void\n    {\n        \$calc = new Calculator();\n\n        \$this->assertSame(5, \$calc->add(2, 3));\n    }\n}",
+                'answer' => 'Стандартный фреймворк для написания тестов на PHP, существует с 2004 года. Тест — это класс, наследующийся от PHPUnit\\Framework\\TestCase; методы-тесты называются с префикса «test» (test_user_can_login) или помечаются атрибутом #[Test]. Внутри теста вызываешь $this->assertSame(...) и другие assert-ы, чтобы проверить ожидаемое поведение. Запуск — vendor/bin/phpunit, конфиг — phpunit.xml в корне проекта (определяет, какие папки сканировать, как сетапить env). Используется в Laravel (под капотом php artisan test), Symfony, и почти любом современном PHP-проекте. Альтернатива — Pest, но он сам построен поверх PHPUnit.',
+                'code_example' => "<?php\n\nuse PHPUnit\\Framework\\TestCase;\n\nclass CalculatorTest extends TestCase\n{\n    public function test_adds_two_numbers(): void\n    {\n        \$calc = new Calculator();\n\n        \$this->assertSame(5, \$calc->add(2, 3));\n    }\n\n    public function test_subtracts_two_numbers(): void\n    {\n        \$calc = new Calculator();\n\n        \$this->assertSame(1, \$calc->subtract(3, 2));\n    }\n}\n\n// Запуск всех тестов:\n//   vendor/bin/phpunit\n// Запуск одного класса:\n//   vendor/bin/phpunit tests/Unit/CalculatorTest.php",
                 'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'testing.tools',
@@ -28,8 +28,8 @@ class Tools
             [
                 'category' => 'Тестирование',
                 'question' => 'Как запустить тесты в Laravel?',
-                'answer' => 'php artisan test — запускает все тесты с красивым выводом. php artisan test --filter UserTest — только указанный класс/метод. php artisan test --parallel — параллельно (быстрее). Под капотом — phpunit с phpunit.xml-конфигом.',
-                'code_example' => "# Все тесты\nphp artisan test\n\n# Только Feature-папка\nphp artisan test --testsuite=Feature\n\n# Один класс или метод по имени\nphp artisan test --filter UserTest\nphp artisan test --filter test_user_can_login\n\n# Параллельный прогон (быстрее на больших наборах)\nphp artisan test --parallel\n\n# Остановиться на первой ошибке — удобно при отладке\nphp artisan test --stop-on-failure",
+                'answer' => 'Главная команда — php artisan test: запускает все тесты с красивым цветным выводом, показывает время каждого теста и итоговую сводку. Под капотом это всё тот же PHPUnit с phpunit.xml-конфигом, просто обёртка с лучшим UX. Полезные флаги: --filter UserTest — гнать только один класс или метод по имени; --testsuite=Feature — только определённую группу из phpunit.xml; --parallel — гнать параллельно в несколько процессов (сильно быстрее на больших наборах, но требует RefreshDatabase или DatabaseTransactions); --stop-on-failure — остановиться на первой ошибке (удобно при отладке); --coverage — показать процент покрытия (нужен Xdebug или PCOV). До php artisan test люди звали vendor/bin/phpunit напрямую — и сейчас так можно, просто без красивого вывода.',
+                'code_example' => "# Все тесты\nphp artisan test\n\n# Только Feature-папка\nphp artisan test --testsuite=Feature\n\n# Один класс или метод по имени\nphp artisan test --filter UserTest\nphp artisan test --filter test_user_can_login\n\n# Параллельный прогон (быстрее на больших наборах)\nphp artisan test --parallel\n\n# Остановиться на первой ошибке — удобно при отладке\nphp artisan test --stop-on-failure\n\n# Показать процент покрытия кода тестами\nphp artisan test --coverage\n\n# Старый способ напрямую через PHPUnit (без красивого вывода)\nvendor/bin/phpunit",
                 'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'testing.tools',
@@ -37,7 +37,9 @@ class Tools
             [
                 'category' => 'Тестирование',
                 'question' => 'Где лежат тесты в Laravel и как организованы?',
-                'answer' => 'В папке tests/. Внутри две главные подпапки: Feature (тесты HTTP-эндпоинтов, БД) и Unit (изолированные тесты классов). Конфиг — phpunit.xml. Базовый класс — TestCase, для Unit — обычный TestCase без Laravel-бутстрапа (быстрее).',
+                'answer' => 'Всё лежит в папке tests/ в корне проекта. Внутри две главные подпапки из коробки: tests/Feature — тесты HTTP-эндпоинтов, БД, очередей; наследуют Tests\\TestCase, который поднимает полное Laravel-приложение (контейнер, конфиг, маршруты). tests/Unit — изолированные тесты классов; наследуют PHPUnit\\Framework\\TestCase БЕЗ Laravel-бутстрапа, поэтому стартуют быстрее и не дают пользоваться хелперами фреймворка. Базовый класс для Feature-тестов — Tests\\TestCase (tests/TestCase.php), там подключён трейт CreatesApplication. Конфиг тестов — phpunit.xml в корне: задаёт переменные окружения (APP_ENV=testing, DB_CONNECTION=sqlite, DB_DATABASE=:memory:), список папок-сьютов, бутстрап-файл. Имена файлов — *Test.php (UserTest.php, LoginTest.php) — иначе PHPUnit их не подхватит.',
+                'code_example' => "tests/\n├── Feature/                  # тесты через Laravel (HTTP, БД, очереди)\n│   ├── Auth/\n│   │   ├── LoginTest.php\n│   │   └── RegistrationTest.php\n│   └── UserProfileTest.php\n├── Unit/                     # изолированные тесты классов\n│   ├── Services/\n│   │   └── DiscountCalculatorTest.php\n│   └── Support/\n│       └── PriceFormatterTest.php\n├── CreatesApplication.php    # трейт, поднимающий Laravel в тестах\n└── TestCase.php              # базовый класс для Feature-тестов\n\nphpunit.xml                    # конфиг: сьюты, env-переменные, бутстрап",
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'testing.tools',
             ],

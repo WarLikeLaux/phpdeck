@@ -66,7 +66,20 @@ $res = file_get_contents($url, false, $context);',
             [
                 'category' => 'PHP',
                 'question' => 'Чем отличаются абсолютный и относительный путь к файлу в PHP?',
-                'answer' => 'Абсолютный путь идёт от корня файловой системы: /var/www/app/config.php в Linux или C:\\app\\config.php в Windows — он однозначен и не зависит от текущей рабочей директории. Относительный путь отсчитывается от cwd: config.php или ./uploads/file.txt — какой именно файл откроется, зависит от того, где запущен скрипт. Чтобы построить абсолютный путь от ТЕКУЩЕГО файла, используют магическую константу __DIR__: require __DIR__ . "/../config.php" работает независимо от cwd.',
+                'answer' => 'Абсолютный путь идёт от корня файловой системы: /var/www/app/config.php в Linux или C:\\app\\config.php в Windows — он однозначен и не зависит от текущей рабочей директории. Относительный путь отсчитывается от cwd (current working directory): config.php или ./uploads/file.txt — какой именно файл откроется, зависит от того, ОТКУДА запущен скрипт. Узнать cwd можно через getcwd(). Чтобы построить абсолютный путь от ТЕКУЩЕГО файла, а не от cwd, используют магическую константу __DIR__ — она равна каталогу того файла, где написана. require __DIR__ . "/../config.php" работает независимо от того, где запустили PHP. Правило: для include/require и работы с ресурсами проекта всегда используй __DIR__.',
+                'code_example' => '<?php
+// /var/www/app/public/index.php
+echo __DIR__;     // "/var/www/app/public"
+echo __FILE__;    // "/var/www/app/public/index.php"
+echo getcwd();    // зависит от того, откуда запустили скрипт!
+
+// ❌ Сломается, если запустить php из другого каталога
+require "config.php";
+require "../config.php";
+
+// ✅ Работает всегда — абсолютный путь от текущего файла
+require __DIR__ . "/../config.php";',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.files_streams',
             ],

@@ -200,12 +200,16 @@ echo mb_strlen("Привет"); // 6',
             [
                 'category' => 'PHP',
                 'question' => 'Как получить подстроку в PHP и что значат отрицательные индексы?',
-                'answer' => 'substr($string, $start, $length) — берёт кусок строки. $start — позиция начала (с 0). Отрицательный $start отсчитывается от конца: substr("hello", -2) даёт "lo". Если $length опущен — до конца строки; отрицательная длина — сколько символов отбросить с конца. ВАЖНО: substr режет ПО БАЙТАМ и ломает UTF-8 символы. Для UTF-8 используйте mb_substr с тем же интерфейсом.',
+                'answer' => 'substr($string, $start, $length) — берёт кусок строки. $start — позиция начала (с 0). Отрицательный $start отсчитывается от конца: substr("hello", -2) даёт "lo". Если $length опущен — до конца строки; отрицательная $length — сколько символов отбросить с конца. ВАЖНО: substr режет ПО БАЙТАМ и ломает UTF-8 символы. Для UTF-8 используйте mb_substr с тем же интерфейсом.',
                 'code_example' => '<?php
-echo substr("hello world", 0, 5);  // "hello"
-echo substr("hello world", 6);     // "world"
-echo substr("hello world", -5);    // "world"
-echo mb_substr("Привет", 0, 3);    // "При"',
+echo substr("hello world", 0, 5);   // "hello"  — с 0-го, 5 символов
+echo substr("hello world", 6);      // "world"  — с 6-го до конца
+echo substr("hello world", -5);     // "world"  — последние 5
+echo substr("hello world", 0, -6);  // "hello"  — отбросить 6 с конца
+
+// ⚠️ substr ломает UTF-8 (режет по байтам)
+echo substr("Привет", 0, 2);        // битый хвост — "П" = 2 байта
+echo mb_substr("Привет", 0, 3);     // "При" — правильно',
                 'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.strings',
@@ -213,13 +217,17 @@ echo mb_substr("Привет", 0, 3);    // "При"',
             [
                 'category' => 'PHP',
                 'question' => 'Как изменить регистр строки в PHP?',
-                'answer' => 'strtolower / strtoupper — в нижний/верхний регистр. ucfirst — первую букву в верхний. lcfirst — первую в нижний. ucwords — каждое слово с заглавной. Все эти функции работают только с ASCII; для кириллицы используйте mb_strtolower / mb_strtoupper с указанием кодировки UTF-8.',
+                'answer' => 'strtolower / strtoupper — в нижний/верхний регистр. ucfirst — первую букву в верхний. lcfirst — первую в нижний. ucwords — каждое слово с заглавной. Все эти функции работают только с ASCII; для кириллицы и других нелатинских алфавитов используют mb_strtolower / mb_strtoupper / mb_convert_case с указанием кодировки UTF-8. ucfirst и ucwords для кириллицы тоже не работают — для них есть mb_convert_case с MB_CASE_TITLE.',
                 'code_example' => '<?php
 echo strtolower("HELLO");        // "hello"
 echo strtoupper("hello");        // "HELLO"
 echo ucfirst("hello world");     // "Hello world"
 echo ucwords("hello world");     // "Hello World"
-echo mb_strtoupper("привет");    // "ПРИВЕТ"',
+
+// Кириллица — только mb_*
+echo strtoupper("привет");                            // "привет" — НЕ работает
+echo mb_strtoupper("привет", "UTF-8");                // "ПРИВЕТ"
+echo mb_convert_case("привет мир", MB_CASE_TITLE);    // "Привет Мир"',
                 'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.strings',

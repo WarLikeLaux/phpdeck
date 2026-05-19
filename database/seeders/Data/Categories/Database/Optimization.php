@@ -253,7 +253,16 @@ ANALYZE orders;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое медленный запрос простыми словами?',
-                'answer' => 'SQL-запрос, выполняющийся дольше «нормы» (обычно > 100-500 мс). Причины: нет нужного индекса, сложный JOIN большой таблицы, GROUP BY без индекса, ORDER BY с filesort, sequential scan вместо index scan. В MySQL/Postgres настраивают slow_query_log — все долгие запросы пишутся в файл для анализа.',
+                'answer' => 'Медленный запрос — это SQL-запрос, который выполняется дольше «нормы». Норма зависит от проекта, но обычно ставят порог 100-500 мс: всё, что дольше — повод разобраться. Типичные причины: на колонке из WHERE нет индекса и БД сканирует всю таблицу; JOIN большой таблицы без индекса по полю связи; ORDER BY без подходящего индекса (БД сортирует на лету); запрос возвращает огромное количество строк, которые приложению не нужны. Чтобы ловить такие запросы, в MySQL и PostgreSQL включают slow query log — БД сама пишет в файл все запросы, превысившие заданное время.',
+                'code_example' => '-- MySQL: включить slow log на лету и поймать всё дольше 200 мс
+SET GLOBAL slow_query_log = ON;
+SET GLOBAL long_query_time = 0.2;
+SET GLOBAL slow_query_log_file = \'/var/log/mysql/slow.log\';
+
+-- PostgreSQL: писать в лог запросы дольше 200 мс
+-- (в postgresql.conf)
+-- log_min_duration_statement = 200',
+                'code_language' => 'sql',
                 'difficulty' => 1,
                 'topic' => 'database.optimization',
             ],
