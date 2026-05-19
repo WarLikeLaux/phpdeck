@@ -167,6 +167,29 @@ $service = new OrderService(new FakeGateway());',
                 'difficulty' => 2,
                 'question' => 'Что такое DI-контейнер простыми словами?',
                 'answer' => 'Объект, который умеет создавать другие объекты, автоматически разбираясь, что им нужно. Ты говоришь $container->make(OrderService::class) — он смотрит на конструктор, видит «нужен OrderRepository», создаёт его, и вручает тебе готовый OrderService. В Laravel — это Service Container, фундамент всего фреймворка.',
+                'code_example' => '<?php
+interface OrderRepository {}
+class EloquentOrderRepository implements OrderRepository {}
+
+class OrderService
+{
+    public function __construct(private OrderRepository $repo) {}
+}
+
+// В Laravel
+// 1) Биндим интерфейс на реализацию
+$this->app->bind(OrderRepository::class, EloquentOrderRepository::class);
+
+// 2) Просим у контейнера сервис - он сам разбирает конструктор,
+//    создаёт EloquentOrderRepository и подставляет в OrderService
+$service = app(OrderService::class);
+
+// 3) Type-hint в контроллере - автоматическая инъекция
+class OrderController
+{
+    public function store(OrderService $service) { /* service уже готов */ }
+}',
+                'code_language' => 'php',
             ],
         ];
     }

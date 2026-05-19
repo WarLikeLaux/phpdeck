@@ -203,7 +203,17 @@ ANALYZE orders;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое EXPLAIN простыми словами?',
-                'answer' => 'Команда, показывающая, КАК база собирается выполнить запрос: какие индексы использует, сколько строк примерно прочтёт, в каком порядке. Используется для понимания, почему запрос медленный. Синтаксис: EXPLAIN SELECT ... — план без выполнения; EXPLAIN ANALYZE — план + реальные времена.',
+                'answer' => 'EXPLAIN показывает план выполнения запроса: какой индекс будет использован, сколько строк планировщик ожидает прочесть, в каком порядке соединяются таблицы и какой тип доступа выбран (Index Scan, Seq Scan, Nested Loop, Hash Join). Это первый инструмент, когда запрос «тормозит» — обычно сразу видно, что вместо Index Scan идёт Seq Scan по миллиону строк. Обычный EXPLAIN ничего не выполняет, только оценивает; EXPLAIN ANALYZE реально запускает запрос и добавляет фактическое время и количество строк. В MySQL смотрят на колонки type, key, rows, Extra; в PostgreSQL — на тип узла и его cost/actual time.',
+                'code_example' => '-- PostgreSQL
+EXPLAIN ANALYZE
+SELECT * FROM users WHERE email = \'ivan@mail.ru\';
+-- Index Scan using users_email_idx on users
+--   Index Cond: (email = \'ivan@mail.ru\')
+
+-- MySQL
+EXPLAIN SELECT * FROM users WHERE email = \'ivan@mail.ru\';
+-- type=ref, key=users_email_idx, rows=1',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.optimization',
             ],

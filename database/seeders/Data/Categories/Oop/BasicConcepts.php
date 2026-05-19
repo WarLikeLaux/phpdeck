@@ -185,6 +185,26 @@ echo $u->greet(); // Hi, Иван',
                 'answer' => 'self ссылается на текущий КЛАСС (а не на объект). Используется для доступа к статическим свойствам/методам и константам: self::COUNT, self::$instances. $this — на конкретный объект. Внутри обычного метода работают оба, в статическом методе $this недоступен.',
                 'difficulty' => 2,
                 'topic' => 'oop.basic_concepts',
+                'code_example' => '<?php
+class Counter
+{
+    public const STEP = 1;
+    public static int $count = 0;
+
+    public int $local = 0;
+
+    public function bump(): void
+    {
+        $this->local += self::STEP;   // $this - объект, self - класс
+        self::$count += self::STEP;   // статическое свойство класса
+    }
+
+    public static function reset(): void
+    {
+        self::$count = 0; // здесь $this недоступен
+    }
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -192,6 +212,23 @@ echo $u->greet(); // Hi, Иван',
                 'answer' => 'Нет. new AbstractClass() даст Error: «Cannot instantiate abstract class». Абстрактный класс — только для наследования. Чтобы получить объект — наследуй конкретным классом и реализуй абстрактные методы, потом new ConcreteChild().',
                 'difficulty' => 2,
                 'topic' => 'oop.basic_concepts',
+                'code_example' => '<?php
+abstract class Shape
+{
+    abstract public function area(): float;
+}
+
+// ❌ new Shape(); // Error: Cannot instantiate abstract class Shape
+
+class Circle extends Shape
+{
+    public function __construct(private float $r) {}
+    public function area(): float { return M_PI * $this->r ** 2; }
+}
+
+$c = new Circle(2.0); // OK - конкретный наследник
+echo $c->area();',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -264,6 +301,26 @@ echo Status::VERSION; // v1',
                 'answer' => 'Ключевое слово, обозначающее реализацию интерфейса. class Email implements Sendable — класс Email обязан содержать все методы интерфейса Sendable. Можно реализовывать несколько: class Foo implements Sendable, Cacheable, Loggable. Любой класс, реализующий интерфейс, можно type-hint через имя интерфейса: function send(Sendable $s).',
                 'difficulty' => 2,
                 'topic' => 'oop.basic_concepts',
+                'code_example' => '<?php
+interface Sendable  { public function send(): void; }
+interface Loggable  { public function log(): string; }
+
+// Один класс - несколько контрактов
+class Email implements Sendable, Loggable
+{
+    public function __construct(private string $to) {}
+    public function send(): void { /* SMTP */ }
+    public function log(): string { return "email to $this->to"; }
+}
+
+// Type-hint по интерфейсу - принимает любую реализацию
+function deliver(Sendable $s): void
+{
+    $s->send();
+}
+
+deliver(new Email(\'user@example.com\'));',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

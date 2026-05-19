@@ -276,7 +276,25 @@ SendWelcomeEmail::dispatch($user);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое worker и зачем он нужен?',
-                'answer' => 'Процесс PHP, запущенный командой php artisan queue:work — он постоянно опрашивает очередь и выполняет задачи. Один worker обрабатывает задачи последовательно. Чтобы параллельно — запускают несколько worker-процессов (через Supervisor / systemd на проде).',
+                'answer' => 'Worker — это процесс PHP, запущенный командой php artisan queue:work. Он непрерывно опрашивает очередь, забирает job, выполняет handle() и удаляет из очереди (или возвращает на retry). Один worker обрабатывает задачи последовательно — для параллелизма поднимают несколько процессов. В проде запускается под Supervisor (или systemd), чтобы автоматически перезапускался после падения или OOM. После деплоя — php artisan queue:restart, иначе воркеры продолжат работать со старым кодом в памяти.',
+                'code_example' => '# Запустить worker
+php artisan queue:work redis --queue=high,default --tries=3 --timeout=60
+
+# Запустить с лимитом по времени (worker сам завершится через час)
+php artisan queue:work --max-time=3600
+
+# После деплоя
+php artisan queue:restart
+
+# /etc/supervisor/conf.d/worker.conf
+[program:laravel-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /var/www/artisan queue:work redis --tries=3 --timeout=60
+autostart=true
+autorestart=true
+numprocs=4
+user=www-data',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'laravel.queues_jobs',
             ],

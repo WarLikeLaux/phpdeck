@@ -81,7 +81,40 @@ echo Counter::$count; // 2 - значение общее для всего кл�
                 'topic' => 'oop.static_members',
                 'difficulty' => 2,
                 'question' => 'Когда использовать static, а когда — нет?',
-                'answer' => 'Стоит: чистые утилиты без состояния (StringHelper::slugify), константы-фабрики (UserId::generate), счётчики класса. Не стоит: всё, что требует тестирования с моком — статика трудно подменяется. Антипаттерн — Singleton через приватный static $instance: скрытый глобальный state, мешает тестам.',
+                'answer' => 'Стоит: чистые утилиты без состояния (StringHelper::slugify), фабрики-конструкторы (Money::fromCents), счётчики класса. Не стоит: всё, что требует тестирования с моком — статика трудно подменяется и прячет зависимости. Антипаттерн — Singleton через приватный static $instance: скрытый глобальный state, мешает тестам.',
+                'code_example' => '<?php
+// ✅ Хорошо: чистая утилита без состояния
+final class StringHelper
+{
+    public static function slugify(string $s): string
+    {
+        return strtolower(preg_replace(\'/\W+/\', \'-\', $s));
+    }
+}
+
+// ✅ Хорошо: named constructor (фабрика)
+final class Money
+{
+    private function __construct(public int $cents) {}
+    public static function fromCents(int $c): self { return new self($c); }
+}
+
+// ❌ Плохо: статика дёргает БД - не подменяется в тестах
+class UserRepoBad
+{
+    public static function find(int $id): ?User
+    {
+        return DB::query(\'SELECT * FROM users WHERE id = ?\', [$id]);
+    }
+}
+
+// ✅ Лучше: обычный класс через DI - легко мокается
+class UserRepo
+{
+    public function __construct(private Database $db) {}
+    public function find(int $id): ?User { return $this->db->find($id); }
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -89,6 +122,25 @@ echo Counter::$count; // 2 - значение общее для всего кл�
                 'difficulty' => 2,
                 'question' => 'Что такое late static binding (static::) простыми словами?',
                 'answer' => 'self:: всегда ссылается на класс, ГДЕ объявлен код. static:: — на класс, ОТ которого реально вызвали (с учётом наследования). Если у Parent есть метод create() с new self() — он всегда создаст Parent, даже из Child::create(). С new static() — создаст тот класс, через который вызвали (Child::create() → Child). Полезно для фабрик в иерархии.',
+                'code_example' => '<?php
+class Model
+{
+    public static function createSelf(): self
+    {
+        return new self();   // всегда Model
+    }
+
+    public static function createStatic(): static
+    {
+        return new static(); // тот класс, через который вызвали
+    }
+}
+
+class User extends Model {}
+
+var_dump(User::createSelf());   // object(Model)
+var_dump(User::createStatic()); // object(User) - LSB',
+                'code_language' => 'php',
             ],
         ];
     }

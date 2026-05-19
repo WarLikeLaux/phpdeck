@@ -122,14 +122,52 @@ $user->teams->first()->pivot->isOwner();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое belongsToMany простыми словами?',
-                'answer' => 'Отношение «многие-ко-многим». У User много Role и Role у многих User. Нужна промежуточная таблица role_user с user_id и role_id. В модели: roles() { return $this->belongsToMany(Role::class); }. Доступ: $user->roles, $user->roles()->attach($id) — добавить связь.',
+                'answer' => 'Отношение «многие-ко-многим». У User много Role и Role у многих User. Нужна pivot-таблица role_user с user_id и role_id (по умолчанию Laravel ищет таблицу из имён моделей по алфавиту). На обеих моделях объявляется belongsToMany. Управление связями: attach($id) - добавить, detach($id) - убрать, sync([1,2,3]) - заменить набор полностью, toggle($id) - переключить.',
+                'code_example' => 'class User extends Model {
+    public function roles() {
+        return $this->belongsToMany(Role::class);
+    }
+}
+
+class Role extends Model {
+    public function users() {
+        return $this->belongsToMany(User::class);
+    }
+}
+
+$user->roles;                   // Collection ролей юзера
+$user->roles()->attach(5);      // добавить роль 5
+$user->roles()->detach(5);      // убрать роль 5
+$user->roles()->sync([1, 2, 3]); // оставить только эти роли',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.eloquent_relations',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое eager loading через with() в Eloquent?',
-                'answer' => 'Способ заранее подгрузить связанные модели одним запросом, чтобы избежать N+1. Без with: User::all() + в цикле $user->posts → N+1 запросов. С with: User::with(\'posts\')->get() — 2 запроса всего. load() — то же на уже загруженной коллекции: $users->load(\'posts\').',
+                'answer' => 'Способ заранее подгрузить связанные модели, чтобы избежать N+1. Без with: User::all() + в цикле $user->posts даст 1 + N запросов (по одному на каждого юзера). С with(\'posts\'): два запроса всего - SELECT * FROM users и SELECT * FROM posts WHERE user_id IN (...). Используют два способа: with(\'posts\') в начале цепочки запроса и load(\'posts\') на уже загруженной коллекции/модели. Внутри with можно ограничивать связь замыканием.',
+                'code_example' => '// Без eager loading - N+1
+foreach (User::all() as $user) {
+    echo $user->posts->count(); // запрос на каждой итерации
+}
+
+// С with - 2 запроса всего
+$users = User::with(\'posts\')->get();
+foreach ($users as $user) {
+    echo $user->posts->count();
+}
+
+// Несколько связей + вложенные
+User::with([\'posts.comments\', \'profile\'])->get();
+
+// load после получения
+$users = User::all();
+$users->load(\'posts\');
+
+// С условием на связь
+User::with([\'posts\' => fn ($q) => $q->where(\'published\', true)])->get();',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.eloquent_relations',
             ],

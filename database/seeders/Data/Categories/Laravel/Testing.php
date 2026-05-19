@@ -260,7 +260,33 @@ class TokenTest extends TestCase
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Dusk и для чего он используется?',
-                'answer' => 'Dusk — пакет для end-to-end (browser) тестирования Laravel-приложений. Использует ChromeDriver и реальный браузер для эмуляции пользовательских действий: клики, ввод, ожидание элементов, проверки видимости. В отличие от HTTP-тестов, Dusk умеет тестировать JavaScript-интерфейсы (Livewire, Vue, React) и не требует самостоятельной установки Selenium/JDK.',
+                'answer' => 'Dusk — пакет для end-to-end (browser) тестирования. Использует ChromeDriver и реальный браузер, эмулируя пользовательские действия: клики, ввод, ожидание элементов, скриншоты. В отличие от HTTP-тестов ($this->get()), Dusk выполняет настоящий JS — поэтому только им можно тестировать Livewire/Vue/React-фронтенд. Не требует ставить Selenium/JDK — ChromeDriver идёт в комплекте. Тесты лежат в tests/Browser, запускаются php artisan dusk.',
+                'code_example' => '# Установка
+composer require --dev laravel/dusk
+php artisan dusk:install
+
+# Создать тест
+php artisan dusk:make LoginTest
+
+# Запустить
+php artisan dusk
+
+# tests/Browser/LoginTest.php
+class LoginTest extends DuskTestCase {
+    public function test_user_can_login(): void {
+        $user = User::factory()->create();
+
+        $this->browse(function (Browser $browser) use ($user) {
+            $browser->visit(\'/login\')
+                ->type(\'email\', $user->email)
+                ->type(\'password\', \'password\')
+                ->press(\'Войти\')
+                ->assertPathIs(\'/dashboard\')
+                ->assertSee("Привет, {$user->name}");
+        });
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.testing',
             ],

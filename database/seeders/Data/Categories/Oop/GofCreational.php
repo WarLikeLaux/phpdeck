@@ -212,6 +212,28 @@ echo $original->author->name; // Иван (благодаря __clone)',
                 'answer' => 'Паттерн: класс с гарантией ОДНОГО экземпляра на всё приложение. Конструктор приватный, статический метод getInstance() создаёт объект при первом вызове и возвращает его же при следующих. Используется для конфигов, логгеров, соединений. Минус — глобальный state, мешает тестам. В современном PHP вместо singleton — singleton-binding в DI-контейнере.',
                 'difficulty' => 2,
                 'topic' => 'oop.gof_creational',
+                'code_example' => '<?php
+final class Config
+{
+    private static ?self $instance = null;
+
+    private function __construct(private array $data = []) {}
+
+    public static function getInstance(): self
+    {
+        return self::$instance ??= new self();
+    }
+
+    private function __clone() {} // запрет копирования
+}
+
+$a = Config::getInstance();
+$b = Config::getInstance();
+var_dump($a === $b); // true - один и тот же объект
+
+// В Laravel современная альтернатива:
+// $this->app->singleton(Config::class);',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -219,6 +241,30 @@ echo $original->author->name; // Иван (благодаря __clone)',
                 'answer' => 'Паттерн: создание объектов отдаётся отдельному классу/методу. Вместо new ConcreteClass() — Factory::create($type). Зачем: 1) Логика создания может быть сложной. 2) Конкретный класс выбирается по параметрам/конфигу. 3) Удобно для тестов (можно подменить фабрику). В Laravel факториями называют ещё генераторы моделей для тестов — это другое.',
                 'difficulty' => 2,
                 'topic' => 'oop.gof_creational',
+                'code_example' => '<?php
+interface Notifier
+{
+    public function send(string $msg): void;
+}
+
+class EmailNotifier implements Notifier { public function send(string $m): void {} }
+class SmsNotifier   implements Notifier { public function send(string $m): void {} }
+
+class NotifierFactory
+{
+    public static function create(string $type): Notifier
+    {
+        return match ($type) {
+            \'email\' => new EmailNotifier(),
+            \'sms\'   => new SmsNotifier(),
+            default  => throw new \InvalidArgumentException("Unknown: $type"),
+        };
+    }
+}
+
+$n = NotifierFactory::create(\'email\');
+$n->send(\'hello\');',
+                'code_language' => 'php',
             ],
         ];
     }

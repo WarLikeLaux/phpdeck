@@ -224,7 +224,39 @@ $a->touch();',
                 'topic' => 'oop.traits',
                 'difficulty' => 2,
                 'question' => 'Когда использовать трейт, а когда — нет?',
-                'answer' => 'Стоит: для общего ПОВЕДЕНИЯ без состояния — форматтеры, утилиты (FormatsMoney, HasTimestamps в Eloquent). Не стоит: для общего СОСТОЯНИЯ (свойств), для замены наследования, когда отношение is-a. Минусы: трудно тестировать отдельно, скрытая связанность, конфликты имён.',
+                'answer' => 'Стоит: для общего ПОВЕДЕНИЯ без состояния — форматтеры, утилиты (FormatsMoney, HasTimestamps в Eloquent). Не стоит: для общего СОСТОЯНИЯ (свойств), для замены наследования, когда отношение is-a. Минусы: трудно тестировать отдельно, скрытая связанность, конфликты имён. Если у трейта есть зависимости — выноси в отдельный сервис и инжекть через DI.',
+                'code_example' => '<?php
+// ✅ Хорошо: stateless mixin поведения
+trait FormatsMoney
+{
+    public function asMoney(int $cents): string
+    {
+        return number_format($cents / 100, 2);
+    }
+}
+
+class Invoice
+{
+    use FormatsMoney;
+}
+
+// ❌ Плохо: трейт со скрытой зависимостью от БД
+trait Auditable
+{
+    public function audit(string $action): void
+    {
+        // откуда $this->db? в конструкторе класса этого не видно
+        $this->db->insert(\'audit\', [\'action\' => $action]);
+    }
+}
+
+// ✅ Лучше: композиция через DI
+final class AuditLogger
+{
+    public function __construct(private Database $db) {}
+    public function audit(string $action): void { /* ... */ }
+}',
+                'code_language' => 'php',
             ],
         ];
     }

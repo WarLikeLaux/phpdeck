@@ -48,7 +48,19 @@ User::where('id', \$request->id)->first();",
             [
                 'category' => 'Безопасность',
                 'question' => 'Какие виды XSS бывают?',
-                'answer' => '1) Stored (persistent) — вредоносный код сохраняется в БД (комментарий, профиль) и показывается всем посетителям. 2) Reflected — код в URL/параметре, исполняется один раз на странице, открытой через подложенную ссылку. 3) DOM-based — атака чисто на клиенте через манипуляцию DOM-ом (innerHTML с пользовательскими данными) без участия сервера.',
+                'answer' => 'Три классических вида. 1) Stored (persistent) — вредоносный JS сохраняется на сервере (комментарий, профиль, имя в чате) и при просмотре выполняется у каждого посетителя. Самый опасный, массовый. 2) Reflected — код приходит в URL/параметре и сразу же отражается в ответе сервера. Атака идёт через подложенную ссылку, действует только на тех, кто по ней перешёл. 3) DOM-based — чисто клиентская: JS на странице сам берёт данные из location.hash / window.name и пихает их в innerHTML/eval, сервер вообще не в курсе. Защита одна для всех: экранировать вывод по контексту (htmlspecialchars / {{ }} в Blade), не использовать innerHTML, плюс CSP как второй рубеж.',
+                'code_example' => "<!-- Stored: атакующий оставил коммент, сервер сохранил, рендерит всем -->
+<div class=\"comment\"><?= \$comment ?></div>
+
+<!-- Reflected: search?q=<script>... -->
+<p>Ничего не найдено по запросу: <?= \$_GET['q'] ?></p>
+
+<!-- DOM-based: чисто JS, сервер не видит # -->
+<script>
+  document.getElementById('hi').innerHTML = location.hash.slice(1);
+  // /page#<img src=x onerror=alert(1)>
+</script>",
+                'code_language' => 'html',
                 'difficulty' => 2,
                 'topic' => 'security.web_attacks',
             ],
@@ -88,35 +100,92 @@ User::where('id', \$request->id)->first();",
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое clickjacking простыми словами?',
-                'answer' => 'Атака, при которой твой сайт встраивается в <iframe> на сайте атакующего, тот накладывает поверх свои элементы. Пользователь думает, что кликает на кнопку «Скачать», а на самом деле — на «Удалить аккаунт» в твоём сайте. Защита: заголовок X-Frame-Options: DENY или CSP frame-ancestors \'none\'.',
+                'answer' => 'Атака «UI-redress»: твой сайт встраивается в невидимый/полупрозрачный iframe на сайте атакующего, поверх рисуется заманчивая кнопка «Скачать» / «Ты выиграл». Пользователь залогинен у тебя, кликает на «приз», но клик уходит в скрытую кнопку «Удалить аккаунт» / «Перевести деньги» внутри iframe — действие выполняется от его имени, куки прицепляются автоматически. Защита: запретить обрамление через заголовок X-Frame-Options: DENY (старый, простой) или современный CSP frame-ancestors \'none\' (можно whitelist доменов). Дополнительно — SameSite=Lax у куки сильно ограничивает атаку.',
+                'code_example' => "# Запрет встраивания страницы в iframe — два эквивалентных варианта
+X-Frame-Options: DENY
+Content-Security-Policy: frame-ancestors 'none'
+
+# Разрешить только своему домену:
+Content-Security-Policy: frame-ancestors 'self' https://admin.example.com",
+                'code_language' => 'http',
                 'difficulty' => 2,
                 'topic' => 'security.web_attacks',
             ],
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое path traversal простыми словами?',
-                'answer' => 'Атакующий через user-input выходит за пределы разрешённой папки. Пример: file_get_contents("uploads/" . $_GET[\'file\']) + ввод ../../../etc/passwd. Защита: basename() входа, проверка realpath()-результата на префикс разрешённой директории, whitelist разрешённых имён файлов.',
+                'answer' => 'Атакующий через user-input в имени файла выходит за пределы разрешённой папки и читает/записывает что попало на диске. Классика: file_get_contents("uploads/" . $_GET[\'file\']) + ввод ../../../etc/passwd → читаем системный файл. Закодированные варианты: %2e%2e%2f, ..%5c, кириллические гомоглифы. Защита: 1) basename() обрезает путь до имени файла. 2) realpath() + проверка, что результат начинается с разрешённой директории. 3) whitelist допустимых имён/расширений. 4) хранение файлов под сгенерированными id, отдача через контроллер.',
+                'code_example' => "<?php
+\$base = realpath(__DIR__.'/uploads');
+\$path = realpath(\$base.'/'.\$_GET['file']);
+
+// realpath() резолвит .. — проверяем, не вылезли ли мы за base
+if (\$path === false || !str_starts_with(\$path, \$base.DIRECTORY_SEPARATOR)) {
+    http_response_code(403);
+    exit('forbidden');
+}
+readfile(\$path);",
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'security.web_attacks',
             ],
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое command injection простыми словами?',
-                'answer' => 'Атакующий передаёт shell-команду через пользовательский ввод в exec/shell_exec/system/passthru. Пример: shell_exec("ping " . $_GET[\'host\']) + ввод «8.8.8.8; rm -rf /» — выполнятся обе команды. Защита: по возможности не вызывать shell вообще, использовать готовые библиотеки. Если без shell никак — escapeshellarg() на каждом аргументе и whitelist разрешённых значений.',
+                'answer' => 'Атакующий через пользовательский ввод склеивает свою shell-команду со строкой, которую PHP отдаёт в exec/shell_exec/system/passthru. Пример: shell_exec("ping " . $_GET[\'host\']) + ввод «8.8.8.8; rm -rf /» — оболочка интерпретирует «;» как разделитель и выполняет обе команды. Бэктики (`...`), $(...), |, && — все опасны. Защита: 1) Не вызывать shell вообще, использовать готовые библиотеки PHP. 2) Если shell неизбежен — escapeshellarg() на КАЖДОМ аргументе. 3) Symfony Process с массивом аргументов (без склейки). 4) Whitelist значений (для host — проверка на валидный IP/домен).',
+                'code_example' => "<?php
+// ПЛОХО — конкатенация уходит в /bin/sh -c
+shell_exec('ping -c1 '.\$_GET['host']);
+
+// ХОРОШО (1) — escapeshellarg
+\$host = escapeshellarg(\$_GET['host']);
+shell_exec(\"ping -c1 {\$host}\");
+
+// ЛУЧШЕ (2) — Symfony Process с массивом, shell не задействован
+use Symfony\\Component\\Process\\Process;
+\$p = new Process(['ping', '-c1', \$_GET['host']]);
+\$p->run();",
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'security.web_attacks',
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое mass assignment простыми словами?',
-                'answer' => 'Уязвимость, когда фреймворк автоматически проставляет в модель все поля из запроса. Атакующий шлёт лишнее поле — например, role=admin или is_verified=1 — и через User::create($request->all()) оно сохраняется. Защита в Laravel: $fillable (whitelist полей, которые можно массово назначать) или $guarded, явный $request->only([\'name\', \'email\']) перед сохранением.',
+                'question' => 'Что такое mass assignment в Laravel простыми словами?',
+                'answer' => 'Уязвимость, когда фреймворк автоматически проставляет в модель все поля из массива запроса. Атакующий добавляет в форму лишнее скрытое поле — role=admin, is_verified=1, user_id=42 — и через User::create($request->all()) или $user->fill($request->all()) оно сохраняется. Защита в Laravel: явный $fillable (whitelist полей, которые можно массово заполнять) ИЛИ $guarded (blacklist, по умолчанию []). Лучшая практика — FormRequest с validated() и $request->only([...]): сохраняется только то, что прошло валидацию.',
+                'code_example' => "<?php
+// Модель — whitelist полей
+class User extends Model {
+    protected \$fillable = ['name', 'email'];
+    // 'role', 'is_admin' — НЕ в \$fillable, mass assign их не тронет
+}
+
+// Контроллер — пропускаем только провалидированные поля
+public function store(StoreUserRequest \$request) {
+    User::create(\$request->validated()); // безопасно
+    // или явно:
+    User::create(\$request->only(['name', 'email']));
+}",
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'security.web_attacks',
             ],
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое open redirect простыми словами?',
-                'answer' => 'Сервер делает редирект на URL из пользовательского параметра без проверки. /login?redirect=https://phishing.example — после логина пользователя выкидывает на фишинговый сайт, который выглядит как твой. Используется в фишинге — ссылка идёт с твоего домена, выглядит «доверенно». Защита: редирект только на относительные пути или whitelist доменов.',
+                'answer' => 'Сервер делает редирект на URL из пользовательского параметра без проверки: /login?redirect=https://phishing.example — после логина пользователя выбрасывает на фишинговый сайт, оформленный под твой. Атакующий использует это для фишинга — ссылка идёт с твоего домена, антиспам и юзер ей доверяют, кликают, попадают на клон. Open redirect также — часть chain для OAuth-атак (подмена redirect_uri). Защита: разрешать только относительные пути, валидировать через parse_url + сверку host со списком разрешённых доменов, никогда не доверять «//evil.com» (browser считает это абсолютным URL).',
+                'code_example' => "<?php
+\$target = \$_GET['redirect'] ?? '/';
+
+// ПЛОХО — атакующий подставит //evil.com или https://evil.com
+header('Location: '.\$target);
+
+// ХОРОШО — только относительные пути на нашем сайте
+if (!preg_match('#^/[^/\\\\\\\\]#', \$target)) {
+    \$target = '/';
+}
+header('Location: '.\$target);",
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'security.web_attacks',
             ],
@@ -130,7 +199,13 @@ User::where('id', \$request->id)->first();",
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое MITM (Man-in-the-Middle) простыми словами?',
-                'answer' => 'Атакующий встаёт между клиентом и сервером и видит/меняет трафик. Классический сценарий — публичный Wi-Fi с поддельной точкой. По HTTP всё в открытом виде — пароли, куки, токены. По HTTPS защищает TLS: трафик шифруется, а сертификат подтверждает, что ты говоришь именно с example.com, а не с прокси. Защита: HTTPS везде, HSTS-заголовок (браузер откажется ходить по HTTP на этот домен), certificate pinning для мобильных приложений.',
+                'answer' => 'Атакующий встаёт между клиентом и сервером и читает или подменяет трафик. Классический сценарий — публичный Wi-Fi с поддельной точкой «Free_Airport_WiFi», провайдер-злоумышленник, корпоративный прокси. По HTTP всё видно в открытом виде — пароли, куки, токены. HTTPS защищает: TLS шифрует трафик, а сертификат, подписанный доверенным CA, подтверждает, что ты говоришь именно с example.com, а не с прокси. Дополнительные меры: HSTS-заголовок (браузер запоминает «к этому домену только по HTTPS», игнорирует http://), Secure-флаг у куки (не уйдёт по HTTP), certificate pinning в мобильных приложениях.',
+                'code_example' => "# HSTS — браузер на год запомнит, что example.com только через HTTPS
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+# Куки только по HTTPS
+Set-Cookie: session=abc; Secure; HttpOnly; SameSite=Lax",
+                'code_language' => 'http',
                 'difficulty' => 2,
                 'topic' => 'security.web_attacks',
             ],

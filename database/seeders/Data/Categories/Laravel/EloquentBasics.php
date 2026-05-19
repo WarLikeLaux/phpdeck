@@ -415,7 +415,23 @@ class UserObserver {
             [
                 'category' => 'Laravel',
                 'question' => 'Как отключить timestamps у модели Eloquent?',
-                'answer' => 'По умолчанию Eloquent ожидает в таблице колонки created_at и updated_at. Чтобы их не было: public $timestamps = false; в модели. Также эти поля автоматически устанавливаются при save() и update().',
+                'answer' => 'По умолчанию Eloquent ожидает колонки created_at и updated_at и сам заполняет их при save()/update(). Чтобы отключить полностью - public $timestamps = false. Поменять имена колонок - константы CREATED_AT/UPDATED_AT. Формат хранения - $dateFormat. Разово сохранить без обновления updated_at - $model->timestamps = false перед save(), либо $model->updateQuietly([...]) (не триггерит и события модели).',
+                'code_example' => 'class Post extends Model
+{
+    public $timestamps = false; // совсем нет created_at/updated_at
+}
+
+// или переименовать
+class Post extends Model
+{
+    const CREATED_AT = \'created\';
+    const UPDATED_AT = \'modified\';
+}
+
+// разово - сохранить, не трогая updated_at
+$post->timestamps = false;
+$post->save();',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.eloquent_basics',
             ],

@@ -175,7 +175,24 @@ $fn2 = fn($x) => $x * $mult;',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое callable в PHP простыми словами?',
-                'answer' => 'Тип «всё, что можно вызвать»: имя функции «strlen», метод объекта [$obj, "method"], статический метод [Class::class, "method"], анонимная функция, объект с __invoke. Используется типом параметра: function apply(callable $fn) {...}.',
+                'answer' => 'Псевдо-тип «всё, что можно вызвать». В нём допустимы пять форм: имя функции в виде строки ("strlen"), пара [объект, "имя метода"], пара [имя класса, "имя статического метода"], анонимная функция/Closure (включая arrow fn() =>), объект с магическим __invoke. Используется как тип параметра функций: function apply(callable $fn). С PHP 8.1 рекомендуют новый first-class callable syntax: $f = strlen(...) — типобезопасно и видно IDE.',
+                'code_example' => '<?php
+function apply(callable $fn, mixed $x): mixed {
+    return $fn($x);
+}
+
+apply("strlen", "hello");              // 5  — строка-имя
+apply(fn($x) => $x * 2, 5);            // 10 — closure
+apply(strtoupper(...), "hi");          // "HI" — first-class callable
+
+class Doubler {
+    public function __invoke(int $x): int { return $x * 2; }
+}
+apply(new Doubler(), 5);               // 10 — объект с __invoke
+
+// Метод объекта
+apply([$repo, "find"], 1);',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.closures',
             ],

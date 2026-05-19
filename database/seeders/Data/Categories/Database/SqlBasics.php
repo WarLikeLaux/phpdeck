@@ -370,6 +370,16 @@ DB::select(\'SELECT * FROM users LIMIT ? OFFSET ?\', [20, 100]); // OK',
                 'category' => 'Базы данных',
                 'question' => 'В чём разница между неявным и явным JOIN в SQL?',
                 'answer' => 'Неявный JOIN перечисляет таблицы через запятую в FROM, а условие связи живёт в WHERE: FROM a, b WHERE a.id = b.a_id. Явный JOIN использует ключевое слово JOIN ... ON и сразу отделяет условие связи от условий фильтрации. Явная форма читается лучше и страхует от случайного декартова произведения, если про условие в WHERE забудут. Современные руководства по стилю требуют только явные JOIN, неявные остались как наследие старого SQL-92.',
+                'code_example' => '-- Неявный JOIN (старый стиль)
+SELECT u.name, o.id
+FROM users u, orders o
+WHERE u.id = o.user_id;
+
+-- Явный JOIN — современный и читаемый
+SELECT u.name, o.id
+FROM users u
+INNER JOIN orders o ON o.user_id = u.id;',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.sql_basics',
             ],
@@ -391,6 +401,19 @@ DB::select(\'SELECT * FROM users LIMIT ? OFFSET ?\', [20, 100]); // OK',
                 'category' => 'Базы данных',
                 'question' => 'Как сделать условное вычисление прямо в SELECT через CASE WHEN?',
                 'answer' => 'Конструкция CASE WHEN условие THEN значение ELSE другое END позволяет в одном запросе формировать категории, флаги или производные поля без хранимых функций. Её удобно комбинировать с агрегатами — SUM(CASE WHEN ... THEN 1 ELSE 0 END) даёт условный COUNT по нескольким группам в одной строке. В MySQL есть и более короткий IF(condition, then, else), но он не переносим между СУБД, тогда как CASE — это стандарт SQL и работает везде. NULLIF и COALESCE — частные случаи той же идеи.',
+                'code_example' => '-- Категоризация прямо в SELECT
+SELECT id, amount,
+       CASE WHEN amount < 100 THEN \'small\'
+            WHEN amount < 1000 THEN \'mid\'
+            ELSE \'large\' END AS bucket
+FROM orders;
+
+-- Условный счётчик в одной строке
+SELECT
+    SUM(CASE WHEN status = \'paid\'    THEN 1 ELSE 0 END) AS paid,
+    SUM(CASE WHEN status = \'pending\' THEN 1 ELSE 0 END) AS pending
+FROM orders;',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.sql_basics',
             ],
@@ -453,7 +476,15 @@ ON CONFLICT (email) DO NOTHING;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что делает ALTER TABLE простыми словами?',
-                'answer' => 'Изменяет существующую таблицу. ALTER TABLE users ADD COLUMN phone VARCHAR(20). ALTER TABLE users DROP COLUMN phone. ALTER TABLE users RENAME COLUMN name TO full_name. ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email). На больших таблицах под нагрузкой может быть медленно — нужно делать осторожно.',
+                'answer' => 'ALTER TABLE изменяет уже существующую таблицу: добавляет и удаляет колонки, переименовывает их, меняет тип, добавляет/убирает ограничения (UNIQUE, FOREIGN KEY, CHECK) и индексы. Простейшие операции (ADD COLUMN nullable) на современных движках быстрые, а тяжёлые (ADD NOT NULL колонки без DEFAULT, смена типа PK) могут переписывать всю таблицу и держать длинный лок. На больших проектах используют онлайн-инструменты вроде pt-online-schema-change или gh-ost, чтобы делать ALTER без даунтайма. В Laravel ALTER пишут как отдельные миграции, чтобы было удобно откатить.',
+                'code_example' => '-- Добавить и удалить колонку
+ALTER TABLE users ADD COLUMN phone VARCHAR(20);
+ALTER TABLE users DROP COLUMN phone;
+
+-- Переименовать колонку и добавить уникальный ключ
+ALTER TABLE users RENAME COLUMN name TO full_name;
+ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.sql_basics',
             ],

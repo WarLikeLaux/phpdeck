@@ -142,7 +142,21 @@ php artisan make:test PostControllerTest',
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает php artisan migrate:fresh --seed?',
-                'answer' => 'fresh — дропает ВСЕ таблицы и заново выполняет миграции (полностью свежая схема). --seed — после миграций запускает сидеры. Используется на dev для сброса БД к нулевому состоянию. В проде запускать НЕЛЬЗЯ — потеряются все данные.',
+                'answer' => 'fresh — дропает ВСЕ таблицы (включая migrations) и заново выполняет миграции с нуля. Быстрее refresh: тот сначала откатывает миграции через down(), а fresh просто DROP. --seed — после миграций запускает DatabaseSeeder. Используется на dev для сброса БД к нулевому состоянию. В проде запускать НЕЛЬЗЯ — потеряются все данные пользователей. Чтобы случайно не запустить на проде, Laravel требует подтверждение (или --force).',
+                'code_example' => '# Полный сброс БД + миграции + сидеры (dev)
+php artisan migrate:fresh --seed
+
+# Только конкретные сидеры
+php artisan migrate:fresh --seeder=UsersSeeder
+
+# В CI / non-interactive окружении
+php artisan migrate:fresh --seed --force
+
+# Альтернативы
+php artisan migrate:refresh --seed   # медленнее: rollback всех + migrate
+php artisan migrate:rollback         # откат последнего batch
+php artisan db:seed                  # только сидеры, без миграций',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'laravel.artisan',
             ],

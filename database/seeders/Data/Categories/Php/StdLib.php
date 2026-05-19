@@ -125,7 +125,23 @@ fclose($fh);',
             [
                 'category' => 'PHP',
                 'question' => 'Что делает fopen и какие основные режимы?',
-                'answer' => 'Открывает файл для чтения/записи, возвращает дескриптор. Режимы: "r" — чтение, "w" — запись (перезаписывает), "a" — дозапись, "r+" — чтение+запись, "x" — создать новый. Обязательно fclose() в конце. Для простых случаев лучше file_get_contents/file_put_contents.',
+                'answer' => 'Открывает файл (или stream-обёртку: php://input, php://memory, https://) и возвращает дескриптор-resource. Основные режимы: "r" — чтение с начала, "w" — запись, СТИРАЕТ файл; "a" — дозапись в конец; "x" — создать новый, упасть если уже есть; модификатор "+" делает чтение+запись ("r+", "w+"); "b" — бинарный режим (всегда указывайте на Windows). Обязательно fclose() в конце, лучше через try/finally. Для разовых задач удобнее file_get_contents / file_put_contents.',
+                'code_example' => '<?php
+$fh = fopen("data.log", "a");        // открыли на дозапись
+try {
+    fwrite($fh, "line\n");
+    rewind($fh);                     // указатель в начало (для "+" режимов)
+} finally {
+    fclose($fh);                     // ВСЕГДА закрываем
+}
+
+// Построчное чтение большого файла
+$fh = fopen("big.log", "r");
+while (($line = fgets($fh)) !== false) {
+    process($line);
+}
+fclose($fh);',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.std_lib',
             ],

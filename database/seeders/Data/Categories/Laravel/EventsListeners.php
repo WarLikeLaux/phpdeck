@@ -98,7 +98,25 @@ class OrderShipped implements ShouldBroadcast {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое listener в Laravel?',
-                'answer' => 'Класс с методом handle($event), который реагирует на событие: получает объект события и что-то делает. На один event можно повесить несколько listeners. В Laravel 11+ Laravel сам находит подписки по type-hint в handle() (event discovery) — отдельный $listen массив больше не нужен. В Laravel 10 и старше регистрация шла в app/Providers/EventServiceProvider.php в свойстве $listen. Также всегда работает явная Event::listen(SomeEvent::class, SomeListener::class) в AppServiceProvider::boot().',
+                'answer' => 'Класс с методом handle($event), реагирующий на событие. На один event можно повесить несколько listeners — все вызовутся при dispatch. Если listener реализует ShouldQueue — он выполнится асинхронно в очереди. В Laravel 11+ работает event auto-discovery: Laravel сам находит listener по type-hint аргумента handle() (а также методов вида handleX), отдельный массив $listen не нужен. В Laravel 10 и старше регистрация шла через свойство $listen в app/Providers/EventServiceProvider.php. Явная регистрация Event::listen() в AppServiceProvider::boot() работает всегда.',
+                'code_example' => 'php artisan make:listener SendWelcomeEmail --event=UserRegistered
+
+class SendWelcomeEmail implements ShouldQueue
+{
+    // Laravel 11+ найдёт листенер по type-hint UserRegistered
+    public function handle(UserRegistered $event): void
+    {
+        Mail::to($event->user)->send(new WelcomeMail());
+    }
+}
+
+// Альтернатива: явная регистрация в AppServiceProvider::boot()
+Event::listen(UserRegistered::class, SendWelcomeEmail::class);
+
+// Диспатч события
+event(new UserRegistered($user));
+UserRegistered::dispatch($user); // если есть Dispatchable',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.events_listeners',
             ],

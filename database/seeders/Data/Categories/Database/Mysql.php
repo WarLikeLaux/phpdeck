@@ -138,6 +138,13 @@ CREATE TABLE products (
                 'category' => 'Базы данных',
                 'question' => 'Какие основные числовые типы есть в MySQL и когда что выбирать?',
                 'answer' => 'TINYINT занимает один байт, SMALLINT — два, MEDIUMINT — три, INT — четыре, BIGINT — восемь, у каждого свой диапазон значений со знаком и без. Для денежных сумм и любых цифр, где недопустима потеря точности из-за двоичной арифметики, используют DECIMAL с фиксированной запятой. FLOAT и DOUBLE дают плавающую точку для приближённых научных вычислений, но не для финансов. Размер типа подбирают под бизнес-диапазон — лишний BIGINT там, где хватило бы INT, удваивает индексы и буферный пул.',
+                'code_example' => 'CREATE TABLE products (
+    id          BIGINT UNSIGNED PRIMARY KEY,   -- много записей, нужен запас
+    stock       SMALLINT UNSIGNED NOT NULL,    -- 0..65535
+    price       DECIMAL(10, 2)   NOT NULL,     -- точная сумма
+    rating_avg  FLOAT                          -- приближённый рейтинг
+);',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.mysql',
             ],
@@ -151,7 +158,17 @@ CREATE TABLE products (
             [
                 'category' => 'Базы данных',
                 'question' => 'В чём разница между BLOB и TEXT в MySQL?',
-                'answer' => 'BLOB и TEXT — это семейства типов для больших значений с одинаковыми лимитами (TINY/MEDIUM/LONG). Разница в семантике: TEXT — это строки символов с привязкой к charset и collation, поэтому работают функции UPPER, LIKE и сортировки по правилам языка. BLOB — это просто последовательность байтов без collation, для картинок, архивов, бинарных протоколов. Хранить большие файлы в самой базе обычно не стоит: лучше класть на S3 или диск, а в таблице держать только ссылку.',
+                'answer' => 'BLOB и TEXT — это семейства типов для больших значений с одинаковыми лимитами (TINY до 255 байт, обычный до 64 КБ, MEDIUM до 16 МБ, LONG до 4 ГБ). Разница в семантике: TEXT — это строки символов с привязкой к charset и collation, поэтому работают функции UPPER, LIKE и сортировки по правилам языка. BLOB — это просто последовательность байтов без collation, для картинок, архивов, бинарных протоколов. Хранить большие файлы в самой базе обычно не стоит: лучше класть на S3 или диск, а в таблице держать только ссылку.',
+                'code_example' => 'CREATE TABLE articles (
+    id   BIGINT PRIMARY KEY,
+    body LONGTEXT CHARACTER SET utf8mb4 NOT NULL  -- текст со словами
+);
+
+CREATE TABLE attachments (
+    id   BIGINT PRIMARY KEY,
+    data LONGBLOB NOT NULL                        -- сырые байты файла
+);',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.mysql',
             ],

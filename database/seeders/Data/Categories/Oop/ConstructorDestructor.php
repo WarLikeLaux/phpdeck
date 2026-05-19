@@ -72,16 +72,71 @@ class FileLogger
             [
                 'category' => 'ООП',
                 'question' => 'Зачем нужен constructor property promotion простыми словами?',
-                'answer' => 'Сокращённый синтаксис: параметры конструктора с модификатором видимости становятся свойствами автоматически. Вместо: public string $name; function __construct(string $name) { $this->name = $name; } — пишешь public function __construct(public string $name) {}. Меньше шаблонного кода для DTO и Value Objects.',
+                'answer' => 'Сокращённый синтаксис (PHP 8.0): параметр конструктора с модификатором видимости автоматически становится свойством. Объявление поля, его типа и присваивание $this->x = $x — в одной строке. Меньше шаблонного кода, особенно полезно для DTO и Value Objects.',
                 'difficulty' => 2,
                 'topic' => 'oop.constructor_destructor',
+                'code_example' => '<?php
+// ❌ Старый стиль - бойлерплейт
+class UserOld
+{
+    public string $name;
+    public int $age;
+
+    public function __construct(string $name, int $age)
+    {
+        $this->name = $name;
+        $this->age = $age;
+    }
+}
+
+// ✅ PHP 8.0 promotion - то же самое одной строкой
+final class User
+{
+    public function __construct(
+        public string $name,
+        public int $age,
+    ) {}
+}
+
+$u = new User(\'Иван\', 30);
+echo $u->name; // Иван',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'question' => 'Зачем вызывать parent::__construct() в конструкторе наследника?',
-                'answer' => 'PHP НЕ вызывает родительский конструктор автоматически. Если у родителя в конструкторе инициализируются важные свойства (например, в Eloquent\\Model задаются атрибуты), а ты не позвал parent::__construct() — объект будет в неполном состоянии. Правило: в конструкторе ребёнка вызывай parent::__construct(...) первой строкой.',
+                'answer' => 'PHP НЕ вызывает родительский конструктор автоматически (в отличие от Java/C++). Если у родителя в __construct() инициализируются важные свойства, а ты не позвал parent::__construct() — объект будет в неполном состоянии. Правило: в конструкторе ребёнка вызывай parent::__construct(...) первой строкой, потом свою инициализацию.',
                 'difficulty' => 2,
                 'topic' => 'oop.constructor_destructor',
+                'code_example' => '<?php
+class Animal
+{
+    protected string $kind;
+
+    public function __construct(string $kind)
+    {
+        $this->kind = $kind;
+    }
+}
+
+// ❌ Забыли parent::__construct - $kind остался без значения
+class DogBad extends Animal
+{
+    public function __construct(public string $name) {}
+}
+// (new DogBad("Рекс"))->kind; // Error: uninitialized
+
+// ✅ Правильно: сначала родитель, потом своё
+class Dog extends Animal
+{
+    public function __construct(public string $name)
+    {
+        parent::__construct(\'dog\');
+    }
+}
+
+echo (new Dog(\'Рекс\'))->name; // Рекс',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

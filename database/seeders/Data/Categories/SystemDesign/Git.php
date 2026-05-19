@@ -94,7 +94,20 @@ class Git
             [
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между git fetch и git pull?',
-                'answer' => 'git fetch — скачивает обновления с удалённого репозитория (новые коммиты, ветки, теги) и обновляет remote-tracking-ветки (origin/main, origin/feature-x). НИЧЕГО не сливает в вашу локальную ветку и не трогает working tree. После fetch вы можете посмотреть git log main..origin/main — что нового, не применяя. Безопасно всегда. git pull = git fetch + git merge origin/<current-branch> (по умолчанию). То есть скачивает И сразу сливает. По дефолту делает merge, что может создать merge-commit. Можно настроить pull.rebase=true (git config --global pull.rebase true) — тогда pull = fetch + rebase, история линейная. Или pull --ff-only — pull откажется делать merge/rebase, если нужен — потребует ручного решения. Когда что использовать: 1) fetch + ручной разбор — для важных веток, для понимания, что прилетит. 2) pull --ff-only — типовой safe default для main: «обнови только если идёт чисто вперёд». 3) pull --rebase для feature-веток, чтобы держать линейную историю поверх свежего main. 4) Чистый pull без флагов — опасен, может создать неожиданный merge-commit. Совет: git config --global pull.ff only делает --ff-only поведением по умолчанию.',
+                'answer' => 'git fetch скачивает новые коммиты, ветки и теги с remote и обновляет только remote-tracking-ветки (origin/main, origin/feature) — твоя локальная ветка и working tree остаются нетронутыми. Можно сначала глянуть git log main..origin/main и решить, что с этим делать. git pull = git fetch + автоматический merge (или rebase, если настроено pull.rebase=true) в текущую ветку. По умолчанию pull делает merge — это может создать неожиданный merge-commit, если ваши локальные коммиты разошлись с remote. Безопасные привычки: git pull --ff-only (откажется, если нужен реальный merge) для main и git pull --rebase для feature-веток, чтобы держать линейную историю.',
+                'code_example' => '# посмотреть, что прилетит, не применяя
+git fetch origin
+git log main..origin/main
+
+# безопасный pull в main
+git pull --ff-only
+
+# pull с rebase в feature-ветку
+git pull --rebase origin main
+
+# сделать --ff-only поведением по умолчанию
+git config --global pull.ff only',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.git',
             ],
@@ -122,7 +135,22 @@ class Git
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое .gitignore, как работают правила и что делать с уже отслеживаемым файлом?',
-                'answer' => '.gitignore — файл со списком паттернов, какие файлы и каталоги git ИГНОРИРУЕТ при git add, git status, авто-stage и т.д. Применяется ТОЛЬКО к untracked-файлам — уже отслеживаемые файлы продолжают трекаться, даже если попадают под игнор. Правила синтаксиса: 1) node_modules/ — каталог node_modules в любом месте. 2) *.log — файлы .log в любом месте. 3) /build — только в корне репозитория. 4) build/ — каталог build в любом месте (но не файл build). 5) !important.log — исключение из игнора (важно: нельзя «вернуть» файл, если родительский каталог в игноре). 6) # коммент — комментарий. 7) **/temp — temp в любой глубине. 8) doc/**/*.pdf — все .pdf под doc. Иерархия: .gitignore в корне + в любом подкаталоге; нижестоящий перекрывает вышестоящий. .git/info/exclude — локальный игнор только для этого клона (не пушится). ~/.gitignore_global — глобально для пользователя (git config --global core.excludesFile ~/.gitignore_global) — туда обычно кладут IDE-мусор (.idea/, .vscode/, *.swp). Проблема: добавили файл в .gitignore, но он УЖЕ tracked — git продолжает его трекать. Решение: git rm --cached <file> — убирает из index, но оставляет на диске. Коммит, push — теперь файл untracked и игнорируется. Для секретов уже залитых в репо — этого МАЛО: история всё ещё содержит их. Нужно git filter-repo или BFG Repo Cleaner, плюс ротировать секрет — он считается утёкшим.',
+                'answer' => '.gitignore — файл со списком паттернов, которые git игнорирует при git add и git status. Главный нюанс: правила действуют только на untracked-файлы — если файл уже tracked, добавление его в .gitignore ничего не изменит. Синтаксис похож на glob: node_modules/ — папка в любом месте, *.log — файлы по расширению, /build — только в корне, !important.log — исключение из игнора, # — комментарий. Глобальный личный игнор (IDE-мусор) — ~/.gitignore_global через git config --global core.excludesFile. Если уже закоммитили лишний файл — git rm --cached <file>, потом коммит; для утёкших секретов этого мало: придётся переписывать историю (git filter-repo / BFG) и обязательно ротировать секрет.',
+                'code_example' => '# .gitignore
+node_modules/
+vendor/
+.env
+.env.*
+!.env.example
+*.log
+/storage/*.key
+.idea/
+.vscode/
+
+# убрать уже tracked файл из git, оставив на диске
+git rm --cached .env
+git commit -m "stop tracking .env"',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.git',
             ],

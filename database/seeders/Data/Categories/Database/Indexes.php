@@ -211,7 +211,17 @@ CREATE INDEX idx_events_created ON events (created_at);
             [
                 'category' => 'Базы данных',
                 'question' => 'На какие колонки стоит ставить индекс?',
-                'answer' => 'Те, что часто встречаются в WHERE, JOIN, ORDER BY. На foreign keys (часто JOIN-ят). На колонки с высокой селективностью (много уникальных значений: email, user_id). НЕ стоит на колонки с двумя-тремя значениями (boolean, status) — индекс не поможет.',
+                'answer' => 'Кандидаты — колонки, которые часто стоят в WHERE, JOIN и ORDER BY горячих запросов. На foreign keys индекс почти всегда нужен: по ним идут JOIN-ы и проверки целостности при удалении/обновлении родителя. Лучше всего индекс работает на полях с высокой селективностью — много уникальных значений (email, user_id), мало совпадений на одно значение. На колонке с двумя-тремя значениями (boolean is_active, status с тремя статусами) обычный индекс почти бесполезен — оптимизатор всё равно уйдёт в Seq Scan; для редкого статуса лучше partial index. Каждый индекс замедляет INSERT/UPDATE, поэтому добавлять их «на всякий случай» не стоит.',
+                'code_example' => '-- FK почти всегда индексируем
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+
+-- Высокая селективность — хороший индекс
+CREATE INDEX idx_users_email ON users(email);
+
+-- Низкая селективность — partial index только для нужного значения
+CREATE INDEX idx_orders_pending ON orders(created_at)
+WHERE status = \'pending\';',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.indexes',
             ],

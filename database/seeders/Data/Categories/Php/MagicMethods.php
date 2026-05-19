@@ -115,7 +115,30 @@ class UserDeep {
             [
                 'category' => 'PHP',
                 'question' => 'Что делает __destruct()?',
-                'answer' => 'Специальный метод, который PHP вызывает АВТОМАТИЧЕСКИ когда объект удаляется (последняя ссылка ушла или скрипт закончился). Используется для очистки: закрыть файл, отвязать соединение. На практике редко нужен — обычно вместо него используют try/finally.',
+                'answer' => 'Магический метод-деструктор. PHP вызывает его АВТОМАТИЧЕСКИ, когда объект уничтожается: либо когда refcount достиг 0 (ушли все ссылки), либо при завершении скрипта. Используется для очистки внешних ресурсов: закрыть файл/сокет, отвязать соединение. На практике редко нужен — обычно лучше явный try/finally (детерминированно) или PSR-7 close. ВАЖНО: бросать исключения в __destruct опасно — момент вызова непредсказуем.',
+                'code_example' => '<?php
+class FileLogger {
+    private $fh;
+
+    public function __construct(string $path) {
+        $this->fh = fopen($path, "a");
+    }
+
+    public function log(string $msg): void {
+        fwrite($this->fh, $msg . PHP_EOL);
+    }
+
+    public function __destruct() {
+        if (is_resource($this->fh)) {
+            fclose($this->fh);   // закрыли файл при удалении объекта
+        }
+    }
+}
+
+$logger = new FileLogger("/tmp/app.log");
+$logger->log("started");
+unset($logger); // тут вызовется __destruct',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.magic_methods',
             ],
@@ -137,7 +160,29 @@ echo new Money(100, "USD"); // "100 USD"',
             [
                 'category' => 'PHP',
                 'question' => 'Что делают __get и __set в PHP простыми словами?',
-                'answer' => '__get($name) вызывается при чтении НЕСУЩЕСТВУЮЩЕГО свойства: echo $obj->unknown — PHP вместо ошибки вызовет __get("unknown"). __set($name, $value) — при записи. Используется для динамических свойств (контейнеры, прокси), но усложняет анализ кода — обычно лучше явные свойства.',
+                'answer' => '__get($name) вызывается при чтении НЕСУЩЕСТВУЮЩЕГО (или недоступного) свойства: echo $obj->unknown — PHP вместо ошибки зовёт __get("unknown"). __set($name, $value) — то же при записи. Парные методы: __isset для isset()/empty() и __unset для unset(). Применяется для динамических контейнеров, прокси, lazy-loading (как $user->name в Eloquent). Минус: непрозрачно — IDE и phpstan не видят таких свойств, поэтому в новом коде обычно лучше явные типизированные свойства или PHP 8.4 property hooks.',
+                'code_example' => '<?php
+class Bag {
+    private array $data = [];
+
+    public function __get(string $name): mixed {
+        return $this->data[$name] ?? null;
+    }
+
+    public function __set(string $name, mixed $value): void {
+        $this->data[$name] = $value;
+    }
+
+    public function __isset(string $name): bool {
+        return isset($this->data[$name]);
+    }
+}
+
+$b = new Bag();
+$b->city = "Moscow";   // __set
+echo $b->city;         // "Moscow" — __get
+echo $b->foo ?? "—";   // "—" — __get вернул null',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.magic_methods',
             ],

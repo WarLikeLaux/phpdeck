@@ -168,7 +168,32 @@ $request->validate([\'email\' => \'required|email|unique:users,email\']);',
             [
                 'category' => 'Laravel',
                 'question' => 'Как вывести ошибки валидации в Blade-шаблоне?',
-                'answer' => 'Laravel передаёт $errors в view при редиректе обратно. Для одного поля: @error(\'email\') {{ $message }} @enderror. Все: @if($errors->any()) @foreach($errors->all() as $err) ... @endforeach @endif. old(\'email\') — старое значение для авто-заполнения формы.',
+                'answer' => 'Если валидация падает, Laravel делает редирект назад и через middleware ShareErrorsFromSession кладёт в каждый view переменную $errors (MessageBag). Для одного поля используют директиву @error(\'field\'), внутри доступна $message. Все ошибки — @if($errors->any()) + @foreach($errors->all() as $error). Хелпер old(\'field\') возвращает старое значение поля, чтобы форма не очищалась после ошибки.',
+                'code_example' => '<form method="POST" action="{{ route(\'users.store\') }}">
+    @csrf
+
+    <input name="email" value="{{ old(\'email\') }}">
+    @error(\'email\')
+        <span class="text-red-500">{{ $message }}</span>
+    @enderror
+
+    <input type="password" name="password">
+    @error(\'password\')
+        <span class="text-red-500">{{ $message }}</span>
+    @enderror
+
+    <button>Сохранить</button>
+</form>
+
+{{-- Все ошибки списком --}}
+@if ($errors->any())
+    <ul>
+        @foreach ($errors->all() as $error)
+            <li>{{ $error }}</li>
+        @endforeach
+    </ul>
+@endif',
+                'code_language' => 'blade',
                 'difficulty' => 2,
                 'topic' => 'laravel.requests_validation',
             ],

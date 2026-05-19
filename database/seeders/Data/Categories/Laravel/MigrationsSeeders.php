@@ -121,21 +121,84 @@ public function run(): void {
             [
                 'category' => 'Laravel',
                 'question' => 'Что делают модификаторы nullable(), default(), unique() в миграции?',
-                'answer' => 'nullable() — колонка может быть NULL. default(\'value\') — значение по умолчанию. unique() — UNIQUE-индекс. index() — обычный индекс. Цепочка: $table->string(\'email\')->unique()->nullable()->default(null). primary() — PK на нескольких колонках: $table->primary([\'a\',\'b\']).',
+                'answer' => 'Модификаторы — это методы, цепляемые после объявления колонки, которые меняют её свойства. nullable() — разрешает NULL. default($value) — значение по умолчанию. unique() — UNIQUE-индекс. index() — обычный индекс. ->after(\'col\') — позиция при ADD COLUMN (MySQL). ->change() — изменить существующую колонку. ->comment(\'...\') — комментарий в схеме. Цепочка читается слева направо.',
+                'code_example' => 'Schema::create(\'users\', function (Blueprint $table) {
+    $table->id();
+    $table->string(\'email\')->unique();
+    $table->string(\'phone\')->nullable();
+    $table->boolean(\'is_active\')->default(true);
+    $table->string(\'role\')->default(\'user\')->index();
+    $table->timestamps();
+
+    // составной PK / уникальный индекс
+    $table->unique([\'tenant_id\', \'email\']);
+});
+
+// добавить колонку после email
+Schema::table(\'users\', function (Blueprint $table) {
+    $table->string(\'phone\')->nullable()->after(\'email\');
+});',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.migrations_seeders',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между Schema::create и Schema::table?',
-                'answer' => 'Schema::create(\'users\', fn($t) => ...) — СОЗДАЁТ новую таблицу. Schema::table(\'users\', fn($t) => ...) — ИЗМЕНЯЕТ существующую (добавить колонку, индекс, переименовать). Внутри Blueprint-callback одинаковые методы, но семантика разная — для add используют $table->string(\'phone\')->after(\'email\').',
+                'answer' => 'Schema::create(\'users\', fn ($t) => ...) — СОЗДАЁТ новую таблицу (CREATE TABLE). Schema::table(\'users\', fn ($t) => ...) — ИЗМЕНЯЕТ существующую (ALTER TABLE): добавить колонку, индекс, FK, переименовать. Внутри Blueprint-замыкания методы те же ($table->string(\'phone\')), но семантика разная. Для add-операций используют ->after(\'col\') (MySQL), для изменения существующей колонки — ->change() (требует пакета doctrine/dbal в Laravel 10 и ниже; в Laravel 11+ работает нативно).',
+                'code_example' => '// Создать таблицу
+Schema::create(\'posts\', function (Blueprint $table) {
+    $table->id();
+    $table->string(\'title\');
+    $table->timestamps();
+});
+
+// Добавить колонку
+Schema::table(\'posts\', function (Blueprint $table) {
+    $table->text(\'body\')->nullable()->after(\'title\');
+});
+
+// Изменить тип / переименовать
+Schema::table(\'posts\', function (Blueprint $table) {
+    $table->string(\'title\', 500)->change();
+    $table->renameColumn(\'body\', \'content\');
+});
+
+// Удалить колонку
+Schema::table(\'posts\', function (Blueprint $table) {
+    $table->dropColumn(\'content\');
+});',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.migrations_seeders',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое factory и как ей пользоваться?',
-                'answer' => 'Класс-генератор тестовых моделей. User::factory()->create() — создаст одного юзера в БД со случайными данными. ->count(10) — десять. ->make() — без сохранения. ->state([\'role\' => \'admin\']) — переопределить поля. В классе UserFactory метод definition() возвращает дефолтные значения через fake().',
+                'answer' => 'Factory — класс-генератор моделей с фейковыми данными для тестов и сидеров. User::factory()->create() сохраняет в БД, ->make() возвращает в памяти без save. ->count(N) делает массовую генерацию, ->state([...]) и именованные state-методы переопределяют поля. Через has()/for() сразу создаются связи. В классе UserFactory метод definition() задаёт дефолты через fake() (Faker).',
+                'code_example' => '// database/factories/UserFactory.php
+class UserFactory extends Factory {
+    public function definition(): array {
+        return [
+            \'name\'  => fake()->name(),
+            \'email\' => fake()->unique()->safeEmail(),
+            \'role\'  => \'user\',
+        ];
+    }
+
+    // именованный state
+    public function admin(): static {
+        return $this->state(fn () => [\'role\' => \'admin\']);
+    }
+}
+
+// В тесте / сидере
+User::factory()->create();                         // 1 юзер в БД
+User::factory()->count(50)->create();              // 50 юзеров
+User::factory()->admin()->create();                // юзер с role=admin
+User::factory()->make();                           // без save
+User::factory()->has(Post::factory()->count(3))->create(); // с постами',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.migrations_seeders',
             ],

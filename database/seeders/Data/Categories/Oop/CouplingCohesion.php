@@ -87,6 +87,30 @@ class UserRegistrar
                 'answer' => 'Степень зависимости одного класса от другого. Низкая связанность — модули общаются через интерфейсы, замена одного не ломает другие. Высокая — класс знает внутренности другого, изменение там — поломка тут. Цель: слабая связанность (loose coupling), потому что код легче менять, тестировать, переиспользовать.',
                 'difficulty' => 2,
                 'topic' => 'oop.coupling_cohesion',
+                'code_example' => '<?php
+// ❌ Высокая связанность - сервис прибит к конкретному классу
+class OrderServiceBad
+{
+    public function pay(int $cents): void
+    {
+        $gateway = new StripeGateway();   // тут конкретный класс
+        $gateway->charge($cents);          // знает его метод
+    }
+}
+
+// ✅ Низкая связанность - зависим от интерфейса
+interface PaymentGateway { public function charge(int $cents): void; }
+
+class OrderService
+{
+    public function __construct(private PaymentGateway $gateway) {}
+
+    public function pay(int $cents): void
+    {
+        $this->gateway->charge($cents); // подменяемо: Stripe, PayPal, FakeGateway
+    }
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -94,6 +118,30 @@ class UserRegistrar
                 'answer' => 'Степень, насколько элементы одного класса/модуля связаны между собой одной задачей. Высокая cohesion — класс делает ОДНУ вещь, его методы и свойства логично связаны. Низкая — в одном классе всё подряд (auth + email + logging). Цель: высокая cohesion + низкая coupling = хороший дизайн.',
                 'difficulty' => 2,
                 'topic' => 'oop.coupling_cohesion',
+                'code_example' => '<?php
+// ❌ Низкая cohesion - класс делает всё подряд
+class Utility
+{
+    public function calculateTax(float $sum): float {}
+    public function sendEmail(string $to): void {}
+    public function parseCsv(string $file): array {}
+    public function hashPassword(string $pwd): string {}
+}
+
+// ✅ Высокая cohesion - каждый класс сосредоточен на одной задаче
+class TaxCalculator
+{
+    public function calculate(float $sum): float { return $sum * 0.2; }
+}
+class Mailer
+{
+    public function send(string $to, string $body): void {}
+}
+class CsvParser
+{
+    public function parse(string $file): array { return []; }
+}',
+                'code_language' => 'php',
             ],
         ];
     }

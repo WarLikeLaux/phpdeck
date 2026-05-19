@@ -11,6 +11,19 @@ class BasicQa
                 'category' => 'Базы данных',
                 'question' => 'Как подключиться к MySQL из PHP и в чём разница между mysqli и PDO?',
                 'answer' => 'Подключение делают расширением mysqli или классом PDO, передавая DSN-строку, имя пользователя и пароль. mysqli работает только с MySQL и имеет процедурный и объектный API, PDO абстрактен — поддерживает PostgreSQL, SQLite, SQL Server и другие СУБД, что упрощает смену драйвера. У PDO есть именованные плейсхолдеры (:id) в подготовленных запросах, у mysqli — только позиционные знаки вопроса. Для нового кода почти всегда выбирают PDO ради переносимости и удобного API.',
+                'code_example' => '<?php
+// PDO — переносимый драйвер
+$pdo = new PDO(\'mysql:host=localhost;dbname=app;charset=utf8mb4\', \'user\', \'pass\');
+$stmt = $pdo->prepare(\'SELECT * FROM users WHERE id = :id\');
+$stmt->execute([\':id\' => 1]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// mysqli — только MySQL, позиционные плейсхолдеры
+$mysqli = new mysqli(\'localhost\', \'user\', \'pass\', \'app\');
+$stmt = $mysqli->prepare(\'SELECT * FROM users WHERE id = ?\');
+$stmt->bind_param(\'i\', $id);
+$stmt->execute();',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'database.basic_qa',
             ],
@@ -38,7 +51,15 @@ class BasicQa
             [
                 'category' => 'Базы данных',
                 'question' => 'Чем отличается DELETE от TRUNCATE?',
-                'answer' => 'DELETE удаляет строки построчно (можно WHERE, можно откатить в транзакции, срабатывают триггеры). TRUNCATE TABLE моментально очищает таблицу целиком (без WHERE, обычно без триггеров, сбрасывает auto_increment, не всегда откатывается). Для очистки больших таблиц TRUNCATE на порядки быстрее.',
+                'answer' => 'DELETE удаляет строки построчно: поддерживает WHERE, пишет каждую удалённую запись в журнал транзакции, срабатывают триггеры, операция откатывается через ROLLBACK. TRUNCATE TABLE моментально очищает таблицу целиком — без WHERE, обычно без триггеров, сбрасывает AUTO_INCREMENT, и в MySQL делает неявный COMMIT и откатить её нельзя (в PostgreSQL TRUNCATE как раз транзакционен). Для удаления всех строк из большой таблицы TRUNCATE на порядки быстрее, потому что внутри это фактически пересоздание файла данных. DROP TABLE — для случая, когда нужно убрать и саму структуру.',
+                'code_example' => '-- DELETE: построчно, с WHERE, в транзакции
+BEGIN;
+DELETE FROM orders WHERE created_at < \'2020-01-01\';
+ROLLBACK; -- строки вернутся
+
+-- TRUNCATE: моментальная очистка, в MySQL без отката
+TRUNCATE TABLE orders;',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.basic_qa',
             ],
@@ -71,7 +92,16 @@ WHERE age >= 18
             [
                 'category' => 'Базы данных',
                 'question' => 'Зачем хранить деньги в DECIMAL, а не во FLOAT?',
-                'answer' => 'FLOAT и DOUBLE — это двоичные числа с плавающей точкой, и далеко не каждое десятичное число (например, 0.1) точно представимо в двоичном виде. Из-за этого простой расчёт 0.1 + 0.2 даёт 0.30000000000000004 — для денег это недопустимо. DECIMAL(p, s) хранит число как десятичные цифры с фиксированной точностью, поэтому никакие копейки не "потеряются" при суммировании. Стандарт: DECIMAL(10, 2) — 10 цифр всего, 2 после запятой.',
+                'answer' => 'FLOAT и DOUBLE — это двоичные числа с плавающей точкой, и далеко не каждое десятичное число (например, 0.1) точно представимо в двоичном виде. Из-за этого простой расчёт 0.1 + 0.2 даёт 0.30000000000000004 — для денег это недопустимо. DECIMAL(p, s) хранит число как десятичные цифры с фиксированной точностью, поэтому никакие копейки не "потеряются" при суммировании. Стандарт: DECIMAL(10, 2) — 10 цифр всего, 2 после запятой. Альтернатива — хранить деньги в копейках/центах целым числом BIGINT.',
+                'code_example' => 'CREATE TABLE payments (
+    id BIGSERIAL PRIMARY KEY,
+    amount DECIMAL(10, 2) NOT NULL  -- 99999999.99 максимум
+);
+
+-- FLOAT теряет копейки
+SELECT 0.1::float + 0.2::float;       -- 0.30000000000000004
+SELECT 0.1::decimal + 0.2::decimal;   -- 0.3',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.basic_qa',
             ],

@@ -511,6 +511,32 @@ class CheckoutController {
                 'answer' => 'Паттерн: алгоритм выбирается во время выполнения через подмену объекта-стратегии. Вместо if/else по типу платежа: $checkout->pay(new StripePayment()), $checkout->pay(new PayPalPayment()). Все стратегии реализуют один интерфейс PaymentMethod. Новый способ оплаты — новый класс, без правки checkout.',
                 'difficulty' => 2,
                 'topic' => 'oop.gof_behavioral',
+                'code_example' => '<?php
+interface PaymentMethod
+{
+    public function pay(int $cents): void;
+}
+
+class StripePayment implements PaymentMethod
+{
+    public function pay(int $cents): void { /* Stripe API */ }
+}
+class PayPalPayment implements PaymentMethod
+{
+    public function pay(int $cents): void { /* PayPal API */ }
+}
+
+class Checkout
+{
+    public function pay(PaymentMethod $method, int $cents): void
+    {
+        $method->pay($cents); // подменяемая стратегия
+    }
+}
+
+(new Checkout())->pay(new StripePayment(), 1000);
+(new Checkout())->pay(new PayPalPayment(), 1000);',
+                'code_language' => 'php',
             ],
         ];
     }

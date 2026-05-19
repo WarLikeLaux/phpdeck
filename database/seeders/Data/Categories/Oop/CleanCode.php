@@ -20,6 +20,27 @@ class CleanCode
                 'answer' => 'Имя должно раскрывать намерение: что переменная или функция значат и зачем существуют. Имена вроде $temp, $a1, processData() заставляют читателя реконструировать смысл по контексту, тогда как $invoiceTotal или markInvoiceAsPaid() убирают необходимость в комментарии. Хорошие имена - это первый и самый дешёвый уровень документации кода.',
                 'difficulty' => 2,
                 'topic' => 'oop.clean_code',
+                'code_example' => '<?php
+// ❌ Имена ничего не говорят
+function p(array $d): float
+{
+    $t = 0;
+    foreach ($d as $x) {
+        $t += $x[\'q\'] * $x[\'pr\'];
+    }
+    return $t * 1.2;
+}
+
+// ✅ Имена раскрывают намерение - комментарии не нужны
+function totalWithTax(array $orderItems): float
+{
+    $subtotal = 0;
+    foreach ($orderItems as $item) {
+        $subtotal += $item[\'quantity\'] * $item[\'price\'];
+    }
+    return $subtotal * 1.2; // VAT 20%
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -27,6 +48,31 @@ class CleanCode
                 'answer' => 'Функция должна быть компактной и делать ровно одну вещь - тот же Single Responsibility, но на уровне функции. Если внутри есть несколько уровней абстракции, разные «и» в описании или длинные блоки внутри ветвей if, это сигнал выделить части в отдельные функции с осмысленными именами. Маленькие функции легче читать, переиспользовать и покрывать тестами.',
                 'difficulty' => 2,
                 'topic' => 'oop.clean_code',
+                'code_example' => '<?php
+// ❌ Большая функция - сразу валидация, считалка, рассылка
+function placeOrder(array $data): void
+{
+    if (empty($data[\'email\']) || ! filter_var($data[\'email\'], FILTER_VALIDATE_EMAIL)) {
+        throw new \InvalidArgumentException();
+    }
+    $total = 0;
+    foreach ($data[\'items\'] as $i) $total += $i[\'price\'] * $i[\'qty\'];
+    $total *= 1.2;
+    mail($data[\'email\'], \'Order\', "Total: $total");
+}
+
+// ✅ Разбили на маленькие функции - каждая делает одно
+function placeOrder(array $data): void
+{
+    validateOrder($data);
+    $total = calculateTotal($data[\'items\']);
+    sendConfirmation($data[\'email\'], $total);
+}
+
+function validateOrder(array $d): void { /* проверки */ }
+function calculateTotal(array $items): float { /* сумма */ return 0; }
+function sendConfirmation(string $email, float $total): void { /* email */ }',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -59,9 +105,36 @@ class CleanCode
             [
                 'category' => 'ООП',
                 'question' => 'Что такое Early Return и зачем его применяют?',
-                'answer' => 'Early Return - это стиль, при котором краевые условия и невалидные входы обрабатываются в начале функции через return или throw, а основной сценарий идёт ровным потоком на нулевом уровне вложенности. Это убирает «лестницу» из вложенных if-else, снижает когнитивную нагрузку при чтении и уменьшает шанс пропустить ветку. По сути, это применение принципа «обрабатывай ошибки сразу, не откладывай».',
+                'answer' => 'Early Return - стиль, при котором краевые условия и невалидные входы обрабатываются в начале функции через return или throw, а основной сценарий идёт ровным потоком на нулевом уровне вложенности. Это убирает «лестницу» из вложенных if-else, снижает когнитивную нагрузку при чтении и уменьшает шанс пропустить ветку. По сути - «обрабатывай ошибки сразу, не откладывай».',
                 'difficulty' => 2,
                 'topic' => 'oop.clean_code',
+                'code_example' => '<?php
+// ❌ Лестница из вложенных if - основная логика глубоко
+function charge(?User $user, ?Order $order): bool
+{
+    if ($user !== null) {
+        if ($user->isActive()) {
+            if ($order !== null) {
+                if ($order->total > 0) {
+                    return $user->pay($order); // спрятано на 4 уровня
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// ✅ Early return - guard clauses вверху, основная логика плоская
+function charge(?User $user, ?Order $order): bool
+{
+    if ($user === null)         return false;
+    if (! $user->isActive())    return false;
+    if ($order === null)        return false;
+    if ($order->total <= 0)     return false;
+
+    return $user->pay($order); // happy path - нулевая вложенность
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

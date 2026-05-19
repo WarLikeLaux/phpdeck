@@ -194,14 +194,47 @@ $user = $repo->find($id) ?? throw new RuntimeException("not found");',
             [
                 'category' => 'PHP',
                 'question' => 'Можно ли ловить несколько типов исключений в одном catch?',
-                'answer' => 'Да, через | (PHP 8+): catch (TypeError | ValueError $e). До 8.0 нужно было писать отдельные блоки catch для каждого типа. Если catch (Exception $e) — ловит и все наследники Exception, так что обычно конкретные ловят выше, общий — последним.',
+                'answer' => 'Да, через | (multi-catch, PHP 7.1+): catch (TypeError | ValueError $e). До 7.1 для каждого типа нужен был отдельный блок catch с одинаковой обработкой. Также можно перечислить несколько разных catch — порядок ВАЖЕН: конкретные типы ставят выше, общий (Exception, Throwable) — последним, иначе общий ветка перехватит всё первой. С PHP 8 имя переменной в catch необязательно — можно писать catch (LogicException) {}, если объект не нужен.',
+                'code_example' => '<?php
+try {
+    $data = json_decode($input, true, flags: JSON_THROW_ON_ERROR);
+    $user = $repo->findOrFail($data["id"]);
+} catch (JsonException | InvalidArgumentException $e) {
+    // multi-catch — общая обработка для двух типов
+    return response("Bad input: " . $e->getMessage(), 400);
+} catch (NotFoundException) {
+    // имя переменной можно опустить (PHP 8+)
+    return response("Not found", 404);
+} catch (Throwable $e) {
+    // общий ловец — последним
+    report($e);
+    return response("Server error", 500);
+}',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.exceptions',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'В чём разница между Exception, Error и Throwable простыми словами?',
-                'answer' => 'Throwable — самый верхний интерфейс, всё, что можно бросить через throw. От него наследуются Exception (ошибки бизнес-логики и приложения — InvalidArgumentException, RuntimeException) и Error (ошибки уровня PHP — TypeError, ParseError, DivisionByZeroError). Раньше Error было фатально, с PHP 7 их тоже можно ловить. catch (Throwable $e) ловит и Exception, и Error.',
+                'answer' => 'Throwable — корневой ИНТЕРФЕЙС, всё, что можно бросить через throw. От него наследуются ДВЕ параллельные ветки: Exception (ошибки уровня приложения — InvalidArgumentException, RuntimeException, LogicException) и Error (ошибки уровня PHP-движка — TypeError, ValueError, DivisionByZeroError, ParseError). Важный момент: catch (Exception $e) НЕ поймает TypeError или DivisionByZeroError — они наследники Error, не Exception. До PHP 7 ошибки движка были fatal и не ловились вообще; с PHP 7 их тоже можно перехватить через catch (Error) или catch (Throwable). На верхнем уровне (middleware, exception handler) обычно ловят именно Throwable.',
+                'code_example' => '<?php
+try {
+    intdiv(10, 0);
+} catch (Exception $e) {
+    echo "не сработает";   // DivisionByZeroError — не Exception!
+} catch (Error $e) {
+    echo "поймали Error";
+}
+
+// Универсальный верхний уровень
+try {
+    riskyOperation();
+} catch (Throwable $t) {     // ловит И Exception, И Error
+    report($t);
+    throw $t;
+}',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.exceptions',
             ],

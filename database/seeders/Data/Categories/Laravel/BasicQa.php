@@ -62,7 +62,34 @@ class BasicQa
             [
                 'category' => 'Laravel',
                 'question' => 'Как сделать валидацию в Laravel простыми словами?',
-                'answer' => 'Внутри контроллера: $request->validate([\'email\' => \'required|email\', \'age\' => \'integer|min:18\']);. Если не подходит — Laravel редиректит назад с ошибками (в Inertia/API возвращает 422 JSON). Для сложных сценариев — Form Request.',
+                'answer' => 'Простой способ — $request->validate([...]) прямо в контроллере. Если данные не подходят, Laravel автоматически редиректит назад со старыми input-ами и errors в сессии (для JSON/API/Inertia — 422 JSON). Метод возвращает массив только провалидированных полей. Для сложной логики — вынести правила в FormRequest (отдельный класс с методами rules(), authorize(), prepareForValidation()).',
+                'code_example' => '// Простой способ в контроллере
+public function store(Request $request)
+{
+    $data = $request->validate([
+        \'email\'    => \'required|email|unique:users,email\',
+        \'password\' => \'required|min:8|confirmed\',
+        \'age\'      => \'nullable|integer|min:18\',
+    ]);
+
+    return User::create($data);
+}
+
+// FormRequest - для сложных сценариев
+class StoreUserRequest extends FormRequest {
+    public function rules(): array {
+        return [
+            \'email\'    => [\'required\', \'email\', Rule::unique(\'users\')],
+            \'password\' => [\'required\', \'min:8\', \'confirmed\'],
+        ];
+    }
+}
+
+public function store(StoreUserRequest $request)
+{
+    return User::create($request->validated());
+}',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.basic_qa',
             ],

@@ -86,14 +86,36 @@ require __DIR__ . "/vendor/autoload.php";',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое semver и что значат ^ и ~ в Composer?',
-                'answer' => 'Semantic Versioning: MAJOR.MINOR.PATCH — поломка совместимости.новые фичи.фиксы. ^1.2.3 разрешает обновления до 2.0 (не включая) — фичи и фиксы. ~1.2.3 разрешает только 1.2.* — только патчи. * — любая. Точное "1.2.3" — без отклонений.',
+                'answer' => 'Semantic Versioning — формат версии MAJOR.MINOR.PATCH: MAJOR ломает обратную совместимость, MINOR добавляет фичи без поломок, PATCH — только баг-фиксы. В Composer: ^1.2.3 разрешает обновления до следующего MAJOR (>=1.2.3, <2.0.0) — фичи и патчи. ~1.2.3 — только патчи (>=1.2.3, <1.3.0); ~1.2 — минор + патчи. >=1.2, <2 — явный диапазон. 1.2.* — wildcard. Точная "1.2.3" — без отклонений. Знак @dev / @stable управляет min-stability.',
+                'code_example' => '{
+    "require": {
+        "php": "^8.2",                  // 8.2.x — 8.99.x, не 9.0
+        "laravel/framework": "^11.0",   // 11.x, не 12
+        "guzzlehttp/guzzle": "~7.5.0",  // 7.5.x, не 7.6
+        "symfony/console": "6.4.*"      // любой patch 6.4
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.composer_autoload',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что такое автозагрузка (autoload) в PHP простыми словами?',
-                'answer' => 'Механизм, который при использовании класса (new App\\User) автоматически подгружает его файл — без ручных require. В Composer-проектах подключается одним require __DIR__.\'/vendor/autoload.php\' в bootstrap, дальше всё работает само.',
+                'answer' => 'Механизм, который при первом упоминании класса (new App\\User, App\\User::CONST, instanceof App\\User) автоматически подгружает его файл — без ручных require. Реализуется через spl_autoload_register: PHP при «не знаю такого класса» вызывает зарегистрированный callback с именем класса, тот находит файл и подключает. В Composer-проектах достаточно одного require __DIR__ . "/vendor/autoload.php" в bootstrap — дальше все классы из vendor и твоего src/ грузятся сами по правилам PSR-4.',
+                'code_example' => '<?php
+// bootstrap (обычно public/index.php)
+require __DIR__ . "/../vendor/autoload.php";
+
+use App\Models\User;       // ← Composer сам найдёт src/Models/User.php
+$u = new User();
+
+// Ручной автозагрузчик без Composer — для общего понимания
+spl_autoload_register(function (string $class) {
+    $path = __DIR__ . "/src/" . str_replace("\\\\", "/", $class) . ".php";
+    if (file_exists($path)) require $path;
+});',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.composer_autoload',
             ],

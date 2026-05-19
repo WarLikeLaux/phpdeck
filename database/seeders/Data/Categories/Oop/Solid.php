@@ -333,6 +333,29 @@ class TaxCalculator { public function calc(User $u): float { return 0; } }',
                 'answer' => 'Open for extension, closed for modification: код должен быть открыт для расширения (можно добавить новое поведение), но закрыт для изменения (не трогать существующий). Достигается полиморфизмом: вместо if/elseif/elseif по типу — добавь новый класс, реализующий интерфейс. Старый код не меняется.',
                 'difficulty' => 2,
                 'topic' => 'oop.solid',
+                'code_example' => '<?php
+// ❌ Было: новый тип = правка switch
+function area(object $s): float
+{
+    if ($s instanceof Circle) return M_PI * $s->r ** 2;
+    if ($s instanceof Square) return $s->side ** 2;
+    throw new \InvalidArgumentException();
+}
+
+// ✅ Стало: новая фигура = новый класс, area() не трогаем
+interface Shape { public function area(): float; }
+
+class Circle implements Shape {
+    public function __construct(private float $r) {}
+    public function area(): float { return M_PI * $this->r ** 2; }
+}
+class Square implements Shape {
+    public function __construct(private float $side) {}
+    public function area(): float { return $this->side ** 2; }
+}
+
+function area2(Shape $s): float { return $s->area(); }',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -340,6 +363,30 @@ class TaxCalculator { public function calc(User $u): float { return 0; } }',
                 'answer' => 'Liskov Substitution: объект подкласса должен быть СОВМЕСТИМ с объектом родителя — можно подменить и всё продолжит работать. Классический пример нарушения: Square extends Rectangle. У Rectangle есть setWidth/setHeight независимо; у Square ширина = высота, и подмена сломает код, ожидающий Rectangle. Решение — не наследовать там, где is-a нарушает контракт.',
                 'difficulty' => 2,
                 'topic' => 'oop.solid',
+                'code_example' => '<?php
+class Bird
+{
+    public function fly(): void {}
+}
+
+// ❌ Нарушение LSP - подмена ломает клиента
+class Penguin extends Bird
+{
+    public function fly(): void
+    {
+        throw new \LogicException(\'Пингвины не летают\');
+    }
+}
+
+function startFlight(Bird $b): void { $b->fly(); } // упадёт с Penguin
+
+// ✅ Решение - разделить иерархию по способностям
+interface BirdLike {}
+interface FlyingBird extends BirdLike { public function fly(): void; }
+
+class Sparrow  implements FlyingBird { public function fly(): void {} }
+class Penguin2 implements BirdLike {} // не FlyingBird - не имеет fly()',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -347,6 +394,32 @@ class TaxCalculator { public function calc(User $u): float { return 0; } }',
                 'answer' => 'Interface Segregation: лучше много маленьких интерфейсов с конкретной ролью, чем один «жирный». Класс не должен зависеть от методов, которые ему не нужны. Вместо одного MultiPrinter с print/scan/fax — три интерфейса: Printer, Scanner, Faxable. Класс реализует только то, что реально умеет.',
                 'difficulty' => 2,
                 'topic' => 'oop.solid',
+                'code_example' => '<?php
+// ❌ Жирный интерфейс - простой принтер вынужден заглушать scan/fax
+interface MultiDevice
+{
+    public function print(string $doc): void;
+    public function scan(): string;
+    public function fax(string $to, string $doc): void;
+}
+
+// ✅ Разделили по ролям - класс реализует только нужное
+interface Printer { public function print(string $doc): void; }
+interface Scanner { public function scan(): string; }
+interface Faxable { public function fax(string $to, string $doc): void; }
+
+class SimplePrinter implements Printer
+{
+    public function print(string $doc): void { /* ... */ }
+}
+
+class OfficeMfp implements Printer, Scanner, Faxable
+{
+    public function print(string $doc): void {}
+    public function scan(): string { return \'\'; }
+    public function fax(string $to, string $doc): void {}
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -354,6 +427,33 @@ class TaxCalculator { public function calc(User $u): float { return 0; } }',
                 'answer' => 'Dependency Inversion: высокоуровневые модули не зависят от низкоуровневых; оба зависят от АБСТРАКЦИЙ. То есть в OrderService зависимость должна быть от интерфейса PaymentGateway, а не от StripeGateway напрямую. Тогда StripeGateway легко поменять на PayPalGateway без правки OrderService. DI (Dependency Injection) — техника реализации DIP.',
                 'difficulty' => 2,
                 'topic' => 'oop.solid',
+                'code_example' => '<?php
+// ❌ Было: сервис прибит к конкретной реализации
+class OrderServiceBad
+{
+    private StripeGateway $gateway;
+    public function __construct() { $this->gateway = new StripeGateway(); }
+}
+
+// ✅ Стало: зависим от абстракции, реализация инжектится
+interface PaymentGateway { public function pay(int $cents): bool; }
+
+class StripeGateway implements PaymentGateway {
+    public function pay(int $c): bool { return true; }
+}
+class PayPalGateway implements PaymentGateway {
+    public function pay(int $c): bool { return true; }
+}
+
+class OrderService
+{
+    public function __construct(private PaymentGateway $gateway) {}
+}
+
+// Подменить реализацию - не трогая OrderService
+$svc = new OrderService(new StripeGateway());
+$svc = new OrderService(new PayPalGateway());',
+                'code_language' => 'php',
             ],
         ];
     }

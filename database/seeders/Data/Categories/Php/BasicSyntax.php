@@ -369,7 +369,15 @@ echo get_debug_type($price); // "float"',
             [
                 'category' => 'PHP',
                 'question' => 'Какие значения в PHP считаются «ложными» (falsy)?',
-                'answer' => 'false, 0, 0.0, "" (пустая строка), "0" (строка-ноль), [] (пустой массив), null. Всё остальное — truthy, включая строку "false" и массив [0].',
+                'answer' => 'false, 0, 0.0, "" (пустая строка), "0" (строка-ноль!), [] (пустой массив), null, а также undefined-переменная (для empty). Всё остальное — truthy, включая строку "false", "0.0", массив [0] и объект. Подвох именно у "0": в большинстве языков непустая строка — truthy, в PHP — нет.',
+                'code_example' => '<?php
+var_dump((bool) "");      // false
+var_dump((bool) "0");     // false ⚠️
+var_dump((bool) "0.0");   // true (не "0"!)
+var_dump((bool) "false"); // true
+var_dump((bool) []);      // false
+var_dump((bool) [0]);     // true',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.basic_syntax',
             ],
@@ -548,14 +556,44 @@ $ok = print "Hi";             // 1 - можно использовать в вы
             [
                 'category' => 'PHP',
                 'question' => 'Что такое глобальные и локальные переменные в PHP?',
-                'answer' => 'Локальные — видны только внутри функции, где объявлены. Глобальные — объявлены вне функции, но внутри функции не видны автоматически. Чтобы достать глобальную внутри функции — global $var; или $GLOBALS["var"]. Хорошая практика — передавать всё через параметры, а не через global.',
+                'answer' => 'Локальные — видны только внутри функции, где объявлены, и умирают вместе с функцией. Глобальные — объявлены вне функции; внутри функции НЕ видны автоматически (в отличие от многих других языков). Чтобы достать глобальную внутри функции — global $var; или $GLOBALS["var"]. Хорошая практика — передавать всё через параметры, а не через global, это делает зависимости явными и упрощает тесты.',
+                'code_example' => '<?php
+$counter = 0;          // глобальная
+
+function bad() {
+    echo $counter;     // Warning: Undefined variable
+}
+
+function viaGlobal() {
+    global $counter;   // импортируем глобальную
+    $counter++;
+}
+
+function viaSuper() {
+    $GLOBALS["counter"]++;  // то же без global
+}
+
+// Лучше — явно через параметр
+function good(int $c): int {
+    return $c + 1;
+}',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.basic_syntax',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Зачем нужен include / require / require_once?',
-                'answer' => 'Вставляют содержимое другого PHP-файла. require падает с фатальной ошибкой, если файла нет; include даёт только Warning. *_once — гарантирует, что файл подключится не больше раза. В современном PHP подключение делается автозагрузчиком Composer, ручной require используется только для bootstrap.',
+                'answer' => 'Все четыре вставляют содержимое другого PHP-файла в текущее место. require падает с фатальной ошибкой (Error), если файла нет — скрипт умирает. include даёт только Warning и продолжает выполнение. *_once — гарантирует, что файл подключится не больше одного раза (защита от повторного объявления классов и функций). В современном PHP подключение классов делается автозагрузчиком Composer, ручной require обычно нужен только для bootstrap-файла приложения.',
+                'code_example' => '<?php
+require __DIR__ . "/vendor/autoload.php"; // обязательно, иначе fatal
+require_once "config.php";                // защита от повторного include
+include "header.php";                     // если нет — Warning, идём дальше
+include_once "footer.php";
+
+// Подключаемый файл может вернуть значение
+$config = require __DIR__ . "/config.php"; // если файл делает return [...]',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.basic_syntax',
             ],
@@ -602,21 +640,62 @@ echo greet(hi: "Hi");          // "Hi, Гость!"',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое variadic-функция (переменное число аргументов)?',
-                'answer' => 'Функция, принимающая произвольное число аргументов. Синтаксис: function sum(int ...$nums) {} — внутри $nums будет массивом всех переданных значений. Вызов: sum(1, 2, 3) или sum(...$array). Удобно для логгеров, агрегаторов, фабрик.',
+                'answer' => 'Функция, принимающая произвольное число аргументов. Синтаксис ...$args в последнем параметре — собирает все «лишние» аргументы в массив. Тип перед ... ограничивает тип каждого элемента: function sum(int ...$nums) принимает только int-ы. Вызывать можно «как обычно» (sum(1,2,3)) или с распаковкой существующего массива (sum(...$arr)). Удобно для логгеров, агрегаторов, фабрик. Заменяет старый func_get_args().',
+                'code_example' => '<?php
+function sum(int ...$nums): int {
+    return array_sum($nums);
+}
+
+echo sum(1, 2, 3);          // 6
+echo sum(...[10, 20, 30]);  // 60 — распаковка массива
+
+// Обязательные параметры идут до variadic
+function log(string $level, string ...$messages): void {
+    echo "[$level] " . implode(", ", $messages);
+}
+log("INFO", "started", "ok");',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.basic_syntax',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что такое type hints для параметров функции?',
-                'answer' => 'Объявление ожидаемого типа параметра: function greet(string $name, int $age) {}. Если передать неверный тип — PHP бросит TypeError. Поддерживаются: int, float, string, bool, array, callable, iterable, object, имена классов/интерфейсов, ?Type (nullable), union (int|string), intersection (A&B).',
+                'answer' => 'Объявление ожидаемого типа параметра и возвращаемого значения. Если тип не подходит — PHP бросит TypeError. Поддерживаются: скаляры (int, float, string, bool), array, callable, iterable, object, mixed, имена классов и интерфейсов, ?Type (nullable, т. е. Type|null), union-типы (int|string), intersection (A&B), self/static/parent, void/never для возврата. Без declare(strict_types=1) PHP пытается приводить значения (coercive mode), со strict — TypeError даже на "5" → int.',
+                'code_example' => '<?php
+declare(strict_types=1);
+
+function greet(string $name, ?int $age = null): string {
+    return $age ? "$name, $age" : $name;
+}
+
+function pickFirst(int|string $x): int|string { return $x; }
+
+// TypeError со strict_types=1
+// greet(123, 30);
+
+// Union возврата
+function find(int $id): ?User { /* ... */ }',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.basic_syntax',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что такое приведение типов (type juggling) в PHP?',
-                'answer' => 'Автоматическое преобразование значения из одного типа в другой при операции. "5" + 3 даст 8 (string → int). "abc" + 3 даст 3 (нечисловая строка → 0). Это удобно, но опасно — источник тонких багов. Явное приведение: (int)"5", (string)42, intval("5"), strval(42). С strict_types=1 при передаче в функцию авто-приведения нет — TypeError.',
+                'answer' => 'Автоматическое преобразование значения из одного типа в другой при операциях и сравнениях. "5" + 3 даст 8 (PHP интерпретировал строку как int). С PHP 8 нечисловая строка в арифметике "abc" + 3 уже даёт TypeError, а leading-numeric ("5abc" + 1) — Warning. Type juggling делает код короче, но и порождает тонкие баги ("0" == false, 0 == "abc" до PHP 8). Явное приведение — через касты (int), (string), (bool), (array) или функции intval, strval, boolval. С declare(strict_types=1) авто-приведения при передаче в функцию нет — сразу TypeError.',
+                'code_example' => '<?php
+echo "5" + 3;        // 8     — int + int
+echo "5.5" + 3;      // 8.5   — float
+echo "5abc" + 3;     // 8     + Warning (leading-numeric)
+// echo "abc" + 3;   // TypeError (PHP 8+)
+
+// Явное приведение
+$n = (int) "42";     // 42
+$s = (string) 42;    // "42"
+$b = (bool) "0";     // false ⚠️
+$a = (array) "hi";   // ["hi"]',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.basic_syntax',
             ],

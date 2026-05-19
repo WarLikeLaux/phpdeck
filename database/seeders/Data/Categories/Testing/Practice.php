@@ -31,7 +31,7 @@ class Practice
             [
                 'category' => 'Тестирование',
                 'question' => 'Что такое fixture простыми словами?',
-                'answer' => 'Подготовленный набор данных для теста. Например, БД, в которой уже есть 5 юзеров с заказами — фикстура. Раньше хранили в YAML/JSON-файлах, сейчас в Laravel чаще используют factory-классы для генерации.',
+                'answer' => 'Заранее подготовленный набор данных, в котором тест стартует — «известное начальное состояние». Например, БД с 5 юзерами и заказами под них, или JSON-файл с ожидаемым payload-ом API. Раньше хранили в YAML/JSON в /tests/fixtures и грузили через loadFixture(\'users.yml\'). В Laravel классические fixture-файлы почти ушли — вместо них factory-классы (User::factory()->count(5)->create()) и database seeders, потому что они выразительнее и генерируют рандомные валидные данные.',
                 'difficulty' => 2,
                 'topic' => 'testing.practice',
             ],
@@ -47,7 +47,9 @@ class Practice
             [
                 'category' => 'Тестирование',
                 'question' => 'Что такое RefreshDatabase trait в Laravel?',
-                'answer' => 'Трейт в тестах, который откатывает все изменения БД после каждого теста через транзакцию. Зачем: тест №2 не должен видеть данные теста №1 — иначе тесты взаимозависимы и flaky. use RefreshDatabase; — каждый тест начинается с чистой БД.',
+                'answer' => 'Трейт в тестах, который изолирует БД между тестами: каждый тест оборачивается в транзакцию, в конце — ROLLBACK. Зачем: тест №2 не должен видеть данные теста №1 — иначе тесты взаимозависимы и flaky. На первом запуске трейт прогоняет миграции (php artisan migrate), дальше — только транзакции, поэтому быстро. Альтернатива — DatabaseMigrations: дропает и мигрирует БД заново на каждый тест (медленно, но работает, когда транзакции не подходят, например, при тестировании самих транзакций).',
+                'code_example' => "<?php\n\nnamespace Tests\\Feature;\n\nuse App\\Models\\User;\nuse Illuminate\\Foundation\\Testing\\RefreshDatabase;\nuse Tests\\TestCase;\n\nclass UserRegistrationTest extends TestCase\n{\n    use RefreshDatabase; // каждый тест стартует с чистой БД\n\n    public function test_first_user_is_created(): void\n    {\n        User::factory()->create();\n\n        \$this->assertDatabaseCount('users', 1);\n    }\n\n    public function test_second_test_does_not_see_previous_user(): void\n    {\n        // Здесь БД снова пуста — никакого юзера из прошлого теста\n        \$this->assertDatabaseCount('users', 0);\n    }\n}",
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'testing.practice',
             ],

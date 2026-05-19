@@ -213,7 +213,24 @@ class ProfileController extends Controller implements HasMiddleware
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое guards в Laravel простыми словами?',
-                'answer' => 'Способ задать «как проверить, что юзер залогинен». Дефолтный guard \'web\' — через сессию и куки (для браузерных приложений). Guard \'api\' — через токен (Sanctum/Passport). Используется когда нужно несколько разных типов входа: например, отдельная авторизация для админки и API. Auth::guard(\'api\')->user().',
+                'answer' => 'Guard — это стратегия проверки «кто этот юзер». Дефолтный web — сессия и куки (для браузера). api с драйвером sanctum — Bearer-токен. Можно настроить несколько guards в config/auth.php: например отдельный admin для админки со своей таблицей admins. Доступ к конкретному guard — Auth::guard(\'admin\'). Middleware auth:web проверяет, что web-guard вернул юзера, иначе редирект на /login.',
+                'code_example' => '// config/auth.php
+\'guards\' => [
+    \'web\'   => [\'driver\' => \'session\', \'provider\' => \'users\'],
+    \'admin\' => [\'driver\' => \'session\', \'provider\' => \'admins\'],
+    \'api\'   => [\'driver\' => \'sanctum\', \'provider\' => \'users\'],
+],
+
+// Использование конкретного guard
+auth()->guard(\'admin\')->attempt($credentials);
+$admin = auth(\'admin\')->user();
+Auth::guard(\'admin\')->check();
+
+// Защита маршрутов конкретным guard
+Route::middleware(\'auth:admin\')->group(function () {
+    Route::get(\'/admin\', [AdminController::class, \'index\']);
+});',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.auth_authorization',
             ],

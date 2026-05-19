@@ -233,6 +233,13 @@ DB::raw("SELECT pg_advisory_lock(?)"); // session-level lock протекает 
                 'category' => 'Базы данных',
                 'question' => 'Какие числовые типы предоставляет PostgreSQL и когда какой выбирать?',
                 'answer' => 'Целые: smallint (2 байта), integer (4 байта), bigint (8 байт). Для денежных и точных расчётов берут numeric/decimal с заданной точностью — он точный, но медленнее. Для научных расчётов годятся real (4 байта) и double precision (8 байт), но они приближённые из-за плавающей точки. Для автоинкрементных ключей исторически использовали serial/bigserial, в современном PG предпочтительнее GENERATED ... AS IDENTITY как стандарт SQL.',
+                'code_example' => 'CREATE TABLE products (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    qty        INTEGER          NOT NULL,
+    price      NUMERIC(10, 2)   NOT NULL,   -- точная сумма
+    weight_kg  DOUBLE PRECISION              -- приближённый вес
+);',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.postgresql',
             ],
@@ -240,6 +247,14 @@ DB::raw("SELECT pg_advisory_lock(?)"); // session-level lock протекает 
                 'category' => 'Базы данных',
                 'question' => 'Чем различаются CHAR(n), VARCHAR(n) и TEXT в PostgreSQL?',
                 'answer' => 'CHAR(n) дополняет строку пробелами до фиксированной длины, VARCHAR(n) хранит строку переменной длины с лимитом, TEXT — переменной длины без лимита. В отличие от многих СУБД, в PostgreSQL все три типа хранятся одинаково и имеют одинаковую производительность. Поэтому в PG обычно берут TEXT или VARCHAR без указания n, а ограничение длины задают через CHECK при необходимости.',
+                'code_example' => 'CREATE TABLE users (
+    id    BIGSERIAL PRIMARY KEY,
+    code  CHAR(3),       -- ровно 3 символа, добивается пробелами
+    name  VARCHAR(255),  -- до 255 символов
+    bio   TEXT           -- произвольная длина
+        CHECK (length(bio) <= 10000)  -- мягкий лимит через CHECK
+);',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.postgresql',
             ],
@@ -254,6 +269,16 @@ DB::raw("SELECT pg_advisory_lock(?)"); // session-level lock протекает 
                 'category' => 'Базы данных',
                 'question' => 'Что такое тип ENUM в PostgreSQL и какие у него ограничения?',
                 'answer' => 'ENUM — это пользовательский тип со статическим упорядоченным набором строковых значений, создаётся через CREATE TYPE mood AS ENUM (...). Сравнение и сортировка работают по порядку объявления, значения занимают 4 байта. Добавлять значения можно через ALTER TYPE ... ADD VALUE, но удалять или переименовывать существующие сложно и требует пересоздания типа. Из-за этой неподвижности на практике часто заменяют на отдельную lookup-таблицу или CHECK по строке.',
+                'code_example' => 'CREATE TYPE order_status AS ENUM (\'new\', \'paid\', \'shipped\', \'cancelled\');
+
+CREATE TABLE orders (
+    id     BIGSERIAL PRIMARY KEY,
+    status order_status NOT NULL DEFAULT \'new\'
+);
+
+-- Добавить значение можно, удалить — нет
+ALTER TYPE order_status ADD VALUE \'refunded\';',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.postgresql',
             ],
@@ -268,6 +293,17 @@ DB::raw("SELECT pg_advisory_lock(?)"); // session-level lock протекает 
                 'category' => 'Базы данных',
                 'question' => 'Что такое CHECK constraint и зачем он нужен на уровне БД?',
                 'answer' => 'CHECK — это ограничение, которое проверяет произвольное логическое выражение для каждой строки, например CHECK (price > 0) или CHECK (status IN (\'new\',\'paid\')). Оно гарантирует инвариант данных на уровне БД, поэтому ни ORM-баг, ни ручной UPDATE из psql не смогут его обойти. CHECK может ссылаться на несколько колонок одной строки, но не на другие таблицы — для межтабличных правил используют триггеры или EXCLUDE constraint. Ограничение проверяется на INSERT/UPDATE и при добавлении самого CHECK к существующей таблице.',
+                'code_example' => 'CREATE TABLE products (
+    id    BIGSERIAL PRIMARY KEY,
+    price NUMERIC(10, 2) NOT NULL CHECK (price > 0),
+    status VARCHAR(20)   NOT NULL CHECK (status IN (\'new\', \'paid\', \'shipped\')),
+    -- многоколоночное условие
+    CHECK (discount_price IS NULL OR discount_price < price)
+);
+
+-- Добавить CHECK к уже существующей таблице
+ALTER TABLE products ADD CONSTRAINT price_positive CHECK (price > 0);',
+                'code_language' => 'sql',
                 'difficulty' => 2,
                 'topic' => 'database.postgresql',
             ],

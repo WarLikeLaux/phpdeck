@@ -651,28 +651,103 @@ echo $u->greet();  // "Привет, я Иван"',
             [
                 'category' => 'PHP',
                 'question' => 'Как работает наследование в PHP (extends)?',
-                'answer' => 'class Admin extends User {} — Admin получает все public/protected свойства и методы User. Доступ к родительскому методу через parent::method(). Если переопределяешь метод родителя — это override. PHP поддерживает только одиночное наследование (один родитель), множественное — только через интерфейсы или трейты.',
+                'answer' => 'class Admin extends User {} — Admin получает все public/protected свойства и методы User (private — нет). Доступ к родительскому методу через parent::method(). Если переопределяешь метод родителя — это override. Конструктор родителя НЕ вызывается автоматически — обязательно parent::__construct(). PHP поддерживает только одиночное наследование (один родитель); чтобы добавить поведение из нескольких источников — интерфейсы (для контракта) и трейты (для реализации). Запрет наследования — final class.',
+                'code_example' => '<?php
+class User {
+    public function __construct(public string $name) {}
+    public function role(): string { return "user"; }
+}
+
+class Admin extends User {
+    public function __construct(string $name, public array $perms) {
+        parent::__construct($name);
+    }
+    public function role(): string { return "admin"; } // override
+}
+
+$a = new Admin("Иван", ["edit"]);
+echo $a->role(); // "admin"',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.oop',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Как работает abstract class в PHP?',
-                'answer' => 'abstract class Animal { abstract public function makeSound(): string; }. Сам класс нельзя создать через new — только наследоваться. abstract-метод не имеет тела, наследник обязан его реализовать. Может содержать обычные методы и свойства — общая основа для группы классов.',
+                'answer' => 'Класс, объявленный с abstract, нельзя создать через new — только унаследовать. abstract-метод не имеет тела, и наследник ОБЯЗАН его реализовать (иначе fatal). При этом abstract-класс может содержать и обычные реализованные методы и свойства — это общая основа для группы классов. От интерфейса отличается тем, что может иметь состояние (свойства) и готовую реализацию методов; наследовать можно только ОДИН абстрактный класс.',
+                'code_example' => '<?php
+abstract class Shape {
+    public function __construct(public string $color) {}
+
+    abstract public function area(): float;        // должен реализовать наследник
+
+    public function describe(): string {           // общий код
+        return "{$this->color}, S = {$this->area()}";
+    }
+}
+
+class Circle extends Shape {
+    public function __construct(string $color, public float $r) {
+        parent::__construct($color);
+    }
+    public function area(): float { return M_PI * $this->r ** 2; }
+}
+
+// new Shape("red"); // Error: cannot instantiate abstract class',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.oop',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Как работает interface в PHP?',
-                'answer' => 'interface Sendable { public function send(): void; }. Описывает «контракт» — какие методы должен иметь класс. Класс реализует через implements: class Email implements Sendable {}. Можно реализовывать несколько интерфейсов: implements A, B, C. Все методы интерфейса должны быть public.',
+                'answer' => 'Интерфейс описывает «контракт» — какие public-методы обязан иметь реализующий его класс, без указания КАК они работают. Класс подключает интерфейсы через implements и может реализовать СРАЗУ НЕСКОЛЬКО: implements A, B, C — так и решается отсутствие множественного наследования. Все методы интерфейса публичные и без тела. Могут содержать константы. Интерфейсы дают полиморфизм (передавай в код тип-интерфейс, а не конкретный класс) и упрощают моки в тестах.',
+                'code_example' => '<?php
+interface Sendable {
+    public function send(string $to): void;
+}
+
+class EmailNotifier implements Sendable {
+    public function send(string $to): void { /* SMTP */ }
+}
+
+class SmsNotifier implements Sendable {
+    public function send(string $to): void { /* SMS API */ }
+}
+
+// Полиморфизм — функция принимает любую реализацию
+function notify(Sendable $n, string $to): void {
+    $n->send($to);
+}
+notify(new EmailNotifier(), "a@b.c");',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.oop',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Как работает trait в PHP?',
-                'answer' => 'trait Loggable { public function log($msg) {...} }. Подключается в класс через use Loggable; — методы трейта становятся методами класса. Решает проблему отсутствия множественного наследования: можно подмешать поведение из нескольких трейтов в один класс.',
+                'answer' => 'Трейт — это набор методов и свойств, который можно «подмешать» в класс через use Trait;. Решает проблему отсутствия множественного наследования: подключаешь несколько трейтов — получаешь поведение из каждого. Сам трейт не тип, его нельзя инстанцировать и нельзя передать как параметр. При конфликте имён в нескольких трейтах используют insteadof и as. Типичные кейсы: cross-cutting concerns — Loggable, Timestampable, Cacheable.',
+                'code_example' => '<?php
+trait Timestampable {
+    public ?int $createdAt = null;
+    public function touch(): void { $this->createdAt ??= time(); }
+}
+
+trait Loggable {
+    public function log(string $msg): void {
+        echo "[" . static::class . "] $msg\n";
+    }
+}
+
+class Post {
+    use Timestampable, Loggable;
+}
+
+$p = new Post();
+$p->touch();
+$p->log("created");',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.oop',
             ],
@@ -708,7 +783,25 @@ $u = User::guest();',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое Reflection API в PHP простыми словами?',
-                'answer' => 'Встроенный API, позволяющий В РАНТАЙМЕ изучать классы, методы, свойства, параметры — даже если ты не знаешь их заранее. new ReflectionClass(User::class) — получить инфу о классе; ->getMethods() — список методов; ->getProperty("name") — конкретное свойство. Применяется фреймворками: Laravel так разбирает type-hints в конструкторах для авто-инжекта, PHPUnit — чтобы находить test-методы, ORM — для маппинга колонок на свойства.',
+                'answer' => 'Встроенный API, позволяющий в РАНТАЙМЕ изучать чужой код: классы, методы, свойства, параметры, атрибуты — даже если ты не знаешь их заранее. Применяется фреймворками: DI-контейнер Laravel так разбирает type-hints в конструкторах для авто-инжекта, PHPUnit находит test-методы, ORM мапит колонки на свойства. С PHP 8 Reflection видит и читает атрибуты (#[Route] и т. п.). Минус — медленнее прямых вызовов, поэтому Reflection обычно используют один раз на старте и кэшируют результат.',
+                'code_example' => '<?php
+class User {
+    public function __construct(public string $name, private int $age) {}
+    public function greet(): string { return "Hi, $this->name"; }
+}
+
+$r = new ReflectionClass(User::class);
+echo $r->getName();                       // "User"
+
+foreach ($r->getMethods() as $m) {
+    echo $m->getName() . "\n";            // __construct, greet
+}
+
+$ctor = $r->getConstructor();
+foreach ($ctor->getParameters() as $p) {
+    echo $p->getName() . ": " . $p->getType() . "\n";
+}',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.oop',
             ],
