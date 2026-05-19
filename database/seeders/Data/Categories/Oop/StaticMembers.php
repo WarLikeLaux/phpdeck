@@ -59,7 +59,22 @@ var_dump(B::createStatic()); // object(B)',
                 'topic' => 'oop.static_members',
                 'difficulty' => 1,
                 'question' => 'Что такое static простыми словами?',
-                'answer' => 'Метод или свойство, которые принадлежат самому КЛАССУ, а не объекту. Доступ — через имя класса: Counter::$count, Counter::increment(). Объект не нужен, $this внутри static недоступен. Используется для утилитарных функций без состояния.',
+                'answer' => 'Метод или свойство, которые принадлежат самому КЛАССУ, а не конкретному объекту. Доступ — через имя класса и :: (Counter::$count, Counter::increment()). Объект создавать не нужно. Внутри статического метода нет $this — но есть self::/static:: для обращения к другим статическим членам. Используют для утилит без состояния и счётчиков уровня класса.',
+                'code_example' => '<?php
+class Counter
+{
+    public static int $count = 0;
+
+    public static function increment(): void
+    {
+        self::$count++; // $this недоступен
+    }
+}
+
+Counter::increment();
+Counter::increment();
+echo Counter::$count; // 2 - значение общее для всего класса',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

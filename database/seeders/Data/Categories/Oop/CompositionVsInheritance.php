@@ -43,14 +43,49 @@ $car = new Car(new Engine());',
                 'topic' => 'oop.composition_vs_inheritance',
                 'difficulty' => 1,
                 'question' => 'Что такое композиция объектов простыми словами?',
-                'answer' => 'Когда один объект СОДЕРЖИТ другие объекты как свои поля и пользуется ими. Car содержит Engine: $car = new Car(new Engine()). Отношение «has-a» (имеет). Гибче наследования: легко заменить двигатель, не трогая Car.',
+                'answer' => 'Когда один объект СОДЕРЖИТ другие объекты как свои поля и делегирует им работу. Отношение «has-a» (имеет): у Car есть Engine. Двигатель передаётся снаружи через конструктор, поэтому реализацию (бензиновый/электрический/мок в тесте) можно подменить, не трогая Car. Это гибче наследования и не связывает классы жёстко.',
+                'code_example' => '<?php
+class Engine
+{
+    public function run(): void { /* ... */ }
+}
+
+class Car
+{
+    // Car "имеет" Engine - композиция
+    public function __construct(private Engine $engine) {}
+
+    public function start(): void
+    {
+        $this->engine->run();
+    }
+}
+
+$car = new Car(new Engine());
+$car->start();',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'topic' => 'oop.composition_vs_inheritance',
                 'difficulty' => 1,
                 'question' => 'Когда выбирать композицию, а когда наследование простыми словами?',
-                'answer' => 'Наследование — для отношения «является» (is-a): Admin — это User. Композиция — для «имеет» (has-a): Car имеет Engine. Правило «composition over inheritance»: если сомневаешься — выбирай композицию. Наследование жёстко связывает, потомок зависит от деталей родителя, и менять родителя страшно.',
+                'answer' => 'Наследование — для отношения «является» (is-a): Admin — это User. Композиция — для «имеет» (has-a): у Car есть Engine. Правило «composition over inheritance»: если сомневаешься — выбирай композицию. Наследование жёстко связывает классы и потомок зависит от внутренних деталей родителя — менять родителя становится страшно.',
+                'code_example' => '<?php
+// is-a → наследование
+class User { public string $name = \'\'; }
+class Admin extends User { public function ban(): void {} }
+
+// has-a → композиция
+class Engine { public function run(): void {} }
+class Car
+{
+    public function __construct(private Engine $engine) {}
+}
+
+// Антипример: has-a через наследование
+// class Car extends Engine {} // плохо: Car не "является" Engine',
+                'code_language' => 'php',
             ],
         ];
     }

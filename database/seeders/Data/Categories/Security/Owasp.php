@@ -10,7 +10,7 @@ class Owasp
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое OWASP Top 10 простыми словами?',
-                'answer' => 'Список из 10 самых распространённых уязвимостей веб-приложений, который обновляется раз в несколько лет некоммерческой организацией OWASP. Это must-read для любого веб-разработчика: подавляющее большинство реальных взломов идёт через эти классы уязвимостей.',
+                'answer' => 'Список из 10 самых распространённых классов уязвимостей веб-приложений, который обновляется раз в несколько лет некоммерческой организацией OWASP. В версии 2021 в топе: Broken Access Control (№1), Cryptographic Failures, Injection (включая SQLi/XSS), Insecure Design, Security Misconfiguration, Vulnerable Components, Auth Failures, Software/Data Integrity, Logging Failures, SSRF. Это must-read для веб-разработчика — подавляющее большинство реальных взломов идёт через эти классы.',
                 'difficulty' => 1,
                 'topic' => 'security.owasp',
             ],

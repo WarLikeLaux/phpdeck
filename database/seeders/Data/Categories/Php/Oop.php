@@ -628,7 +628,23 @@ class PermissionCacheGood
             [
                 'category' => 'PHP',
                 'question' => 'Как объявить класс в PHP и создать его объект?',
-                'answer' => 'class User { public string $name; }. Создание объекта — через new: $u = new User(). Доступ к свойствам/методам через ->: $u->name = "Иван". Класс может иметь конструктор public function __construct(...) {}, который вызывается автоматически при new.',
+                'answer' => 'Класс — шаблон, объект — конкретный экземпляр. Объявляется через class Name { ... } со свойствами и методами. Создание объекта — через ключевое слово new: $u = new User(). Доступ к свойствам и методам — через стрелочку ->: $u->name. Конструктор public function __construct(...) {} вызывается автоматически при new — обычно в нём принимают и сохраняют начальные данные.',
+                'code_example' => '<?php
+class User {
+    public function __construct(
+        public string $name,
+        public int $age,
+    ) {}
+
+    public function greet(): string {
+        return "Привет, я {$this->name}";
+    }
+}
+
+$u = new User("Иван", 30);
+echo $u->name;     // "Иван"
+echo $u->greet();  // "Привет, я Иван"',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.oop',
             ],
@@ -663,7 +679,29 @@ class PermissionCacheGood
             [
                 'category' => 'PHP',
                 'question' => 'Что такое static-метод и как его вызывать?',
-                'answer' => 'Метод, принадлежащий КЛАССУ, а не объекту. Объявляется static public function generateId() {}. Вызов через ::: User::generateId() — без создания объекта. Внутри static-метода $this недоступен, есть только self/static. Часто используются для фабрик и утилит без состояния.',
+                'answer' => 'Метод, принадлежащий КЛАССУ, а не его экземпляру. Объявляется ключевым словом static и вызывается через ::: User::generateId() — без new. Внутри static-метода нет $this, есть только self:: и static:: (последний учитывает наследование — late static binding). Часто используется для фабричных методов (User::fromArray($data)) и чистых утилит без состояния. Минус: статика сложнее тестируется и мокается, чем обычные методы.',
+                'code_example' => '<?php
+class IdGenerator {
+    private static int $last = 0;
+
+    public static function next(): int {
+        return ++self::$last;
+    }
+}
+
+echo IdGenerator::next(); // 1
+echo IdGenerator::next(); // 2
+
+// Фабричный метод
+class User {
+    public function __construct(public string $name) {}
+
+    public static function guest(): self {
+        return new self("Гость");
+    }
+}
+$u = User::guest();',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.oop',
             ],

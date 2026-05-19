@@ -133,16 +133,51 @@ $p->price = 599.99;',
             [
                 'category' => 'ООП',
                 'question' => 'Чем свойство отличается от метода?',
-                'answer' => 'Свойство — переменная объекта (данные): public string $name. Метод — функция объекта (действие): public function greet() {...}. Свойство хранит, метод делает.',
+                'answer' => 'Свойство — переменная объекта, хранит данные (состояние): public string $name. Метод — функция объекта, описывает действие (поведение): public function greet() {...}. Грубо: свойство ХРАНИТ, метод ДЕЛАЕТ. Обращение к свойству — без скобок ($obj->name), к методу — со скобками ($obj->greet()).',
                 'difficulty' => 1,
                 'topic' => 'oop.basic_concepts',
+                'code_example' => '<?php
+class User
+{
+    public string $name = \'\';            // свойство (данные)
+
+    public function greet(): string       // метод (действие)
+    {
+        return \'Hi, \' . $this->name;
+    }
+}
+
+$u = new User();
+$u->name = \'Иван\';     // обращение к свойству
+echo $u->greet();      // вызов метода',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'question' => 'Что такое $this в методе?',
-                'answer' => 'Ссылка на текущий объект, у которого вызвали метод. Через $this->property получаешь свойство этого экземпляра, через $this->method() — вызываешь другой его метод. Только внутри нестатических методов.',
+                'answer' => 'Ссылка на текущий объект, у которого вызвали метод. Через $this->property получаешь свойство ЭТОГО экземпляра, через $this->method() — вызываешь другой его метод. Доступен только внутри нестатических методов: в static-методах $this не существует.',
                 'difficulty' => 1,
                 'topic' => 'oop.basic_concepts',
+                'code_example' => '<?php
+class User
+{
+    public string $name = \'\';
+
+    public function rename(string $newName): void
+    {
+        $this->name = $newName;       // свойство этого объекта
+    }
+
+    public function greet(): string
+    {
+        return \'Hi, \' . $this->name; // вызвалось у конкретного $u
+    }
+}
+
+$u = new User();
+$u->rename(\'Иван\');
+echo $u->greet(); // Hi, Иван',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
@@ -161,23 +196,67 @@ $p->price = 599.99;',
             [
                 'category' => 'ООП',
                 'question' => 'Как работает синтаксис extends простыми словами?',
-                'answer' => 'class Admin extends User — класс Admin наследует все public/protected свойства и методы класса User. Может добавить новые или переопределить (override). PHP позволяет наследовать ТОЛЬКО ОДИН класс. Для нескольких контрактов — implements interface, для добавления поведения — use trait.',
+                'answer' => 'class Admin extends User — класс Admin наследует все public/protected свойства и методы класса User. Может добавить новые или переопределить (override). PHP разрешает наследовать ТОЛЬКО ОДИН класс. Для нескольких контрактов — implements у интерфейсов, для подмешивания поведения — use trait.',
                 'difficulty' => 1,
                 'topic' => 'oop.basic_concepts',
+                'code_example' => '<?php
+class User
+{
+    public string $name = \'\';
+    public function greet(): string { return \'Hi, \' . $this->name; }
+}
+
+class Admin extends User
+{
+    public function ban(string $reason): void { /* ... */ }
+}
+
+$a = new Admin();
+$a->name = \'Root\';
+echo $a->greet(); // унаследовано
+$a->ban(\'spam\'); // своё',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'question' => 'Что такое parent:: и зачем оно нужно?',
-                'answer' => 'parent:: — обращение к методу или константе РОДИТЕЛЯ из наследника. Чаще всего используется: 1) в конструкторе ребёнка вызывать parent::__construct(...) чтобы инициализировать родительские свойства. 2) При override — вызвать родительскую логику и добавить свою: parent::save(); $this->log();.',
+                'answer' => 'parent:: — обращение к методу или константе РОДИТЕЛЯ из наследника. Чаще всего используется: 1) в конструкторе потомка позвать parent::__construct(...), чтобы инициализировать родительские свойства. 2) При override — позвать родительскую реализацию и добавить своё поведение: parent::save(); $this->log();.',
                 'difficulty' => 1,
                 'topic' => 'oop.basic_concepts',
+                'code_example' => '<?php
+class Repository
+{
+    public function save(): void { /* запись в БД */ }
+}
+
+class LoggingRepository extends Repository
+{
+    public function save(): void
+    {
+        parent::save();              // сначала родительская логика
+        error_log(\'saved at \' . time()); // потом своё
+    }
+}',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'question' => 'Что такое константа класса (const)?',
-                'answer' => 'Неизменяемое значение, привязанное к классу. Объявляется через const: class Status { const ACTIVE = 1; const BANNED = 2; }. Доступ через ::: Status::ACTIVE. Не имеет $. По соглашению — UPPER_CASE. Может быть в интерфейсе. С PHP 8.3 можно типизировать: const int OK = 200.',
+                'answer' => 'Неизменяемое значение, привязанное к классу. Объявляется через const, доступ через :: и имя класса. Имени без $ (это не переменная). По соглашению — UPPER_CASE. Может быть и в интерфейсе. С PHP 8.1 можно пометить final (запрет переопределения в потомке), с PHP 8.3 — типизировать.',
                 'difficulty' => 1,
                 'topic' => 'oop.basic_concepts',
+                'code_example' => '<?php
+class Status
+{
+    const ACTIVE = 1;
+    const BANNED = 2;
+    const int OK = 200;          // PHP 8.3: типизированная
+    final const string VERSION = \'v1\'; // PHP 8.1: final
+}
+
+echo Status::ACTIVE;  // 1
+echo Status::VERSION; // v1',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

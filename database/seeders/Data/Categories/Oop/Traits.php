@@ -191,7 +191,33 @@ trait FormatsMoney {
                 'topic' => 'oop.traits',
                 'difficulty' => 1,
                 'question' => 'Что такое трейт (trait) простыми словами?',
-                'answer' => 'Способ переиспользовать набор методов в нескольких классах без наследования. Объявляется trait, подключается use внутри класса. Методы трейта становятся методами класса. Решает проблему множественного наследования (в PHP его нет) для шаринга поведения.',
+                'answer' => 'Способ переиспользовать набор методов в нескольких НЕ связанных классах без наследования. Объявляется через trait, подключается в класс через use. На этапе компиляции методы трейта как бы «копируются» в класс. Так решается проблема отсутствия множественного наследования в PHP, когда нужно расшарить поведение между классами из разных иерархий.',
+                'code_example' => '<?php
+trait HasTimestamps
+{
+    public ?\DateTimeImmutable $createdAt = null;
+
+    public function touch(): void
+    {
+        $this->createdAt = new \DateTimeImmutable();
+    }
+}
+
+class Article
+{
+    use HasTimestamps;
+    public string $title = \'\';
+}
+
+class Comment
+{
+    use HasTimestamps; // тот же touch() без наследования
+    public string $body = \'\';
+}
+
+$a = new Article();
+$a->touch();',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

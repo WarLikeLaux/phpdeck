@@ -103,7 +103,22 @@ $obj = unserialize($str, ["allowed_classes" => [User::class]]);',
             [
                 'category' => 'PHP',
                 'question' => 'Как прочитать файл целиком в строку в PHP?',
-                'answer' => 'file_get_contents($path) — простейший способ. Возвращает содержимое или false при ошибке. Для построчного чтения больших файлов — fopen + fgets в цикле (экономит память). Для записи — file_put_contents($path, $data).',
+                'answer' => 'file_get_contents($path) — простейший способ, читает весь файл в строку и возвращает её (или false при ошибке, плюс Warning). Зеркальная функция для записи — file_put_contents($path, $data), которая создаёт или перезаписывает файл. Для БОЛЬШИХ файлов так делать нельзя — всё содержимое попадёт в память; читают потоково через fopen + fgets/fread в цикле и закрывают через fclose.',
+                'code_example' => '<?php
+$content = file_get_contents("config.json");
+if ($content === false) {
+    throw new RuntimeException("Не удалось прочитать файл");
+}
+
+file_put_contents("out.txt", $content);
+
+// Большой файл - построчно
+$fh = fopen("big.log", "r");
+while (($line = fgets($fh)) !== false) {
+    // обработать $line
+}
+fclose($fh);',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.std_lib',
             ],
@@ -117,14 +132,39 @@ $obj = unserialize($str, ["allowed_classes" => [User::class]]);',
             [
                 'category' => 'PHP',
                 'question' => 'Как работать с датой в PHP простыми словами?',
-                'answer' => 'Простые задачи: date("Y-m-d H:i:s") — отформатировать текущее время; time() — Unix timestamp; strtotime("+1 day") — строка в timestamp. Для сложного (часовые пояса, арифметика дат) — класс DateTime / DateTimeImmutable. В Laravel поверх него Carbon с удобным API.',
+                'answer' => 'Простые задачи решают функциями: date("Y-m-d H:i:s") отформатирует текущее время, time() вернёт Unix timestamp (секунды с 1970-01-01), strtotime("+1 day") разберёт человекочитаемую строку в timestamp. Для серьёзных задач (часовые пояса, арифметика дат, immutability) используют классы DateTime / DateTimeImmutable. Правило: предпочитать DateTimeImmutable — у DateTime методы мутируют объект и это источник багов. В Laravel поверх неё используется Carbon с удобным API.',
+                'code_example' => '<?php
+echo date("Y-m-d");              // "2026-05-19"
+echo time();                     // 1747...
+echo date("Y-m-d", strtotime("+1 week"));
+
+$dt = new DateTimeImmutable("2026-05-01");
+$next = $dt->modify("+1 day");
+echo $next->format("Y-m-d");     // "2026-05-02"
+echo $dt->format("Y-m-d");       // "2026-05-01" (не изменился)',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.std_lib',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что делают json_encode и json_decode?',
-                'answer' => 'json_encode($data) — превращает массив/объект в JSON-строку. json_decode($json, true) — обратно из JSON в массив (true) или объект stdClass (false). С PHP 7.3 можно передать JSON_THROW_ON_ERROR — невалидный JSON бросит JsonException вместо тихого null/false.',
+                'answer' => 'json_encode($data) превращает PHP-массив/объект в JSON-строку. json_decode($json, true) делает обратное — из JSON в массив (true вторым аргументом) или в объект stdClass (без второго аргумента / false). По умолчанию при ошибке json_decode возвращает null, что легко пропустить — поэтому передают флаг JSON_THROW_ON_ERROR (PHP 7.3+): невалидный JSON выбросит JsonException. Полезные флаги для encode: JSON_UNESCAPED_UNICODE (не экранировать кириллицу), JSON_PRETTY_PRINT (форматирование).',
+                'code_example' => '<?php
+$data = ["name" => "Иван", "age" => 30];
+
+$json = json_encode($data, JSON_UNESCAPED_UNICODE);
+// {"name":"Иван","age":30}
+
+$arr = json_decode($json, true);
+echo $arr["name"]; // "Иван"
+
+try {
+    json_decode("{kaput}", true, flags: JSON_THROW_ON_ERROR);
+} catch (JsonException $e) {
+    echo "битый JSON";
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.std_lib',
             ],

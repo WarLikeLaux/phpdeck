@@ -38,21 +38,69 @@ echo $e->id;            // OK (read)
                 'topic' => 'oop.visibility',
                 'difficulty' => 1,
                 'question' => 'Что такое public простыми словами?',
-                'answer' => 'Свойство или метод доступны откуда угодно: из самого класса, из потомков, и снаружи через объект ($obj->method()). Это «открытая» часть класса, его API.',
+                'answer' => 'Свойство или метод доступны откуда угодно: из самого класса, из потомков и снаружи через объект ($obj->method()). Это «открытая» часть класса — его публичный API, на который полагается внешний код. Если не указать модификатор — PHP считает public по умолчанию.',
+                'code_example' => '<?php
+class User
+{
+    public string $name = \'\';
+
+    public function greet(): string
+    {
+        return \'Привет, \' . $this->name;
+    }
+}
+
+$u = new User();
+$u->name = \'Иван\';      // OK: чтение/запись снаружи
+echo $u->greet();        // OK: вызов снаружи',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'topic' => 'oop.visibility',
                 'difficulty' => 1,
                 'question' => 'Что такое private простыми словами?',
-                'answer' => 'Свойство или метод видны ТОЛЬКО внутри того класса, где объявлены. Ни наследники, ни внешний код их не видят. Используется для деталей реализации, которые нельзя трогать снаружи.',
+                'answer' => 'Свойство или метод видны ТОЛЬКО внутри того класса, где объявлены. Ни наследники, ни внешний код их не видят. Используется для деталей реализации, которые нельзя трогать снаружи: меняй внутренности класса смело — никто на них не завязан.',
+                'code_example' => '<?php
+class Account
+{
+    private int $balance = 0;
+
+    public function deposit(int $amount): void
+    {
+        $this->balance += $amount; // OK: внутри своего класса
+    }
+}
+
+$a = new Account();
+$a->deposit(100);
+// echo $a->balance; // Error: Cannot access private property',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'topic' => 'oop.visibility',
                 'difficulty' => 1,
                 'question' => 'Что такое protected простыми словами?',
-                'answer' => 'Свойство или метод видны внутри класса И его наследников, но НЕ снаружи. Используется, когда хочется дать потомкам доступ для расширения, но скрыть от чужого кода.',
+                'answer' => 'Свойство или метод видны внутри класса И его наследников, но НЕ снаружи. Используется, когда хочется дать потомкам доступ для расширения, но скрыть от чужого кода. Это «полузакрытое» состояние — для иерархии классов.',
+                'code_example' => '<?php
+class Base
+{
+    protected string $name = \'base\';
+}
+
+class Child extends Base
+{
+    public function show(): string
+    {
+        return $this->name; // OK: потомок видит protected
+    }
+}
+
+$c = new Child();
+echo $c->show();       // OK
+// echo $c->name;      // Error: protected недоступен снаружи',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

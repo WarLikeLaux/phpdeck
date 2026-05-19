@@ -144,7 +144,24 @@ $user->save();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое middleware простыми словами?',
-                'answer' => 'Прослойка, через которую проходит каждый HTTP-запрос ДО контроллера. Стандартные задачи: проверить, что юзер залогинен (\'auth\'), проверить CSRF, ограничить число запросов (\'throttle\'), залогировать запрос. Если middleware что-то не нравится — оно отклоняет запрос (например, редирект на /login) и контроллер вообще не вызовется.',
+                'answer' => 'Прослойка, через которую проходит каждый HTTP-запрос ДО контроллера. Стандартные задачи: проверить, что юзер залогинен (\'auth\'), проверить CSRF, ограничить число запросов (\'throttle\'), залогировать запрос. Если middleware что-то не нравится — оно отклоняет запрос (например, редирект на /login) и контроллер вообще не вызовется. Готовое middleware вешается на роут через ->middleware(\'auth\') или на группу.',
+                'code_example' => '// Назначить готовое middleware на роут
+Route::get(\'/profile\', [ProfileController::class, \'show\'])->middleware(\'auth\');
+
+// Несколько middleware и группа
+Route::middleware([\'auth\', \'verified\'])->group(function () {
+    Route::get(\'/dashboard\', [DashboardController::class, \'index\']);
+});
+
+// Своё middleware: php artisan make:middleware EnsureUserIsActive
+public function handle(Request $request, Closure $next): Response
+{
+    if (! $request->user()?->is_active) {
+        return redirect(\'/banned\');
+    }
+    return $next($request); // пропустить дальше в контроллер
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.basic_qa',
             ],

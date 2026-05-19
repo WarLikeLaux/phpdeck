@@ -105,14 +105,30 @@ Schedule::call(fn() => DB::table(\'sessions\')->delete())
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает php artisan route:list?',
-                'answer' => 'Выводит таблицу всех зарегистрированных маршрутов: HTTP-метод, URL, имя, действие (контроллер@метод). Полезно для понимания «какие endpoints есть в приложении». Фильтры: --path=user (только содержащие user), --method=POST, --name=admin.*.',
+                'answer' => 'Выводит таблицу всех зарегистрированных маршрутов: HTTP-метод, URL, имя, действие (контроллер@метод), middleware. Полезно для понимания «какие endpoints есть в приложении» и для отладки имён. Фильтры: --path=user (только содержащие user), --method=POST, --name=admin.*, --except-vendor (без vendor-роутов пакетов), -v (показать middleware).',
+                'code_example' => 'php artisan route:list
+php artisan route:list --path=user
+php artisan route:list --method=POST
+php artisan route:list --name=admin.*
+php artisan route:list -v --except-vendor',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'laravel.artisan',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Какие команды artisan для создания файлов самые частые?',
-                'answer' => 'make:controller, make:model (с опцией -mfsc создаёт и migration/factory/seeder/controller), make:migration, make:seeder, make:factory, make:request, make:job, make:event, make:listener, make:middleware, make:command, make:resource, make:test.',
+                'answer' => 'make:controller, make:model (с опцией -mfsc создаёт миграцию/фабрику/сидер/контроллер сразу), make:migration, make:seeder, make:factory, make:request (FormRequest для валидации), make:job, make:event, make:listener, make:middleware, make:command, make:resource (API Resource), make:test, make:policy, make:rule (кастомное validation rule).',
+                'code_example' => 'php artisan make:controller PostController --resource
+php artisan make:model Post -mfsc
+php artisan make:migration add_status_to_posts_table --table=posts
+php artisan make:request StorePostRequest
+php artisan make:middleware EnsureUserIsActive
+php artisan make:job ProcessPodcast
+php artisan make:resource PostResource
+php artisan make:policy PostPolicy --model=Post
+php artisan make:test PostControllerTest',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'laravel.artisan',
             ],

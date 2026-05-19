@@ -18,6 +18,20 @@ class Api
                 'category' => 'Архитектура систем',
                 'question' => 'Из чего состоит HTTP-запрос и ответ?',
                 'answer' => 'Запрос: 1) стартовая строка — метод + URL + версия (GET /users/42 HTTP/1.1), 2) заголовки (Host, Authorization, Content-Type, ...), 3) пустая строка, 4) тело (опциональное, для POST/PUT/PATCH). Ответ: 1) статусная строка (HTTP/1.1 200 OK), 2) заголовки (Content-Type, Cache-Control, Set-Cookie), 3) пустая строка, 4) тело с данными (JSON, HTML и т.п.). Это базовая структура — её видит браузер и любой HTTP-клиент.',
+                'code_example' => 'POST /api/users HTTP/1.1
+Host: api.example.com
+Authorization: Bearer abc123
+Content-Type: application/json
+Content-Length: 27
+
+{"name":"Vasya","age":30}
+
+HTTP/1.1 201 Created
+Content-Type: application/json
+Location: /api/users/42
+
+{"id":42,"name":"Vasya"}',
+                'code_language' => 'http',
                 'difficulty' => 1,
                 'topic' => 'system_design.api',
             ],

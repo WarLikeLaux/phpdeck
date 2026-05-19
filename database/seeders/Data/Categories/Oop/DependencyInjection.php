@@ -111,14 +111,55 @@ class OrderServiceGood
                 'topic' => 'oop.dependency_injection',
                 'difficulty' => 1,
                 'question' => 'Что такое Dependency Injection простыми словами?',
-                'answer' => 'Принцип: класс НЕ создаёт зависимости сам (new OrderRepo()), а получает их СНАРУЖИ — через конструктор или метод. Это как «передать готовый чайник», а не «найти и купить чайник самому». Делает код тестируемым (можно подсунуть mock) и гибким.',
+                'answer' => 'Принцип: класс НЕ создаёт свои зависимости сам (new OrderRepo()), а получает их СНАРУЖИ — обычно через конструктор. Это как «передать готовый чайник», а не «найти и купить чайник самому». Делает код тестируемым (можно подсунуть mock) и гибким — реализацию легко подменить.',
+                'code_example' => '<?php
+// ❌ Без DI: зависимость вшита в класс
+class OrderServiceBad
+{
+    public function process(): void
+    {
+        $repo = new OrderRepository(); // жёстко прибито
+        $repo->save();
+    }
+}
+
+// ✅ С DI: зависимость передана извне
+class OrderService
+{
+    public function __construct(private OrderRepository $repo) {}
+
+    public function process(): void
+    {
+        $this->repo->save();
+    }
+}
+
+$service = new OrderService(new OrderRepository());',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',
                 'topic' => 'oop.dependency_injection',
                 'difficulty' => 1,
                 'question' => 'Зачем нужен Dependency Injection простыми словами?',
-                'answer' => '1) Тестирование: можно подменить зависимость mock-ом в юнит-тесте. 2) Гибкость: можно подменить реализацию (StripePayment → PayPalPayment) без правки кода клиента. 3) Явность: видно в конструкторе, от чего класс зависит. 4) Меньше связанности — классы не «прибиты гвоздями» друг к другу.',
+                'answer' => '1) Тестирование: легко подменить зависимость mock-ом в юнит-тесте. 2) Гибкость: реализацию (StripePayment → PayPalPayment) можно поменять, не трогая клиент. 3) Явность: по конструктору сразу видно, от чего класс зависит. 4) Меньше связанности — классы не «прибиты гвоздями» друг к другу.',
+                'code_example' => '<?php
+interface PaymentGateway { public function pay(int $cents): bool; }
+
+class StripeGateway implements PaymentGateway { public function pay(int $c): bool { /* ... */ return true; } }
+class FakeGateway   implements PaymentGateway { public function pay(int $c): bool { return true; } }
+
+class OrderService
+{
+    public function __construct(private PaymentGateway $gateway) {}
+}
+
+// В проде - реальный платёжник
+$service = new OrderService(new StripeGateway());
+
+// В тесте - фейк, не дёргает внешний API
+$service = new OrderService(new FakeGateway());',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

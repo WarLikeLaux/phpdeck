@@ -185,7 +185,28 @@ axios.defaults.headers.common[\'X-CSRF-TOKEN\'] =
             [
                 'category' => 'Laravel',
                 'question' => 'Как защитить маршрут от неавторизованных пользователей?',
-                'answer' => 'Назначь middleware \'auth\' на route: Route::get(\'/profile\', ...)->middleware(\'auth\'). Или на group: Route::middleware(\'auth\')->group(function () {...}). Без логина юзера редиректит на /login. В контроллере: $this->middleware(\'auth\') в конструкторе.',
+                'answer' => 'Навесь middleware \'auth\' на route: Route::get(\'/profile\', ...)->middleware(\'auth\') — без логина юзера редиректит на /login. На группу: Route::middleware(\'auth\')->group(...). В контроллере Laravel 11+ middleware задаётся через интерфейс HasMiddleware и статический метод middleware() (старый $this->middleware(\'auth\') в конструкторе из L10 убран — базовый Controller больше не имеет такого метода).',
+                'code_example' => '// На отдельном роуте
+Route::get(\'/profile\', [ProfileController::class, \'show\'])->middleware(\'auth\');
+
+// На группе
+Route::middleware(\'auth\')->group(function () {
+    Route::get(\'/dashboard\', [DashboardController::class, \'index\']);
+    Route::get(\'/settings\', [SettingsController::class, \'edit\']);
+});
+
+// В контроллере (Laravel 11+)
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
+
+class ProfileController extends Controller implements HasMiddleware
+{
+    public static function middleware(): array
+    {
+        return [\'auth\', new Middleware(\'verified\', except: [\'show\'])];
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.auth_authorization',
             ],

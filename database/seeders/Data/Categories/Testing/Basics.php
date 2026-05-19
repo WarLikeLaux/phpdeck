@@ -17,7 +17,9 @@ class Basics
             [
                 'category' => 'Тестирование',
                 'question' => 'Что такое unit-тест простыми словами?',
-                'answer' => 'Тест на одну маленькую единицу кода: метод, функция, класс — В ИЗОЛЯЦИИ от других частей системы. БД, сеть, файлы заменяются на mock-и. Быстрый (миллисекунды), запускается тысячами в CI. Например, тест «calculateDiscount(100, 0.2) возвращает 80».',
+                'answer' => 'Тест на одну маленькую единицу кода: метод, функция, класс — В ИЗОЛЯЦИИ от других частей системы. БД, сеть, файлы заменяются на mock-и или вообще не нужны. Быстрый (миллисекунды), запускается тысячами в CI. Цель — поймать баг точно в этой единице, без шума со стороны соседних слоёв.',
+                'code_example' => "<?php\n\nuse PHPUnit\\Framework\\TestCase;\n\nfinal class DiscountCalculatorTest extends TestCase\n{\n    public function test_applies_percentage_discount(): void\n    {\n        \$calc = new DiscountCalculator();\n\n        // Никакой БД, HTTP, файлов — только чистая логика\n        \$this->assertSame(80.0, \$calc->apply(100.0, 0.2));\n    }\n}",
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'testing.basics',
             ],
@@ -54,7 +56,9 @@ class Basics
             [
                 'category' => 'Тестирование',
                 'question' => 'Что такое assertion простыми словами?',
-                'answer' => 'Утверждение «должно быть так-то», которое тест проверяет. Если не так — тест падает. Примеры: assertEquals($expected, $actual), assertTrue($x), assertCount(3, $arr). В Laravel: $response->assertStatus(200), $response->assertJsonFragment(...).',
+                'answer' => 'Утверждение «должно быть так-то», которое тест проверяет. Если не так — тест падает с понятным сообщением (ожидал X, получил Y). Без assert-ов тест ничего не проверяет — просто прогоняет код. Базовые: assertSame, assertTrue, assertCount. В Laravel response-ассерты: assertStatus(200), assertJson(...), assertRedirect(...).',
+                'code_example' => "<?php\n\npublic function test_basic_assertions(): void\n{\n    \$this->assertSame(5, 2 + 3);              // строгое === сравнение\n    \$this->assertTrue(is_string('hello'));\n    \$this->assertCount(3, [1, 2, 3]);\n    \$this->assertNull(null);\n}\n\npublic function test_laravel_response_assertions(): void\n{\n    \$response = \$this->get('/api/users/1');\n\n    \$response->assertStatus(200);\n    \$response->assertJsonFragment(['name' => 'Jane']);\n}",
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'testing.basics',
             ],

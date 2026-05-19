@@ -144,7 +144,24 @@ echo new Money(100, "USD"); // "100 USD"',
             [
                 'category' => 'PHP',
                 'question' => 'Что делает __construct() простыми словами?',
-                'answer' => 'Магический метод, который PHP АВТОМАТИЧЕСКИ вызывает при создании объекта через new. В нём обычно инициализируют свойства объекта из переданных аргументов. С PHP 8 можно использовать constructor property promotion: public function __construct(public string $name, public int $age) {} — параметры сразу становятся свойствами.',
+                'answer' => 'Магический метод-конструктор, который PHP АВТОМАТИЧЕСКИ вызывает при создании объекта через new. В нём обычно инициализируют свойства из переданных аргументов. С PHP 8 есть constructor property promotion — модификатор видимости прямо в параметре сразу делает его свойством, без отдельного объявления и присваивания. Конструктор родителя НЕ вызывается автоматически — нужно явно parent::__construct().',
+                'code_example' => '<?php
+// Классический вид
+class UserOld {
+    public string $name;
+    public function __construct(string $name) {
+        $this->name = $name;
+    }
+}
+
+// PHP 8: property promotion
+class User {
+    public function __construct(public string $name, public int $age) {}
+}
+
+$u = new User("Иван", 30);
+echo $u->name; // "Иван"',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.magic_methods',
             ],

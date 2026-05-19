@@ -309,9 +309,23 @@ final class EloquentUserRepository implements \App\Domain\Users\UserRepository {
             [
                 'category' => 'ООП',
                 'question' => 'Что такое S в SOLID (Single Responsibility) простыми словами?',
-                'answer' => 'Single Responsibility Principle: у класса должна быть ОДНА причина для изменения. Если класс делает «загрузить юзера + отправить email + посчитать налог» — это три ответственности, три причины меняться. Каждую — в свой класс. Меньше связности, проще тестировать и менять.',
+                'answer' => 'Single Responsibility Principle: у класса должна быть ОДНА причина для изменения. Если класс «грузит юзера + шлёт email + считает налог» — это три ответственности, три причины меняться. Разбей на отдельные классы: меньше связности, проще тестировать и править.',
                 'difficulty' => 1,
                 'topic' => 'oop.solid',
+                'code_example' => '<?php
+// ❌ Было: один класс делает всё
+class UserService
+{
+    public function save(User $u): void { /* в БД */ }
+    public function sendWelcome(User $u): void { /* email */ }
+    public function calcTax(User $u): float { /* налог */ }
+}
+
+// ✅ Стало: одна ответственность = один класс
+class UserRepository { public function save(User $u): void {} }
+class Mailer        { public function sendWelcome(User $u): void {} }
+class TaxCalculator { public function calc(User $u): float { return 0; } }',
+                'code_language' => 'php',
             ],
             [
                 'category' => 'ООП',

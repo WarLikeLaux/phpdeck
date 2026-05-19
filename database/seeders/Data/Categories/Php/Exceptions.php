@@ -176,7 +176,18 @@ set_error_handler(function ($severity, $msg, $file, $line) {
             [
                 'category' => 'PHP',
                 'question' => 'Что делает оператор throw в PHP?',
-                'answer' => 'Бросает исключение: throw new RuntimeException("файл не найден"). Прерывает текущий код и поднимается вверх по стеку вызовов, пока не встретит подходящий catch. Если catch не нашёлся — программа упадёт с Uncaught Exception.',
+                'answer' => 'Бросает исключение — создаёт объект-ошибку и прерывает обычный поток выполнения. throw поднимается вверх по стеку вызовов, пока не встретит подходящий catch. Если подходящего catch не нашлось — программа упадёт с сообщением «Uncaught Exception». С PHP 8 throw является ВЫРАЖЕНИЕМ, поэтому его можно использовать в тернарнике и в ??.',
+                'code_example' => '<?php
+function divide(int $a, int $b): int {
+    if ($b === 0) {
+        throw new InvalidArgumentException("Деление на ноль");
+    }
+    return intdiv($a, $b);
+}
+
+// PHP 8: throw как выражение
+$user = $repo->find($id) ?? throw new RuntimeException("not found");',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.exceptions',
             ],

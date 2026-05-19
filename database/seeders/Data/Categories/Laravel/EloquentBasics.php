@@ -400,7 +400,15 @@ class UserObserver {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое $table и $primaryKey в Eloquent-модели?',
-                'answer' => '$table — имя таблицы в БД, если оно отличается от автогена (по умолчанию имя модели в snake_case + множественное число: User → users). $primaryKey — имя поля PK, если не id. $incrementing = false — если PK не auto-increment. $keyType = \'string\' — если PK строка (например, UUID).',
+                'answer' => '$table — имя таблицы в БД, если оно отличается от автогенерации (по умолчанию имя модели в snake_case + множественное число: User → users). $primaryKey — имя поля PK, если не id. $incrementing = false — если PK не auto-increment. $keyType = \'string\' — если PK строка (например, UUID). Всё это публичные/protected свойства самой модели.',
+                'code_example' => 'class Article extends Model
+{
+    protected $table = \'blog_articles\'; // иначе было бы articles
+    protected $primaryKey = \'uuid\';
+    public $incrementing = false;        // PK не AUTO_INCREMENT
+    protected $keyType = \'string\';       // PK - строка (UUID)
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.eloquent_basics',
             ],
@@ -414,7 +422,19 @@ class UserObserver {
             [
                 'category' => 'Laravel',
                 'question' => 'Как создать модель Laravel через artisan?',
-                'answer' => 'php artisan make:model User — только модель. С опциями: -m создаёт миграцию, -f — factory, -s — seeder, -c — контроллер, -r — resource-контроллер. Всё сразу: php artisan make:model User -mfsc.',
+                'answer' => 'php artisan make:model User — только модель в app/Models/User.php. Опции: -m создаёт миграцию, -f — factory, -s — seeder, -c — контроллер, -r — resource-контроллер, --pivot — для pivot-моделей. Всё сразу: php artisan make:model Post -mfsc даст модель + миграцию + фабрику + сидер + контроллер одной командой.',
+                'code_example' => '# только модель
+php artisan make:model User
+
+# модель + миграция
+php artisan make:model Post -m
+
+# модель + миграция + фабрика + сидер + контроллер
+php artisan make:model Post -mfsc
+
+# модель + resource-контроллер (с index/show/create/store/edit/update/destroy)
+php artisan make:model Post -mr',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'laravel.eloquent_basics',
             ],

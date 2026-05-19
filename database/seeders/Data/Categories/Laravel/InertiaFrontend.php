@@ -120,14 +120,44 @@ defineProps({ users: Array })
             [
                 'category' => 'Laravel',
                 'question' => 'Какие основные директивы Blade?',
-                'answer' => '@if/@elseif/@else/@endif — условия. @foreach($items as $i)...@endforeach — циклы. @extends(\'layout\') / @yield(\'content\') / @section(\'content\') — наследование шаблонов. @include(\'partial\') — вставка частичного шаблона. @csrf — CSRF-токен для форм. @auth/@guest — проверка авторизации.',
+                'answer' => '@if/@elseif/@else/@endif — условия. @foreach($items as $i) ... @endforeach — циклы. @forelse — цикл с веткой @empty, если массив пуст. @extends(\'layouts.app\') + @section(\'content\')/@yield(\'content\') — наследование шаблонов. @include(\'partial\') — вставка частичного шаблона. @csrf — скрытое поле _token в формы. @method(\'PUT\') — для PUT/PATCH/DELETE из HTML-формы. @auth/@guest — проверка авторизации. @error(\'field\') — вывод ошибки валидации.',
+                'code_example' => '@extends(\'layouts.app\')
+
+@section(\'content\')
+    @auth
+        <p>Привет, {{ auth()->user()->name }}!</p>
+    @endauth
+
+    @forelse ($posts as $post)
+        @include(\'posts.partials.card\', [\'post\' => $post])
+    @empty
+        <p>Постов пока нет.</p>
+    @endforelse
+
+    <form method="POST" action="{{ route(\'posts.update\', $post) }}">
+        @csrf
+        @method(\'PUT\')
+        <input name="title" value="{{ old(\'title\', $post->title) }}">
+        @error(\'title\') <span class="err">{{ $message }}</span> @enderror
+    </form>
+@endsection',
+                'code_language' => 'blade',
                 'difficulty' => 1,
                 'topic' => 'laravel.inertia_frontend',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между {{ $var }} и {!! $var !!} в Blade?',
-                'answer' => '{{ $var }} — автоматически экранирует HTML (защита от XSS). Если в $var есть <script>, отобразится как текст, не как код. {!! $var !!} — выводит как есть, без экранирования. Использовать только когда уверен в безопасности данных (например, отрендеренный markdown).',
+                'answer' => '{{ $var }} — автоматически экранирует HTML через htmlspecialchars (защита от XSS). Если в $var лежит <script>alert(1)</script>, отобразится как текст, не выполнится. {!! $var !!} — выводит как есть, без экранирования. Использовать только когда уверен в безопасности данных (например, заранее очищенный/отрендеренный markdown). Никогда не вставлять через {!! !!} пользовательский ввод напрямую.',
+                'code_example' => '@php
+    $name = \'<script>alert("XSS")</script>\';
+    $html = \'<strong>Жирный</strong>\';
+@endphp
+
+{{ $name }}    {{-- &lt;script&gt;alert("XSS")&lt;/script&gt; - безопасно --}}
+{!! $html !!}  {{-- <strong>Жирный</strong> - HTML отрендерится --}}
+{!! $name !!}  {{-- ОПАСНО: выполнит JS, если $name от пользователя --}}',
+                'code_language' => 'blade',
                 'difficulty' => 1,
                 'topic' => 'laravel.inertia_frontend',
             ],

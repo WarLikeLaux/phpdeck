@@ -594,14 +594,43 @@ Feature::for($user)->forget("new-checkout");',
             [
                 'category' => 'Laravel',
                 'question' => 'Какие основные helper-функции Laravel часто используются?',
-                'answer' => 'route(\'users.show\', $id) — URL по имени маршрута. url(\'/foo\') — URL от base. asset(\'css/app.css\') — URL статики из public. old(\'email\') — старое значение формы после ошибки. now() — Carbon::now(). config(\'app.name\') — значение из config. env(\'KEY\') — переменная .env (только в config-файлах).',
+                'answer' => 'route(\'users.show\', $id) — URL по имени маршрута. url(\'/foo\') — абсолютный URL от APP_URL. asset(\'css/app.css\') — URL статики из public/. old(\'email\') — старое значение поля формы после ошибки валидации. now() — Carbon-инстанс на сейчас. config(\'app.name\') — значение из config/. env(\'KEY\') — переменная окружения (читать ТОЛЬКО внутри config/, иначе после config:cache вернёт null). auth(), request(), session(), redirect(), abort(), back(), collect(), str().',
+                'code_example' => '// в Blade
+<a href="{{ route(\'users.show\', $user) }}">Профиль</a>
+<link rel="stylesheet" href="{{ asset(\'css/app.css\') }}">
+<input name="email" value="{{ old(\'email\') }}">
+
+// в коде
+$url    = url(\'/login\');             // https://app.test/login
+$name   = config(\'app.name\');        // "MyApp"
+$today  = now();                     // Carbon
+$user   = auth()->user();
+$email  = request(\'email\');
+session([\'cart\' => $items]);
+return redirect()->route(\'home\');
+abort_if(! $user, 403);',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Какие способы вернуть ответ из контроллера в Laravel?',
-                'answer' => 'return view(\'users.show\', [\'user\'=>$user]) — HTML-страница. return redirect(\'/login\') или redirect()->route(\'home\') — редирект. return response()->json([\'ok\'=>true]) — JSON. return response()->download($path) — файл на скачивание. return back() — назад. return abort(404) — прервать 404.',
+                'answer' => 'return view(\'users.show\', [\'user\' => $user]) — HTML-страница из Blade. return redirect(\'/login\') или redirect()->route(\'home\') — редирект, можно с ->with() или ->withErrors(). return response()->json([\'ok\' => true], 201) — JSON с кодом. return response()->download($path) — файл на скачивание. return back() — назад на предыдущую страницу. abort(404) — прервать с 404. Можно вернуть массив/Eloquent-модель — Laravel сам сериализует в JSON.',
+                'code_example' => 'public function show(int $id)
+{
+    $user = User::findOrFail($id);
+
+    return view(\'users.show\', [\'user\' => $user]);     // HTML
+    return response()->json([\'user\' => $user], 200);   // JSON
+    return $user;                                      // тоже JSON (auto)
+    return redirect()->route(\'users.index\')
+        ->with(\'success\', \'Готово\');                  // redirect + flash
+    return response()->download(storage_path("invoices/{$id}.pdf"));
+    return back()->withInput()->withErrors([\'email\' => \'занят\']);
+    abort(404, \'Не найдено\');
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.misc',
             ],

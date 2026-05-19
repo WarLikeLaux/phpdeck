@@ -39,7 +39,15 @@ $user = new User(); // автоматически подгрузится фай�
             [
                 'category' => 'PHP',
                 'question' => 'Что такое Composer простыми словами?',
-                'answer' => 'Менеджер зависимостей для PHP — аналог npm в JS, pip в Python, cargo в Rust. Скачивает сторонние библиотеки, ставит их в vendor/ и настраивает автозагрузку. Описание зависимостей хранится в composer.json.',
+                'answer' => 'Менеджер зависимостей для PHP — аналог npm в JS, pip в Python, cargo в Rust. Скачивает сторонние библиотеки из репозитория packagist.org, кладёт их в папку vendor/ и генерирует автозагрузчик. Список зависимостей и их версии описаны в composer.json, фактически установленные версии зафиксированы в composer.lock. Базовые команды: composer install (поставить из lock), composer update (обновить), composer require vendor/package (добавить).',
+                'code_example' => 'composer require guzzlehttp/guzzle
+composer install
+composer update
+composer require --dev phpunit/phpunit
+
+# Подключение в коде
+require __DIR__ . "/vendor/autoload.php";',
+                'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'php.composer_autoload',
             ],
@@ -60,7 +68,18 @@ $user = new User(); // автоматически подгрузится фай�
             [
                 'category' => 'PHP',
                 'question' => 'В чём разница между require и require-dev в composer.json?',
-                'answer' => 'require — пакеты для работы в проде (Laravel, библиотеки). require-dev — только для разработки и тестов (PHPUnit, Pint, PHPStan). На сервере ставят composer install --no-dev — dev-пакеты не попадают, образ легче.',
+                'answer' => 'В разделе require перечислены пакеты, нужные приложению в РАНТАЙМЕ (Laravel, Guzzle, sentry, etc.) — без них прод не запустится. В require-dev — пакеты только для разработки и тестов (PHPUnit, Pint, PHPStan, Larastan). На прод-сервере или в Docker-образе обычно ставят composer install --no-dev — dev-пакеты не попадают, образ легче и поверхность атаки меньше. Добавить пакет в dev: composer require --dev <vendor/package>.',
+                'code_example' => '{
+    "require": {
+        "php": "^8.2",
+        "laravel/framework": "^11.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "laravel/pint": "^1.0"
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.composer_autoload',
             ],

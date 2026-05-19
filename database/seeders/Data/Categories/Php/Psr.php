@@ -122,7 +122,19 @@ class Psr
             [
                 'category' => 'PHP',
                 'question' => 'Что такое namespace простыми словами?',
-                'answer' => 'Пространство имён — способ группировки классов, чтобы избежать конфликтов имён. namespace App\\Http\\Controllers; делает класс User полным именем App\\Http\\Controllers\\User. Чтобы использовать сокращённо — пишут use в начале файла.',
+                'answer' => 'Пространство имён — способ группировки классов, функций и констант, чтобы избежать конфликтов одинаковых имён в разных частях проекта. namespace App\\Models; в начале файла делает класс User полным именем App\\Models\\User — оно называется FQCN (Fully Qualified Class Name). В другом файле сокращают через use App\\Models\\User; или дают алиас через as. По PSR-4 namespace отображается на путь к файлу — это и позволяет Composer автозагружать классы.',
+                'code_example' => '<?php
+// app/Models/User.php
+namespace App\\Models;
+class User {}
+
+// другой файл
+use App\\Models\\User;
+use App\\Models\\Post as PostModel;
+
+$u = new User();
+$p = new PostModel();',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.psr',
             ],
@@ -136,7 +148,19 @@ class Psr
             [
                 'category' => 'PHP',
                 'question' => 'Какие соглашения по именованию приняты в PHP (PSR-1/PSR-12)?',
-                'answer' => 'Классы — PascalCase (UpperCamelCase): UserController, OrderRepository. Методы — camelCase: getUserName(), saveOrder(). Свойства — camelCase: $firstName. Константы — UPPER_SNAKE_CASE: MAX_USERS, API_KEY. Переменные — camelCase: $userId, $orderTotal. Имена в snake_case в PHP считаются устаревшим стилем (наследие PHP 4). Тестовые методы в PHPUnit допускают snake_case: test_user_can_login.',
+                'answer' => 'Классы — PascalCase (UpperCamelCase): UserController, OrderRepository. Методы — camelCase: getUserName, saveOrder. Свойства и переменные — camelCase: $firstName, $userId. Константы — UPPER_SNAKE_CASE: MAX_USERS, API_KEY. snake_case для переменных и методов в PHP считается устаревшим стилем (наследие PHP 4 и WordPress). Исключение — тестовые методы PHPUnit, где snake_case допускают для читаемости: test_user_can_login.',
+                'code_example' => '<?php
+class UserController {              // PascalCase
+    private const MAX_RETRIES = 3;  // UPPER_SNAKE_CASE
+
+    private string $firstName;      // camelCase
+
+    public function getUserName(): string {  // camelCase
+        $userId = 42;                // camelCase
+        return $this->firstName;
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'php.psr',
             ],

@@ -148,7 +148,20 @@ class StoreOrderRequest extends FormRequest {
             [
                 'category' => 'Laravel',
                 'question' => 'Какие самые частые validation rules в Laravel?',
-                'answer' => 'required (обязательное), email (формат email), integer/numeric (число), string (строка), min:N / max:N (диапазон), unique:users,email (уникальность в БД), exists:users,id (существование в БД), confirmed (нужно поле email_confirmation), in:foo,bar (одно из), nullable (разрешён null).',
+                'answer' => 'required — обязательное. email — формат email. integer/numeric — число. string — строка. min:N / max:N — длина строки или значение числа. unique:users,email — уникальность в БД. exists:users,id — должно существовать в БД. confirmed — требует парного поля password_confirmation. in:admin,editor — одно из перечисленных. nullable — разрешён null. array, boolean, date, url, regex:/.../ — типы и формат. Правила пишут строкой через | или массивом.',
+                'code_example' => '$request->validate([
+    \'name\'        => [\'required\', \'string\', \'max:255\'],
+    \'email\'       => [\'required\', \'email\', \'unique:users,email\'],
+    \'age\'         => [\'nullable\', \'integer\', \'min:18\'],
+    \'password\'    => [\'required\', \'string\', \'min:8\', \'confirmed\'],
+    \'role\'        => [\'required\', \'in:admin,editor,viewer\'],
+    \'company_id\'  => [\'required\', \'exists:companies,id\'],
+    \'website\'     => [\'nullable\', \'url\'],
+]);
+
+// или строкой
+$request->validate([\'email\' => \'required|email|unique:users,email\']);',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.requests_validation',
             ],

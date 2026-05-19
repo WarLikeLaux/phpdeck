@@ -31,7 +31,7 @@ class BasicQa
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое SQL?',
-                'answer' => 'Structured Query Language — язык запросов к реляционным БД. На нём пишут запросы для чтения (SELECT), вставки (INSERT), изменения (UPDATE), удаления (DELETE) и для управления схемой (CREATE, ALTER, DROP).',
+                'answer' => 'SQL (Structured Query Language) — декларативный язык работы с реляционными БД: ты описываешь, ЧТО хочешь получить, а как искать — решает СУБД. Команды делят на три группы: DML (работа с данными — SELECT, INSERT, UPDATE, DELETE), DDL (схема — CREATE, ALTER, DROP) и DCL/TCL (права и транзакции — GRANT, COMMIT, ROLLBACK). Это стандарт ANSI/ISO, поэтому базовый синтаксис почти одинаково работает в PostgreSQL, MySQL, SQLite, Oracle и SQL Server, а отличия — в диалектах (типы данных, функции, оконные расширения).',
                 'difficulty' => 1,
                 'topic' => 'database.basic_qa',
             ],
