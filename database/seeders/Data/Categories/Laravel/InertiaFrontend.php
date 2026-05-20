@@ -13,19 +13,33 @@ class InertiaFrontend
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Blade и какие у него преимущества?',
-                'answer' => 'Blade - это шаблонизатор Laravel. Преимущества: компилируется в PHP (быстрый), есть директивы (@if, @foreach, @auth, @csrf), наследование шаблонов (@extends, @section), компоненты, slots, безопасный по умолчанию (auto-escape через {{ }}).',
+                'answer' => '**Blade** — встроенный шаблонизатор Laravel. Файлы `*.blade.php` в `resources/views`.
+
+Преимущества:
+
+- **Компилируется в чистый PHP** и кешируется в `storage/framework/views` — на рантайме быстрый.
+- **Директивы**: `@if`, `@foreach`, `@auth`, `@csrf`, `@error` — короче и читаемее, чем `<?php if (...) ?>`.
+- **Наследование шаблонов**: `@extends(\'layouts.app\')` + `@section`/`@yield` — общий лэйаут без копипасты.
+- **Компоненты и slots** — переиспользуемые куски UI (`<x-alert>`).
+- **Auto-escape**: `{{ $var }}` экранирует HTML — защита от **XSS** из коробки. `{!! $var !!}` — без экранирования.
+- **Тесная интеграция с Laravel**: `route()`, `old()`, `$errors`, `auth()` доступны прямо из шаблона.',
                 'code_example' => '@extends(\'layouts.app\')
 
 @section(\'content\')
-    @if($user)
-        <h1>Привет, {{ $user->name }}!</h1>
-    @endif
+    @auth
+        <h1>Привет, {{ auth()->user()->name }}!</h1>
+    @endauth
 
-    @foreach($posts as $post)
-        <p>{{ $post->title }}</p>
-    @endforeach
+    @forelse ($posts as $post)
+        <article>
+            <h2>{{ $post->title }}</h2>
+            <p>{{ $post->excerpt }}</p>
+        </article>
+    @empty
+        <p>Постов пока нет.</p>
+    @endforelse
 @endsection',
-                'code_language' => 'php',
+                'code_language' => 'blade',
                 'difficulty' => 2,
                 'topic' => 'laravel.inertia_frontend',
             ],
@@ -106,7 +120,17 @@ defineProps({ users: Array })
             [
                 'category' => 'Laravel',
                 'question' => 'Что делают директивы @once и @verbatim в Blade?',
-                'answer' => '@once гарантирует, что блок отрендерится один раз за HTTP-ответ, даже если родительский шаблон/компонент включается несколько раз — типичный кейс: пушить JS/CSS из компонента, который повторяется на странице, в общий @stack. @verbatim — отключает интерпретацию {{ }} и @-директив внутри блока. Нужен когда страница использует Vue/Alpine/Mustache: их шаблонные {{ }} конфликтуют с Blade, без @verbatim пришлось бы экранировать каждую фигурную скобку.',
+                'answer' => 'Две полезные «нишевые» директивы:
+
+**`@once`** — гарантирует, что блок отрендерится **только один раз** за HTTP-ответ, даже если родительский шаблон/компонент включается несколько раз.
+
+- Типичный кейс: компонент с datepicker использован 5 раз на странице — нужно подключить JS **один раз**.
+- Часто комбинируется с `@push(\'scripts\')` или `@prepend`.
+
+**`@verbatim`** — **отключает** интерпретацию `{{ }}` и `@`-директив внутри блока.
+
+- Нужен, когда страница использует Vue/Alpine/Mustache: их шаблонные `{{ }}` **конфликтуют** с Blade.
+- Без `@verbatim` пришлось бы экранировать каждую фигурную скобку (`@{{ }}`).',
                 'code_example' => '{{-- @once: подключить скрипт один раз, даже если компонент использован 5 раз --}}
 @once
     @push(\'scripts\')

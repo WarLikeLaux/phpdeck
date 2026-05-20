@@ -13,7 +13,21 @@ class Cloze
             [
                 'category' => 'Laravel',
                 'question' => 'Заполни команду artisan для создания resource-контроллера UserController.',
-                'answer' => 'php artisan make:controller UserController --resource создаёт контроллер с CRUD-методами index/create/store/show/edit/update/destroy.',
+                'answer' => 'Команда **`php artisan make:controller UserController --resource`** создаёт контроллер сразу с 7 CRUD-методами:
+
+- **`index`** — список.
+- **`create`** — форма создания.
+- **`store`** — сохранение.
+- **`show`** — просмотр.
+- **`edit`** — форма редактирования.
+- **`update`** — обновление.
+- **`destroy`** — удаление.
+
+Подключается одной строкой в `routes/web.php`:
+
+`Route::resource(\'users\', UserController::class);`
+
+Для API используют **`--api`** (без `create` и `edit`).',
                 'cloze_text' => 'php artisan {{make:controller}} UserController {{--resource}}',
                 'difficulty' => 2,
                 'topic' => 'laravel.cloze',

@@ -13,7 +13,19 @@ class Testing
             [
                 'category' => 'Laravel',
                 'question' => 'Чем отличаются PHPUnit и Pest в Laravel?',
-                'answer' => 'PHPUnit - стандартный фреймворк тестирования для PHP, тесты пишутся как методы класса. Pest - надстройка над PHPUnit с более лаконичным синтаксисом (как Jest для JS): тесты как функции, expect-API. Под капотом всё равно PHPUnit. Можно использовать оба одновременно.',
+                'answer' => 'Два способа писать тесты в Laravel:
+
+- **PHPUnit** — стандартный PHP-фреймворк. Тесты пишутся как **методы класса**, наследующего `TestCase`. Метод теста начинается с `test_` или имеет атрибут `#[Test]`.
+- **Pest** — надстройка над PHPUnit с **более лаконичным синтаксисом** (вдохновлён Jest из JS). Тесты пишутся как **функции** с описательными названиями + цепочечный `expect`-API.
+
+**Под капотом обоих — PHPUnit.** Pest просто транслирует свой DSL в PHPUnit-классы. Можно держать оба в одном проекте.
+
+С Laravel 11 **Pest идёт по умолчанию** в новом проекте (выбирается при `laravel new`). Старые проекты — обычно на PHPUnit.
+
+Запуск:
+
+- **PHPUnit**: `php artisan test` или `./vendor/bin/phpunit`.
+- **Pest**: `./vendor/bin/pest` или тот же `php artisan test`.',
                 'code_example' => '// PHPUnit
 class UserTest extends TestCase {
     public function test_user_can_register(): void {
@@ -298,7 +310,25 @@ public function test_via_instance(): void
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Dusk и для чего он используется?',
-                'answer' => 'Dusk — пакет для end-to-end (browser) тестирования. Использует ChromeDriver и реальный браузер, эмулируя пользовательские действия: клики, ввод, ожидание элементов, скриншоты. В отличие от HTTP-тестов ($this->get()), Dusk выполняет настоящий JS — поэтому только им можно тестировать Livewire/Vue/React-фронтенд. Не требует ставить Selenium/JDK — ChromeDriver идёт в комплекте. Тесты лежат в tests/Browser, запускаются php artisan dusk.',
+                'answer' => '**Laravel Dusk** — пакет для **end-to-end (browser)** тестирования.
+
+Что делает:
+
+- Запускает **настоящий браузер** (Chromium через ChromeDriver) в headless-режиме.
+- Эмулирует **действия пользователя**: клики, ввод текста, нажатия клавиш, ожидание элементов, скриншоты, выбор файла.
+- Выполняет **настоящий JavaScript** — поэтому только им можно тестировать Livewire/Vue/React-фронтенд.
+
+Сравнение с HTTP-тестами (`$this->get(...)`):
+
+- HTTP-тест — мгновенный, не запускает JS, проверяет ответ сервера.
+- Dusk — медленнее, но **видит DOM после JS**.
+
+Особенности:
+
+- **Не нужен Selenium/JDK** — ChromeDriver идёт в комплекте.
+- Тесты лежат в `tests/Browser`, наследуются от `DuskTestCase`.
+- Запуск: `php artisan dusk`. Скриншоты падений — `tests/Browser/screenshots`.
+- Установка: `composer require --dev laravel/dusk` + `php artisan dusk:install`.',
                 'code_example' => '# Установка
 composer require --dev laravel/dusk
 php artisan dusk:install

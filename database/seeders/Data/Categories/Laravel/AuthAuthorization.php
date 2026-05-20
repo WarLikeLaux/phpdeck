@@ -166,21 +166,56 @@ Auth::guard("admin")->attempt([
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Breeze и для чего он нужен?',
-                'answer' => 'Breeze — минимальный стартовый набор, который ставит готовую аутентификацию: вход, регистрацию, сброс пароля, подтверждение email и пароля. Поставляется в вариантах Blade, Livewire, Inertia+Vue, Inertia+React и API-only. В отличие от Jetstream, Breeze осознанно простой и подходит как стартовая точка для проектов без 2FA и команд.',
+                'answer' => '**Breeze** — минимальный стартовый набор Laravel, который накатывает готовую аутентификацию: вход, регистрацию, сброс пароля, подтверждение email и пароля.
+
+Стэки на выбор:
+
+- **Blade** — серверный рендер.
+- **Livewire** — реактивный Blade.
+- **Inertia + Vue** или **Inertia + React** — SPA.
+- **API-only** — без UI, для мобильных клиентов.
+
+В отличие от Jetstream, Breeze **осознанно простой**: ни 2FA, ни команд, ни управления сессиями. Берут как стартовую точку и допиливают руками.
+
+Ставится одной командой: `composer require laravel/breeze --dev` + `php artisan breeze:install <stack>`.',
                 'difficulty' => 2,
                 'topic' => 'laravel.auth_authorization',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Jetstream и чем он отличается от Breeze?',
-                'answer' => 'Jetstream — продвинутый стартовый набор поверх Sanctum с двухфакторной аутентификацией, управлением сессиями браузера, профилем пользователя, API-токенами и опциональными командами (teams). Выбирается стек Livewire или Inertia. Breeze значительно проще и не тянет 2FA/команды — Jetstream берут, когда нужны фичи из коробки, иначе Breeze.',
+                'answer' => '**Jetstream** — продвинутый стартовый набор поверх `Sanctum` с фичами «из коробки».
+
+Что даёт сверх Breeze:
+
+- **2FA** (двухфакторная аутентификация через TOTP).
+- **Управление сессиями браузера** — список активных, удалённый логаут.
+- **Профиль пользователя** (имя, email, аватар, смена пароля).
+- **API-токены** через Sanctum с UI.
+- **Teams** (опционально) — команды, инвайты, роли в команде.
+
+Стэки: **Livewire** или **Inertia + Vue**.
+
+Когда брать: нужны 2FA/команды/UI токенов **из коробки**. Иначе — `Breeze` проще.',
                 'difficulty' => 2,
                 'topic' => 'laravel.auth_authorization',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Socialite и через каких провайдеров он умеет логинить?',
-                'answer' => 'Socialite — официальный пакет для OAuth-аутентификации через сторонних провайдеров. Из коробки поддерживает Facebook, Twitter/X, Google, LinkedIn, GitHub, GitLab, Bitbucket и Slack. Дополнительные провайдеры подключаются через Socialite Providers (community-репозиторий). Скрывает детали OAuth2-flow за выразительным фасадом Socialite::driver()->redirect()/user().',
+                'answer' => '**Socialite** — официальный пакет Laravel для OAuth-аутентификации через сторонних провайдеров («войти через Google/GitHub»).
+
+Из коробки:
+
+- **Facebook**, **Twitter/X**, **Google**, **LinkedIn**, **GitHub**, **GitLab**, **Bitbucket**, **Slack**.
+- Прочие — через **Socialite Providers** (community-репозиторий).
+
+Скрывает детали OAuth2-flow за двумя вызовами:
+
+- `Socialite::driver(\'github\')->redirect()` — отправить юзера на провайдера.
+- `Socialite::driver(\'github\')->user()` — на callback забрать данные.
+
+Ключи провайдеров кладут в `config/services.php` и `.env`. Дальше — найти/создать пользователя в своей таблице `users` и залогинить через `Auth::login($user)`.',
                 'difficulty' => 2,
                 'topic' => 'laravel.auth_authorization',
             ],
@@ -342,7 +377,19 @@ class ProfileController extends Controller implements HasMiddleware
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое guards в Laravel простыми словами?',
-                'answer' => 'Guard — это стратегия проверки «кто этот юзер». Дефолтный web — сессия и куки (для браузера). api с драйвером sanctum — Bearer-токен. Можно настроить несколько guards в config/auth.php: например отдельный admin для админки со своей таблицей admins. Доступ к конкретному guard — Auth::guard(\'admin\'). Middleware auth:web проверяет, что web-guard вернул юзера, иначе редирект на /login.',
+                'answer' => '**Guard** — стратегия проверки «кто этот юзер».
+
+Дефолтные guards в `config/auth.php`:
+
+- **`web`** — сессия и куки (для браузера).
+- **`api`** с драйвером `sanctum` — Bearer-токен.
+
+Можно настроить несколько guards: например отдельный **`admin`** для админки со своей таблицей `admins`.
+
+- Доступ к конкретному guard — `Auth::guard(\'admin\')`.
+- Middleware `auth:web` проверяет, что `web`-guard вернул юзера, иначе редирект на `/login`.
+
+Guard отвечает на вопрос **«кто»**, middleware — **«пускать ли»**.',
                 'code_example' => '// config/auth.php
 \'guards\' => [
     \'web\'   => [\'driver\' => \'session\', \'provider\' => \'users\'],

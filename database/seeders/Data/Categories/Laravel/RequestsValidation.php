@@ -13,7 +13,31 @@ class RequestsValidation
             [
                 'category' => 'Laravel',
                 'question' => 'Как получить данные из Request в Laravel?',
-                'answer' => 'Через объект Illuminate\Http\Request. Методы: input("name"), all(), only(["a", "b"]), except(["c"]), has("name"), filled("name"), get(), post(), query(), file("avatar"). Заголовки: header(). Cookie: cookie().',
+                'answer' => 'Через объект **`Illuminate\\Http\\Request`** в параметре метода контроллера. Laravel сам подсунет его через DI-контейнер.
+
+Основные методы:
+
+- **`input(\'name\', \'default\')`** — конкретное поле (с дефолтом).
+- **`all()`** — весь payload (POST + query).
+- **`only([\'a\', \'b\'])`** / **`except([\'c\'])`** — подмножество.
+- **`has(\'name\')`** — есть ли ключ.
+- **`filled(\'name\')`** — есть и не пустой.
+- **`query(\'page\')`** — только из query string (`?page=2`).
+- **`post(\'email\')`** — только из тела POST.
+- **`file(\'avatar\')`** — загруженный файл (`UploadedFile`).
+
+Заголовки и cookies:
+
+- **`header(\'Authorization\')`**.
+- **`cookie(\'lang\')`**.
+- **`bearerToken()`** — токен из `Authorization: Bearer ...`.
+
+Контекст:
+
+- **`$request->user()`** — текущий юзер.
+- **`$request->ip()`**, **`$request->path()`**, **`$request->method()`**.
+
+Часто используют **`$request->validate([...])`** — провалидировать и сразу получить массив только нужных полей.',
                 'code_example' => 'public function store(Request $request) {
     $name = $request->input(\'name\');
     $email = $request->input(\'email\', \'default@mail.com\');
@@ -29,7 +53,36 @@ class RequestsValidation
             [
                 'category' => 'Laravel',
                 'question' => 'Какие способы вернуть Response в Laravel?',
-                'answer' => 'response($content), response()->json($data), response()->view("name"), response()->download($path), response()->stream(), redirect()->route(), back(), abort(404). Можно установить статус и заголовки.',
+                'answer' => 'Способы вернуть ответ из контроллера:
+
+**Простые:**
+
+- **`return view(\'users.show\', [...])`** — HTML из Blade.
+- **`return $user`** или **`return [\'ok\' => true]`** — автоматически сериализуется в JSON.
+- **`return response(\'Hello\', 200)`** — произвольный контент с кодом.
+
+**JSON и API:**
+
+- **`response()->json([\'user\' => $user], 201)`** — явный JSON.
+- **`new UserResource($user)`** — через API Resource (рекомендуется).
+
+**Файлы:**
+
+- **`response()->download($path, \'file.pdf\')`** — скачивание.
+- **`response()->stream($callback)`** — стриминг (для больших файлов).
+
+**Редиректы:**
+
+- **`redirect()->route(\'home\')`** — на имя маршрута.
+- **`redirect(\'/login\')`** — по URL.
+- **`back()`** — назад с возможностью `->with()`/`->withErrors()`.
+
+**Прерывание:**
+
+- **`abort(404, \'Не найдено\')`** — `HttpException`.
+- **`abort_if(...)`**, **`abort_unless(...)`** — условные варианты.
+
+Заголовки/коды: `->header(\'X-Custom\', \'v\')`, `->setStatusCode(202)`, `->cookie(...)`.',
                 'code_example' => 'return response(\'Hello\', 200)->header(\'X-Custom\', \'value\');
 return response()->json([\'user\' => $user], 201);
 return response()->download($path, \'file.pdf\');
@@ -191,7 +244,28 @@ $request->validate([\'email\' => \'required|email|unique:users,email\']);',
             [
                 'category' => 'Laravel',
                 'question' => 'Как вывести ошибки валидации в Blade-шаблоне?',
-                'answer' => 'Если валидация падает, Laravel делает редирект назад и через middleware ShareErrorsFromSession кладёт в каждый view переменную $errors (MessageBag). Для одного поля используют директиву @error(\'field\'), внутри доступна $message. Все ошибки — @if($errors->any()) + @foreach($errors->all() as $error). Хелпер old(\'field\') возвращает старое значение поля, чтобы форма не очищалась после ошибки.',
+                'answer' => 'Если валидация падает, Laravel делает редирект **назад** и через middleware **`ShareErrorsFromSession`** кладёт в каждый view переменную **`$errors`** (`MessageBag`).
+
+Способы вывода:
+
+**Одно поле — директива `@error`:**
+
+- `@error(\'email\') ... {{ $message }} ... @enderror` — внутри доступна переменная `$message`.
+
+**Все ошибки списком:**
+
+- `@if($errors->any())` + `@foreach($errors->all() as $error)`.
+
+**Сохранение введённых данных:**
+
+- Хелпер **`old(\'field\', $default)`** возвращает старое значение поля — форма не очищается после ошибки.
+- В `value="{{ old(\'email\', $user->email) }}"` — второй аргумент это дефолт (полезно при редактировании).
+
+Дополнительно:
+
+- `$errors->has(\'email\')` — есть ли ошибка по полю.
+- `$errors->first(\'email\')` — первая ошибка по полю.
+- `$errors->get(\'email\')` — массив всех ошибок по полю.',
                 'code_example' => '<form method="POST" action="{{ route(\'users.store\') }}">
     @csrf
 
@@ -223,7 +297,18 @@ $request->validate([\'email\' => \'required|email|unique:users,email\']);',
             [
                 'category' => 'Laravel',
                 'question' => 'Как получить уже провалидированные данные из FormRequest?',
-                'answer' => '$request->validated() — массив только тех полей, что прошли валидацию (всё лишнее отброшено). $request->safe()->only([\'name\', \'email\']) — подмножество. $request->safe()->merge([\'user_id\' => auth()->id()]) — добавить вычисленные поля. Никогда не передавайте сырой $request->all() в Model::create() — это путь к mass-assignment-уязвимости.',
+                'answer' => 'Несколько методов на `FormRequest`:
+
+- **`$request->validated()`** — массив **только тех полей**, что прошли валидацию. Всё лишнее отброшено.
+- **`$request->safe()->only([\'name\', \'email\'])`** — подмножество провалидированного.
+- **`$request->safe()->except([\'password\'])`** — обратная сторона.
+- **`$request->safe()->merge([\'user_id\' => auth()->id()])`** — добавить вычисленные поля.
+
+**Почему важно:**
+
+Никогда не передавайте сырой **`$request->all()`** в `Model::create()` — это путь к **mass assignment**-уязвимости. Юзер может подкинуть лишние поля типа `is_admin=1`.
+
+`validated()` гарантирует: в массиве **только то**, что описано в `rules()`. Безопасно скармливать в `create()`.',
                 'code_example' => 'public function store(StoreUserRequest $request) {
     // ВСЕ провалидированные поля
     $data = $request->validated();

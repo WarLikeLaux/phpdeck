@@ -13,7 +13,16 @@ class EloquentRelations
             [
                 'category' => 'Laravel',
                 'question' => 'Какие виды связей в Eloquent? Опиши hasOne, hasMany, belongsTo, belongsToMany.',
-                'answer' => 'hasOne - один-к-одному, объявляется на родительской модели; внешний ключ лежит в СВЯЗАННОЙ таблице (User имеет один Profile, profiles.user_id). hasMany - один-ко-многим, та же сторона/FK (User имеет много Posts, posts.user_id). belongsTo - inverse для hasOne/hasMany, объявляется на ДОЧЕРНЕЙ модели, у которой хранится внешний ключ на родителя (Post принадлежит User, posts.user_id). belongsToMany - многие-ко-многим через pivot-таблицу (User ↔ Role через role_user). Запомнить: belongsTo там, где FK; hasOne/hasMany - на противоположной стороне.',
+                'answer' => 'Четыре основных вида связей Eloquent:
+
+- **`hasOne`** — **один-к-одному**. На родителе. FK в дочерней. `User → Profile` (`profiles.user_id`).
+- **`hasMany`** — **один-ко-многим**. На родителе. FK в дочерней. `User → Post[]` (`posts.user_id`).
+- **`belongsTo`** — **обратная сторона** `hasOne`/`hasMany`. На ребёнке, у которого хранится FK. `Post → User` (`posts.user_id`).
+- **`belongsToMany`** — **многие-ко-многим** через pivot-таблицу. `User ↔ Role` через `role_user`.
+
+Запоминалка: **`belongsTo` — там, где лежит FK**, `hasOne`/`hasMany` — на противоположной стороне.
+
+По конвенции FK = `имя_родителя` в snake_case + `_id` (`user_id`). Pivot-таблица — два имени моделей в snake_case по алфавиту (`role_user`).',
                 'code_example' => 'class User extends Model {
     public function profile() { return $this->hasOne(Profile::class); }
     public function posts()   { return $this->hasMany(Post::class); }
@@ -208,7 +217,21 @@ $post->save();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое belongsToMany простыми словами?',
-                'answer' => 'Отношение «многие-ко-многим». У User много Role и Role у многих User. Нужна pivot-таблица role_user с user_id и role_id (по умолчанию Laravel ищет таблицу из имён моделей по алфавиту). На обеих моделях объявляется belongsToMany. Управление связями: attach($id) - добавить, detach($id) - убрать, sync([1,2,3]) - заменить набор полностью, toggle($id) - переключить.',
+                'answer' => 'Отношение **«многие-ко-многим»**: у `User` много `Role` и у `Role` много `User`.
+
+Нужна **pivot-таблица** `role_user` с двумя FK: `user_id` и `role_id`. По умолчанию Laravel ищет имя таблицы из имён моделей в snake_case **по алфавиту**.
+
+На обеих моделях объявляется `belongsToMany`.
+
+Управление связями:
+
+- **`attach($id)`** — добавить.
+- **`detach($id)`** — убрать.
+- **`sync([1, 2, 3])`** — **заменить весь набор** (что не в массиве — удалится).
+- **`syncWithoutDetaching([...])`** — добавить, ничего не удаляя.
+- **`toggle($id)`** — переключить (был → удалить, не было → добавить).
+
+Pivot живёт на свойстве `$user->roles[0]->pivot` — там лежат данные строки `role_user`.',
                 'code_example' => 'class User extends Model {
     public function roles() {
         return $this->belongsToMany(Role::class);
@@ -232,7 +255,30 @@ $user->roles()->sync([1, 2, 3]); // оставить только эти рол�
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое eager loading через with() в Eloquent?',
-                'answer' => 'Способ заранее подгрузить связанные модели, чтобы избежать N+1. Без with: User::all() + в цикле $user->posts даст 1 + N запросов (по одному на каждого юзера). С with(\'posts\'): два запроса всего - SELECT * FROM users и SELECT * FROM posts WHERE user_id IN (...). Используют два способа: with(\'posts\') в начале цепочки запроса и load(\'posts\') на уже загруженной коллекции/модели. Внутри with можно ограничивать связь замыканием.',
+                'answer' => '**Eager loading через `with()`** — способ **заранее подгрузить связанные модели**, чтобы избежать **N+1**.
+
+Без `with`:
+
+- `User::all()` → 1 запрос.
+- В цикле `$user->posts` → ещё N запросов (по одному на каждого юзера).
+- Итого **1 + N**.
+
+С `with(\'posts\')`:
+
+- `SELECT * FROM users`.
+- `SELECT * FROM posts WHERE user_id IN (1, 2, ...)`.
+- Итого **2** запроса для любого количества юзеров.
+
+Два способа:
+
+- **`with(\'posts\')`** — на запросе, до выполнения.
+- **`load(\'posts\')`** — на уже полученной коллекции/модели.
+
+Бонусы:
+
+- **Вложенные связи**: `with(\'posts.comments\')`.
+- **Условие на связь**: `with([\'posts\' => fn($q) => $q->where(\'published\', true)])`.
+- **Только нужные колонки**: `with(\'posts:id,user_id,title\')`.',
                 'code_example' => '// Без eager loading - N+1
 foreach (User::all() as $user) {
     echo $user->posts->count(); // запрос на каждой итерации

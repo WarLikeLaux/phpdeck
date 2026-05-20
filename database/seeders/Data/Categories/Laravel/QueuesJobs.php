@@ -13,7 +13,22 @@ class QueuesJobs
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое очереди (Queues) в Laravel?',
-                'answer' => 'Очереди - это механизм отложенного выполнения задач в фоновом режиме. Простыми словами: тяжёлую задачу (отправка email, обработка изображений) кладём в очередь, чтобы пользователь не ждал. Драйверы: database, redis, sqs, beanstalkd, sync (для отладки), null.',
+                'answer' => '**Очереди** — механизм отложенного выполнения задач в фоне. Тяжёлая работа (отправка email, обработка изображения, генерация PDF, экспорт CSV) кладётся в очередь, и юзер **не ждёт** в HTTP-запросе.
+
+Поток:
+
+1. Контроллер вызывает `Job::dispatch(...)` — задача попадает в хранилище очереди.
+2. Отдельный процесс **worker** (`php artisan queue:work`) её забирает и выполняет.
+3. Юзер уже получил быстрый ответ.
+
+Драйверы (`config/queue.php`):
+
+- **`redis`** — прод, быстрый.
+- **`database`** — таблица `jobs`. Дефолт в Laravel 11.
+- **`sqs`** — AWS managed.
+- **`beanstalkd`** — старая школа.
+- **`sync`** — выполняет **синхронно**, без воркера. Для отладки и в тестах.
+- **`null`** — заглушка, ничего не делает.',
                 'code_example' => 'php artisan make:job ProcessPodcast
 
 class ProcessPodcast implements ShouldQueue {
@@ -261,7 +276,26 @@ php artisan queue:restart // воркеры грейсфул-завершатс�
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое job в Laravel?',
-                'answer' => 'Класс с методом handle(), описывающий одну задачу для очереди. Реализует интерфейс ShouldQueue. Запуск: SendEmail::dispatch($user). Задача сериализуется, попадает в хранилище (Redis/database) и ждёт, пока worker её возьмёт.',
+                'answer' => '**Job** — класс с методом `handle()`, описывающий **одну задачу** для очереди.
+
+Структура:
+
+- Реализует **`ShouldQueue`** — без этого интерфейса задача выполнится синхронно.
+- Использует трейт **`Queueable`** — даёт `onQueue()`, `onConnection()`, `delay()`.
+- Создаётся через `php artisan make:job SendWelcomeEmail`.
+- В конструкторе хранятся данные (модель, id, payload).
+- В `handle()` — сама работа.
+
+Запуск:
+
+- **`SendEmail::dispatch($user)`** — поставить в очередь.
+- **`->onQueue(\'high\')`** — на конкретную очередь.
+- **`->delay(now()->addMinutes(5))`** — с задержкой.
+- **`->onConnection(\'redis\')`** — на конкретное соединение.
+
+Под капотом: задача **сериализуется** (свойства класса), попадает в хранилище (Redis/database), ждёт, пока worker её возьмёт.
+
+Eloquent-модели сериализуются как **id** (через `SerializesModels`), и `handle()` достаёт свежую копию из БД.',
                 'code_example' => 'class SendWelcomeEmail implements ShouldQueue {
     public function __construct(public User $user) {}
     public function handle(): void {
@@ -276,7 +310,27 @@ SendWelcomeEmail::dispatch($user);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое worker и зачем он нужен?',
-                'answer' => 'Worker — это процесс PHP, запущенный командой php artisan queue:work. Он непрерывно опрашивает очередь, забирает job, выполняет handle() и удаляет из очереди (или возвращает на retry). Один worker обрабатывает задачи последовательно — для параллелизма поднимают несколько процессов. В проде запускается под Supervisor (или systemd), чтобы автоматически перезапускался после падения или OOM. После деплоя — php artisan queue:restart, иначе воркеры продолжат работать со старым кодом в памяти.',
+                'answer' => '**Worker** — процесс PHP, запущенный командой **`php artisan queue:work`**.
+
+Что делает:
+
+- **Непрерывно опрашивает** очередь.
+- Забирает job, выполняет `handle()`.
+- При успехе — удаляет из очереди.
+- При исключении — возвращает на retry или в `failed_jobs` после исчерпания попыток.
+
+Параллелизм:
+
+- Один worker обрабатывает задачи **последовательно** (по одной).
+- Для параллелизма — поднимают **несколько процессов**.
+
+В проде:
+
+- Запускается под **Supervisor** (или `systemd`/k8s) — авто-перезапуск после падения или OOM.
+- После деплоя — **`php artisan queue:restart`**, иначе воркеры продолжат работать со **старым кодом** в памяти.
+- Часто запускают с **`--max-time=3600`** — воркер сам завершится через час, и Supervisor поднимет с новым кодом.
+
+Альтернатива `queue:work` — `queue:listen`: перезагружает фреймворк на каждой задаче (медленнее, не нужен `queue:restart`). Используется в dev.',
                 'code_example' => '# Запустить worker
 php artisan queue:work redis --queue=high,default --tries=3 --timeout=60
 

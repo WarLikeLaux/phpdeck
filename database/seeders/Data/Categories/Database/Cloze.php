@@ -10,7 +10,14 @@ class Cloze
             [
                 'category' => 'Базы данных',
                 'question' => 'Заполни SQL для топ-10 пользователей по количеству заказов.',
-                'answer' => 'GROUP BY с COUNT и сортировкой DESC + LIMIT - распространённая конструкция top-N. LIMIT/OFFSET - синтаксис PostgreSQL/MySQL/SQLite, в стандарте SQL (с SQL:2008) для top-N используется FETCH FIRST N ROWS ONLY (его поддерживают Oracle 12c+, SQL Server, DB2, Postgres). Для переносимого кода — FETCH FIRST.',
+                'answer' => '**Шаблон top-N:** `GROUP BY` с `COUNT` + сортировка `DESC` + `LIMIT`.
+
+**Зачем `LEFT JOIN`, а не `INNER`:** чтобы попали и **пользователи без заказов** (с `COUNT(o.id) = 0`). `INNER JOIN` отбросит их совсем.
+
+**Про `LIMIT`:**
+- `LIMIT N` — синтаксис **PostgreSQL**, **MySQL**, **SQLite**;
+- в **стандарте SQL** (с SQL:2008) — `FETCH FIRST N ROWS ONLY` (поддерживают Oracle 12c+, SQL Server, DB2, Postgres);
+- для **переносимого кода** — `FETCH FIRST`.',
                 'code_language' => 'sql',
                 'cloze_text' => 'SELECT u.id, COUNT(o.id) AS orders
 FROM users u

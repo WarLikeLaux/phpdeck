@@ -13,7 +13,24 @@ class Middleware
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Middleware и для чего оно нужно?',
-                'answer' => 'Middleware - это слой между запросом и контроллером, который может перехватывать, модифицировать или отклонять запросы. Простыми словами: это "фильтр" для HTTP-запросов. Используется для аутентификации, логирования, CORS, throttle, проверки прав и т.д.',
+                'answer' => '**Middleware** — слой между запросом и контроллером (и ответ → клиенту обратно). «Фильтр» для HTTP-запросов.
+
+Может:
+
+- **Пропустить** запрос дальше — `return $next($request)`.
+- **Модифицировать** запрос/ответ — добавить заголовки, локаль, заменить параметры.
+- **Отклонить** — вернуть свой ответ (редирект/`403`/`401`), контроллер тогда **не вызовется**.
+
+Типичные задачи:
+
+- **Аутентификация** (`auth`) — пускать только залогиненных.
+- **Авторизация** ролей и прав.
+- **CORS** — заголовки для кросс-доменных запросов.
+- **Throttle** — ограничение количества запросов.
+- **Логирование**, добавление trace-id, локализация.
+- **CSRF-проверка** для POST/PUT/DELETE.
+
+Создаётся через `php artisan make:middleware EnsureUserIsActive`. Метод `handle($request, Closure $next)` принимает запрос и решает, что делать.',
                 'code_example' => 'class CheckAge {
     public function handle(Request $request, Closure $next) {
         if ($request->age < 18) {
@@ -29,7 +46,17 @@ class Middleware
             [
                 'category' => 'Laravel',
                 'question' => 'Какие типы middleware бывают в Laravel?',
-                'answer' => 'Глобальные middleware - выполняются для всех запросов. Group middleware - применяются к группе роутов (web, api). Route middleware - назначаются вручную на конкретные роуты через alias. Terminate-middleware - выполняется после отправки ответа клиенту (метод terminate). В Laravel 10 и ниже регистрация шла через app/Http/Kernel.php, в Laravel 11+ всё это переехало в bootstrap/app.php (метод withMiddleware).',
+                'answer' => 'Четыре способа применения:
+
+- **Глобальные** — выполняются для **всех** запросов (например, `TrustProxies`, `HandleCors`).
+- **Group middleware** — для группы роутов: `web` (сессии, CSRF, cookies) и `api` (без сессий).
+- **Route middleware** — навешиваются вручную на конкретные роуты через **alias** (`auth`, `verified`, `signed`, `throttle`).
+- **Terminate-middleware** — у класса есть метод `terminate($request, $response)`, который вызывается **после** отправки ответа клиенту. Удобно для логирования.
+
+Регистрация:
+
+- **Laravel 11+** — всё в **`bootstrap/app.php`**, метод **`withMiddleware()`**. `Http\\Kernel.php` удалён.
+- **Laravel 10 и ниже** — `app/Http/Kernel.php`, свойства `$middleware`, `$middlewareGroups`, `$routeMiddleware`.',
                 'code_example' => '// Laravel 11+ bootstrap/app.php
 ->withMiddleware(function (Middleware $middleware) {
     $middleware->append(EnsureUserIsActive::class);          // глобально

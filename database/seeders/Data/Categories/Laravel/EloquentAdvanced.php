@@ -34,7 +34,18 @@ $posts->load(\'comments\');',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое проблема N+1 и как её обнаружить?',
-                'answer' => 'N+1 - это антипаттерн, при котором делается 1 запрос для основной выборки и ещё N запросов для связей. На 100 постов получится 101 запрос вместо 2. Решение: eager loading (with). Обнаружить можно через Laravel Debugbar, Telescope, либо включить Model::preventLazyLoading() в AppServiceProvider - тогда будет ошибка при попытке lazy load.',
+                'answer' => '**N+1** — антипаттерн, при котором делается **1** запрос для основной выборки и ещё **N** запросов для связей.
+
+Пример: `Post::all()` → 1 запрос; затем `foreach` с `$post->user` → ещё 100 запросов. Итого **101** вместо двух.
+
+Как обнаружить:
+
+- **`Model::preventLazyLoading()`** в `AppServiceProvider::boot()` — Laravel будет бросать `LazyLoadingViolationException` при попытке lazy load. Включают только в dev.
+- **Laravel Debugbar** — список запросов снизу страницы.
+- **Telescope** — отдельная вкладка с дублирующимися запросами.
+- **Pulse** — `Slow Queries` / `N+1`.
+
+Лечится eager loading через **`with()`** в запросе или **`load()`** на уже полученной коллекции.',
                 'code_example' => '// в AppServiceProvider::boot()
 Model::preventLazyLoading(! app()->isProduction());
 
@@ -152,7 +163,19 @@ class UserObserver {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Soft Deletes?',
-                'answer' => 'Soft Delete - это "мягкое удаление": запись не удаляется физически, а в столбце deleted_at ставится текущая дата. Простыми словами: запись помечается удалённой, но остаётся в БД. По умолчанию такие записи скрыты в выборках. Подключается трейтом SoftDeletes.',
+                'answer' => '**Soft Delete** — «мягкое удаление»: запись **не удаляется физически**, а в столбце `deleted_at` ставится текущая дата.
+
+- Запись помечается удалённой, но остаётся в БД.
+- По умолчанию такие записи **скрыты** во всех выборках (через глобальный scope).
+- Подключается трейтом **`Illuminate\\Database\\Eloquent\\SoftDeletes`** на модели и `$table->softDeletes()` в миграции.
+
+Зачем:
+
+- Возможность **восстановить** через `restore()`.
+- История/аудит — данные не теряются.
+- «Корзина» в админке.
+
+Минусы: уникальные индексы на `email`/`slug` могут ломаться (живые + удалённые конкурируют за уникальность).',
                 'code_example' => 'use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Post extends Model {
@@ -210,7 +233,17 @@ class User extends Model {
             [
                 'category' => 'Laravel',
                 'question' => 'Как управлять timestamps в Eloquent?',
-                'answer' => 'По умолчанию у модели есть created_at и updated_at, заполняемые автоматически. Отключить: $timestamps = false. Изменить формат: $dateFormat. Поменять имена: const CREATED_AT, const UPDATED_AT. Точечно отключить обновление updated_at: $model->timestamps = false перед save или метод updateQuietly.',
+                'answer' => 'По умолчанию у модели Eloquent есть поля **`created_at`** и **`updated_at`** — заполняются автоматически при `create` / `save`.
+
+Что можно настраивать:
+
+- **`public $timestamps = false`** — полностью отключить.
+- **`protected $dateFormat = \'U\'`** — формат хранения (например, unix timestamp).
+- **`const CREATED_AT = \'creation_date\'`**, **`const UPDATED_AT = \'last_update\'`** — другие имена колонок.
+- **`$model->timestamps = false`** перед `save()` — точечно не трогать `updated_at` на одной записи.
+- **`updateQuietly([...])`** — обновить **без** событий `saving/saved/updating/updated` (Observer/Listener не сработают).
+
+Миграция: одной строкой `$table->timestamps()` создаёт обе колонки.',
                 'code_example' => 'class Post extends Model {
     public $timestamps = true;
     const CREATED_AT = \'creation_date\';

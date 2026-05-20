@@ -13,7 +13,17 @@ class Controllers
             [
                 'category' => 'Laravel',
                 'question' => 'Как создать контроллер в Laravel?',
-                'answer' => 'Контроллеры создаются через artisan-команду make:controller. Можно создать пустой, resource (с CRUD-методами), invokable (single action), api (без create/edit).',
+                'answer' => 'Контроллеры создаются через artisan-команду **`make:controller`**.
+
+Варианты:
+
+- **`make:controller UserController`** — пустой контроллер.
+- **`--resource`** — заготовка с 7 CRUD-методами (`index`, `create`, `store`, `show`, `edit`, `update`, `destroy`).
+- **`--api`** — то же, но без `create` и `edit` (формы не нужны для API).
+- **`--invokable`** — один метод `__invoke()` (single action).
+- **`--model=Post`** — добавит type-hint модели в методы для route model binding.
+
+Файл появится в `app/Http/Controllers`. Имя — в **единственном числе** + `Controller`: `PostController`.',
                 'code_example' => 'php artisan make:controller UserController
 php artisan make:controller UserController --resource
 php artisan make:controller UserController --invokable
@@ -25,7 +35,19 @@ php artisan make:controller Api/UserController --api',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое resource-контроллер?',
-                'answer' => 'Resource-контроллер - это контроллер с 7 стандартными методами для CRUD: index (список), create (форма создания), store (сохранение), show (просмотр), edit (форма редактирования), update (обновление), destroy (удаление). Подключается одной строкой Route::resource.',
+                'answer' => '**Resource-контроллер** — контроллер с 7 стандартными методами для CRUD:
+
+- **`index`** — `GET /posts` — список.
+- **`create`** — `GET /posts/create` — форма создания.
+- **`store`** — `POST /posts` — сохранение.
+- **`show`** — `GET /posts/{post}` — просмотр одной.
+- **`edit`** — `GET /posts/{post}/edit` — форма редактирования.
+- **`update`** — `PUT/PATCH /posts/{post}` — обновление.
+- **`destroy`** — `DELETE /posts/{post}` — удаление.
+
+Подключается одной строкой **`Route::resource(\'posts\', PostController::class)`** — Laravel сам зарегистрирует все 7 маршрутов с правильными HTTP-методами и именами (`posts.index`, `posts.show` и т.д.).
+
+Для API используют **`apiResource`** — без `create` и `edit`.',
                 'code_example' => 'Route::resource(\'posts\', PostController::class);
 // для API без create/edit
 Route::apiResource(\'posts\', PostController::class);
@@ -41,7 +63,15 @@ Route::apiResources([
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое single action (invokable) контроллер?',
-                'answer' => 'Single action controller - это контроллер с одним методом __invoke(). Используется, когда контроллер делает только одно действие. Удобно для упрощения кода и читаемости.',
+                'answer' => '**Single action (invokable) контроллер** — класс с единственным магическим методом `__invoke()`. Создаётся через `php artisan make:controller ShowProfile --invokable`.
+
+Когда брать:
+
+- Контроллер делает **ровно одно действие** — нет смысла в `index`/`show`/`store`.
+- Хочется, чтобы имя класса читалось как **глагол** (`PublishPost`, `SendInvoice`, `GenerateReport`).
+- Сложная одна операция — не разбухает controller с разнородными методами.
+
+В роуте указывается просто класс — без `@method`: **`Route::get(\'/profile/{id}\', ShowProfile::class)`**.',
                 'code_example' => 'class ShowProfile {
     public function __invoke($id) {
         return view(\'profile\', [\'user\' => User::findOrFail($id)]);

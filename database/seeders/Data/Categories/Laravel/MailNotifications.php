@@ -34,7 +34,19 @@ $user->notify(new InvoicePaid($invoice));',
             [
                 'category' => 'Laravel',
                 'question' => 'Как отправлять Mail в Laravel?',
-                'answer' => 'Создаётся Mailable-класс через make:mail. Он описывает заголовок (envelope), содержимое (content) и вложения (attachments). Шаблон может быть Blade-вьюшкой, markdown-шаблоном или обычным текстом. Отправка через Mail фасад. Драйверы SMTP, Mailgun, SES, Postmark, log, array.',
+                'answer' => 'Поток:
+
+1. **Создать Mailable-класс**: `php artisan make:mail OrderShipped --markdown=mail.orders.shipped`.
+2. **Описать письмо** в трёх методах:
+   - **`envelope()`** — тема, отправитель, заголовки.
+   - **`content()`** — view-шаблон (`view: \'...\'`, `markdown: \'...\'` или `text: \'...\'`).
+   - **`attachments()`** — вложения (массив `Attachment::fromPath(...)`).
+3. **Отправить** через фасад `Mail`:
+   - **`Mail::to($user)->send(...)`** — синхронно (юзер ждёт).
+   - **`Mail::to($user)->queue(...)`** — в очередь (быстро, обрабатывает воркер).
+   - **`Mail::to($user)->later(now()->addMinutes(10), ...)`** — отложенная.
+
+Драйверы (`config/mail.php`): **`smtp`**, **`mailgun`**, **`ses`** (AWS), **`postmark`**, **`resend`**, **`log`** (в `storage/logs/laravel.log`), **`array`** (для тестов).',
                 'code_example' => 'php artisan make:mail OrderShipped --markdown=mail.orders.shipped
 
 class OrderShipped extends Mailable {

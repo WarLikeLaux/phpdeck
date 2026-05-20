@@ -32,7 +32,38 @@ $user = new User(); // автоматически подгрузится фай�
             [
                 'category' => 'PHP',
                 'question' => 'В чём разница между composer.json и composer.lock и какой из них коммитить?',
-                'answer' => 'composer.json описывает требуемые пакеты с диапазонами версий (например ^8.2) и метаданные проекта, a composer.lock фиксирует точные разрешённые версии и хеши, которые установит composer install. Коммитить нужно оба: lock гарантирует воспроизводимый билд на CI и у других разработчиков, а composer update переустанавливает пакеты в рамках ограничений из json и обновляет lock.',
+                'answer' => '- **`composer.json`** — **«хочу»**: описывает требуемые пакеты с **диапазонами** версий (`"php": "^8.2"`, `"laravel/framework": "^11.0"`) и метаданные проекта.
+- **`composer.lock`** — **«поставлено»**: фиксирует **точные версии** и хеши пакетов, которые `composer install` поставит у всех одинаково.
+
+**Коммитить нужно оба** — иначе у тебя одни версии, у CI другие, у коллеги третьи.
+
+**Команды:**
+- **`composer install`** — читает `lock`, ставит точно те версии → **воспроизводимый билд** (CI, прод)
+- **`composer update`** — игнорирует lock, тянет новейшие версии **в рамках** `composer.json`, перезаписывает `lock`',
+                'code_example' => '# composer.json (что хочу)
+{
+    "require": {
+        "guzzlehttp/guzzle": "^7.5"
+    }
+}
+
+# composer.lock (что реально стоит — упрощённо)
+{
+    "packages": [
+        {
+            "name": "guzzlehttp/guzzle",
+            "version": "7.8.1",
+            "dist": { "url": "...", "shasum": "abc..." }
+        }
+    ]
+}
+
+# CI / прод
+composer install --no-dev   # ставит точно 7.8.1 из lock
+
+# Обновить пакет — локально, потом коммит lock
+composer update guzzlehttp/guzzle',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'php.composer_autoload',
             ],
@@ -100,7 +131,14 @@ composer install --no-dev --optimize-autoloader',
             [
                 'category' => 'PHP',
                 'question' => 'Чем отличаются composer install и composer update (кратко)?',
-                'answer' => 'install читает composer.lock и ставит ТОЧНО те версии, что там зафиксированы — воспроизводимый билд (CI, прод). update игнорирует lock, тянет новейшие версии в рамках ограничений composer.json и перезаписывает lock. Локально перед коммитом — install. Обновить пакеты — update.',
+                'answer' => '- **`composer install`** — читает **`composer.lock`** и ставит **ТОЧНО** те версии, что там зафиксированы. **Воспроизводимый билд** — нужен на **CI** и **проде**.
+- **`composer update`** — **игнорирует lock**, тянет новейшие версии **в рамках** ограничений `composer.json`, потом **перезаписывает `composer.lock`**.
+
+**Когда что:**
+- ставишь чужой проект, переключил ветку, деплой → **`install`**
+- хочешь обновить зависимости → **`update`** (можно один пакет: `composer update vendor/pkg`)
+
+**На проде:** только `composer install --no-dev --optimize-autoloader`. `update` на проде — путь к сюрпризам.',
                 'difficulty' => 2,
                 'topic' => 'php.composer_autoload',
             ],
@@ -130,7 +168,20 @@ composer install --no-dev --optimize-autoloader',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое semver и что значат ^ и ~ в Composer?',
-                'answer' => 'Semantic Versioning — формат версии MAJOR.MINOR.PATCH: MAJOR ломает обратную совместимость, MINOR добавляет фичи без поломок, PATCH — только баг-фиксы. В Composer: ^1.2.3 разрешает обновления до следующего MAJOR (>=1.2.3, <2.0.0) — фичи и патчи. ~1.2.3 — только патчи (>=1.2.3, <1.3.0); ~1.2 — минор + патчи. >=1.2, <2 — явный диапазон. 1.2.* — wildcard. Точная "1.2.3" — без отклонений. Знак @dev / @stable управляет min-stability.',
+                'answer' => '**Semantic Versioning** — формат версии `MAJOR.MINOR.PATCH`:
+- **MAJOR** — ломающие изменения (`1.x` → `2.0`)
+- **MINOR** — новые фичи без поломок (`1.2` → `1.3`)
+- **PATCH** — только баг-фиксы (`1.2.3` → `1.2.4`)
+
+**Операторы Composer (от широкого к узкому):**
+- **`^1.2.3`** — до следующего MAJOR: `>=1.2.3, <2.0.0`. Самый частый — пускает minor и patch.
+- **`~1.2.3`** — до следующего MINOR: `>=1.2.3, <1.3.0`. Только patch-апдейты.
+- **`~1.2`** — до следующего MAJOR: `>=1.2, <2.0` (другое поведение!).
+- **`1.2.*`** — wildcard: `>=1.2.0, <1.3.0`.
+- **`>=1.2,<2.0`** — явный диапазон.
+- **`"1.2.3"`** — точная фиксация.
+
+**Best practice:** `^` для большинства зависимостей; `~` если боишься minor-изменений.',
                 'code_example' => '{
     "require": {
         "php": "^8.2",                  // 8.2.x — 8.99.x, не 9.0
@@ -146,7 +197,17 @@ composer install --no-dev --optimize-autoloader',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое автозагрузка (autoload) в PHP простыми словами?',
-                'answer' => 'Механизм, который при первом упоминании класса (new App\\User, App\\User::CONST, instanceof App\\User) автоматически подгружает его файл — без ручных require. Реализуется через spl_autoload_register: PHP при «не знаю такого класса» вызывает зарегистрированный callback с именем класса, тот находит файл и подключает. В Composer-проектах достаточно одного require __DIR__ . "/vendor/autoload.php" в bootstrap — дальше все классы из vendor и твоего src/ грузятся сами по правилам PSR-4.',
+                'answer' => '**Автозагрузка** — механизм, который при первом упоминании класса (`new App\\User`, `App\\User::CONST`, `instanceof App\\User`) **автоматически подгружает его файл** — без ручных `require`.
+
+**Как устроено:** функция **`spl_autoload_register($callback)`** регистрирует обработчик. Когда PHP встречает неизвестный класс, он вызывает все зарегистрированные callback с именем класса — задача callback найти файл и подключить его.
+
+**Composer** делает это за тебя:
+- описываешь в `composer.json` правило **PSR-4**: `"App\\\\": "src/"`
+- `composer install` (или `dump-autoload`) **генерирует** `vendor/autoload.php`
+- в bootstrap (например, `public/index.php`) — **одна строка** `require __DIR__ . "/../vendor/autoload.php";`
+- дальше все классы из `vendor/` и твоего `src/` грузятся автоматически
+
+**Оптимизация для прода:** `composer dump-autoload -o` строит classmap-карту «класс → файл» и убирает поиск по диску.',
                 'code_example' => '<?php
 // bootstrap (обычно public/index.php)
 require __DIR__ . "/../vendor/autoload.php";
@@ -199,14 +260,63 @@ composer update guzzlehttp/guzzle',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое автозагрузчик classmap в Composer и когда его использовать?',
-                'answer' => 'Кроме psr-4 в composer.json есть раздел autoload.classmap — там перечисляют пути (директории или файлы), и Composer при composer dump-autoload сканирует их, строит карту «полное имя класса → файл». Применяют для legacy-кода, который не следует PSR-4 (например, старые библиотеки с подчёркиваниями в именах), а также для прод-оптимизации: composer dump-autoload -o (или --classmap-authoritative) превращает все psr-4-правила в один classmap и убирает поиск по файловой системе на каждый new — типичное ускорение autoload.',
+                'answer' => 'Кроме `psr-4` в `composer.json` есть раздел **`autoload.classmap`** — перечень путей (директорий или файлов), которые Composer **сканирует** при `composer dump-autoload` и строит карту **«полное имя класса → файл»**.
+
+**Где применяют:**
+- **legacy-код**, не следующий PSR-4 (старые библиотеки, имена с `_` вместо namespace)
+- **прод-оптимизация:** `composer dump-autoload -o` (или `--classmap-authoritative`) превращает **все** PSR-4-правила в один classmap. Это убирает поиск файла по диску на каждый `new`.
+
+**Эффект:** ускорение автозагрузки в 2-5 раз на прод-приложениях, особенно с большим `vendor/`.
+
+**Минус:** новые классы появляются только после `composer dump-autoload`, поэтому `-o` не используют на dev.',
+                'code_example' => '{
+    "autoload": {
+        "psr-4": { "App\\\\": "src/" },
+        "classmap": [
+            "legacy/",
+            "database/seeders/"
+        ]
+    }
+}
+
+# На проде
+composer install --no-dev --optimize-autoloader
+# или после деплоя
+composer dump-autoload --classmap-authoritative',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'php.composer_autoload',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что делает раздел autoload.files в composer.json?',
-                'answer' => 'Если в composer.json есть autoload.files со списком файлов, Composer автоматически подключит их в каждом запросе при подключении vendor/autoload.php. Это нужно для глобальных функций (helpers), которые нельзя автозагрузить по имени класса. Так работают, например, хелперы Laravel или функции из пакета symfony/polyfill. Главное правило — там должны лежать ТОЛЬКО объявления функций/констант, никакой исполняемой логики со side-effects.',
+                'answer' => 'Раздел **`autoload.files`** содержит список файлов, которые Composer **автоматически подключает** при `require vendor/autoload.php` — на каждом запросе, **до** любой автозагрузки классов.
+
+**Зачем нужно:** глобальные **функции** и **константы** нельзя автозагрузить по имени класса — их нужно явно подключать. Через `files` это происходит один раз и прозрачно.
+
+**Примеры использования:**
+- **хелперы Laravel** (`helpers.php` с `dd()`, `dump()`, `value()`)
+- **`symfony/polyfill`** — добавляет функции из новых версий PHP в старые
+- свои `helpers.php` с глобальными функциями
+
+**Главное правило:** в таких файлах должны быть **ТОЛЬКО** объявления функций и констант — никаких side-effects (не пиши там `echo`, `$_SESSION[...] = ...` и т.п.), иначе они будут выполняться **на каждом запросе**.',
+                'code_example' => '{
+    "autoload": {
+        "psr-4": { "App\\\\": "src/" },
+        "files": [
+            "src/helpers.php"
+        ]
+    }
+}
+
+# src/helpers.php
+function fullName(User $u): string {
+    return $u->first . " " . $u->last;
+}
+const APP_TIMEZONE = "Europe/Moscow";
+
+# Дальше эти функции/константы доступны везде — без use, без require',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'php.composer_autoload',
             ],

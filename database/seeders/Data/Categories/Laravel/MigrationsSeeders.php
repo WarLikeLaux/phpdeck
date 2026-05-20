@@ -13,7 +13,22 @@ class MigrationsSeeders
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое миграции в Laravel?',
-                'answer' => 'Миграции - это версионируемые описания изменений структуры БД в коде. Простыми словами: вместо ручного SQL вы пишете PHP-классы с методами up (применить) и down (откатить). Команда php artisan migrate применяет невыполненные миграции.',
+                'answer' => '**Миграции** — версионируемые описания изменений структуры БД в коде. Вместо ручного `CREATE TABLE`/`ALTER TABLE` пишем PHP-классы.
+
+Что даёт:
+
+- **История изменений** в Git наравне с кодом.
+- **Воспроизводимая БД** — `php artisan migrate` на новом окружении/CI собирает схему с нуля.
+- **Откат** — метод `down()` отменяет изменения миграции.
+- **Команда в коллективе** — все накатывают одинаковую схему, никто не пишет SQL руками в проде.
+
+Структура файла:
+
+- Лежат в `database/migrations` с префиксом-таймстампом — порядок применения по дате.
+- Два метода: **`up()`** (применить) и **`down()`** (откатить).
+- Создаются через `php artisan make:migration create_posts_table`.
+
+Какие миграции уже применены — в таблице `migrations` (с колонкой `batch`).',
                 'code_example' => 'php artisan make:migration create_posts_table
 
 // в миграции
@@ -36,7 +51,18 @@ public function down(): void {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между migrate, rollback, refresh и fresh?',
-                'answer' => 'migrate - применяет невыполненные миграции. rollback - откатывает последний batch миграций (через down). refresh - откатывает ВСЕ миграции, потом применяет заново. fresh - удаляет ВСЕ таблицы и применяет миграции (быстрее refresh, но без down). migrate:status - показать статус миграций.',
+                'answer' => 'Все основные команды:
+
+- **`migrate`** — применяет **невыполненные** миграции. Безопасна для прода.
+- **`migrate:rollback`** — откатывает **последний batch** через `down()`. Опция `--step=N` — откатить N batch-ей.
+- **`migrate:refresh`** — `rollback` всех миграций + `migrate` заново. Использует `down()`.
+- **`migrate:fresh`** — **`DROP`** всех таблиц + `migrate`. **Быстрее** `refresh`, но `down()` не вызывает. **Только dev**.
+- **`migrate:status`** — read-only вывод: какие миграции применены, в каком batch.
+- **`migrate:reset`** — откатить **все** миграции до пустой БД.
+
+Опасные на проде: `fresh`, `refresh`, `reset` — теряют данные. Безопасные: `migrate`, `migrate:status`.
+
+В CI часто используют `--force` (без интерактивного подтверждения) и `--pretend` (показать SQL без выполнения).',
                 'code_example' => 'php artisan migrate
 php artisan migrate:rollback --step=1
 php artisan migrate:refresh --seed
@@ -64,7 +90,18 @@ php artisan migrate:status',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Seeders и Factories?',
-                'answer' => 'Seeder - класс, который заполняет БД тестовыми/начальными данными. Factory - "фабрика", которая описывает, как генерировать модели с фейковыми данными (через Faker). Используются вместе: фабрика создаёт модели, сидер вызывает фабрику.',
+                'answer' => 'Две связанные вещи для наполнения БД данными:
+
+- **Factory** — описывает, **как генерировать одну модель** с фейковыми данными через Faker. Лежит в `database/factories`. Создаётся через `make:factory UserFactory --model=User`. Метод `definition()` возвращает массив дефолтных полей.
+- **Seeder** — класс, **запускающий** массовое создание (через `factory()->count(50)->create()`) или вставляющий реальные справочные данные (роли, типы, страны). Лежит в `database/seeders`. Точка входа — `DatabaseSeeder`.
+
+Запуск:
+
+- **`php artisan db:seed`** — выполнить `DatabaseSeeder`.
+- **`php artisan db:seed --class=UsersSeeder`** — конкретный сидер.
+- **`php artisan migrate:fresh --seed`** — пересоздать БД и сразу заполнить.
+
+Factory = **«как генерировать»**, Seeder = **«когда и сколько вставить»**.',
                 'code_example' => 'php artisan make:seeder UsersSeeder
 php artisan make:factory UserFactory --model=User
 
@@ -204,7 +241,23 @@ php artisan schema:dump --prune   # + удалить файлы миграций
             [
                 'category' => 'Laravel',
                 'question' => 'Что делают модификаторы nullable(), default(), unique() в миграции?',
-                'answer' => 'Модификаторы — это методы, цепляемые после объявления колонки, которые меняют её свойства. nullable() — разрешает NULL. default($value) — значение по умолчанию. unique() — UNIQUE-индекс. index() — обычный индекс. ->after(\'col\') — позиция при ADD COLUMN (MySQL). ->change() — изменить существующую колонку. ->comment(\'...\') — комментарий в схеме. Цепочка читается слева направо.',
+                'answer' => 'Модификаторы — методы, **цепляемые после объявления колонки**, меняющие её свойства. Цепочка читается слева направо.
+
+Самые частые:
+
+- **`nullable()`** — разрешает `NULL`.
+- **`default($value)`** — значение по умолчанию.
+- **`unique()`** — `UNIQUE`-индекс на колонку.
+- **`index()`** — обычный индекс.
+- **`unsigned()`** — без знака (для `integer`).
+- **`comment(\'...\')`** — комментарий в схеме.
+
+Изменение схемы:
+
+- **`->after(\'col\')`** — позиция при `ADD COLUMN` (MySQL).
+- **`->change()`** — изменить **существующую** колонку. В Laravel 11+ работает нативно; в L10 и ниже нужен `doctrine/dbal`.
+
+Составные индексы — отдельным вызовом: `$table->unique([\'tenant_id\', \'email\'])`.',
                 'code_example' => 'Schema::create(\'users\', function (Blueprint $table) {
     $table->id();
     $table->string(\'email\')->unique();
@@ -228,7 +281,23 @@ Schema::table(\'users\', function (Blueprint $table) {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между Schema::create и Schema::table?',
-                'answer' => 'Schema::create(\'users\', fn ($t) => ...) — СОЗДАЁТ новую таблицу (CREATE TABLE). Schema::table(\'users\', fn ($t) => ...) — ИЗМЕНЯЕТ существующую (ALTER TABLE): добавить колонку, индекс, FK, переименовать. Внутри Blueprint-замыкания методы те же ($table->string(\'phone\')), но семантика разная. Для add-операций используют ->after(\'col\') (MySQL), для изменения существующей колонки — ->change() (требует пакета doctrine/dbal в Laravel 10 и ниже; в Laravel 11+ работает нативно).',
+                'answer' => 'Два разных типа операций над схемой:
+
+- **`Schema::create(\'users\', fn ($t) => ...)`** — **СОЗДАЁТ** новую таблицу (`CREATE TABLE`). Падает, если таблица уже есть.
+- **`Schema::table(\'users\', fn ($t) => ...)`** — **ИЗМЕНЯЕТ** существующую (`ALTER TABLE`): добавить колонку/индекс/FK, переименовать.
+
+Внутри Blueprint-замыкания методы те же (`$table->string(\'phone\')`), но семантика разная.
+
+Для модификации:
+
+- **`->after(\'col\')`** — позиция при `ADD COLUMN` (MySQL-only).
+- **`->change()`** — изменить тип/длину **существующей** колонки. В Laravel 11+ нативно; в L10 — нужен `doctrine/dbal`.
+- **`renameColumn(\'old\', \'new\')`** — переименование.
+- **`dropColumn(\'name\')`** — удалить колонку.
+
+Удаление таблицы:
+
+- **`Schema::dropIfExists(\'posts\')`** — обычно используется в `down()`.',
                 'code_example' => '// Создать таблицу
 Schema::create(\'posts\', function (Blueprint $table) {
     $table->id();
@@ -258,7 +327,22 @@ Schema::table(\'posts\', function (Blueprint $table) {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое factory и как ей пользоваться?',
-                'answer' => 'Factory — класс-генератор моделей с фейковыми данными для тестов и сидеров. User::factory()->create() сохраняет в БД, ->make() возвращает в памяти без save. ->count(N) делает массовую генерацию, ->state([...]) и именованные state-методы переопределяют поля. Через has()/for() сразу создаются связи. В классе UserFactory метод definition() задаёт дефолты через fake() (Faker).',
+                'answer' => '**Factory** — класс-генератор моделей с фейковыми данными для тестов и сидеров. Лежит в `database/factories`, создаётся через `php artisan make:factory UserFactory --model=User`.
+
+Запуск из теста/сидера:
+
+- **`User::factory()->create()`** — создать **и сохранить** в БД.
+- **`User::factory()->make()`** — создать **в памяти**, без `save`.
+- **`User::factory()->count(50)->create()`** — массовая генерация.
+
+Гибкость:
+
+- **`->state([\'role\' => \'admin\'])`** — переопределить поля разово.
+- **Именованные state-методы** — `->admin()`, `->suspended()` (определяют в самой фабрике).
+- **`->has(Post::factory()->count(3))`** — сразу создать связанные записи.
+- **`->for(User::factory())`** — обратная сторона, `belongsTo`.
+
+В классе фабрики метод **`definition()`** задаёт дефолты через `fake()` (Faker — генератор имён, email, текста, чисел).',
                 'code_example' => '// database/factories/UserFactory.php
 class UserFactory extends Factory {
     public function definition(): array {

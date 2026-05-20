@@ -219,7 +219,23 @@ $service = new OrderService(new FakeGateway());',
                 'topic' => 'oop.dependency_injection',
                 'difficulty' => 2,
                 'question' => 'Что такое DI-контейнер простыми словами?',
-                'answer' => 'Объект, который умеет создавать другие объекты, автоматически разбираясь, что им нужно. Ты говоришь $container->make(OrderService::class) — он смотрит на конструктор, видит «нужен OrderRepository», создаёт его, и вручает тебе готовый OrderService. В Laravel — это Service Container, фундамент всего фреймворка.',
+                'answer' => '**DI-контейнер** — объект, который умеет **создавать** другие объекты, **автоматически** разбираясь в их зависимостях.
+
+**Как работает:**
+
+1. Просишь `$container->make(OrderService::class)`.
+2. Контейнер смотрит на **typehint в конструкторе** — `__construct(OrderRepository $repo)`.
+3. **Рекурсивно** создаёт `OrderRepository` (и его зависимости).
+4. Вручает готовый `OrderService` со всем графом зависимостей.
+
+**Возможности типового контейнера:**
+
+- `bind(Interface::class, Concrete::class)` — биндинг интерфейса на реализацию.
+- `singleton(...)` — один экземпляр на запрос/процесс.
+- Автоматическая инъекция через **typehint** (constructor/method).
+- Контекстные биндинги — разные реализации для разных мест.
+
+**В Laravel** это **Service Container** — фундамент всего фреймворка: контроллеры, FormRequest, Job-ы создаются именно через него.',
                 'code_example' => '<?php
 interface OrderRepository {}
 class EloquentOrderRepository implements OrderRepository {}

@@ -53,7 +53,20 @@ php artisan serve',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое архитектура MVC и как она реализована в Laravel?',
-                'answer' => 'MVC (Model-View-Controller) - это паттерн разделения логики на 3 части. Model - работа с данными (Eloquent-модели). View - отображение (Blade-шаблоны). Controller - обработка запроса и связь между моделью и видом. В Laravel роуты направляют запрос в контроллер, контроллер достаёт данные через модель и передаёт их во view.',
+                'answer' => '**MVC (Model-View-Controller)** — паттерн разделения логики на 3 части:
+
+- **Model** — работа с данными. В Laravel это Eloquent-модели в `app/Models`. Знают про БД, но не про HTTP.
+- **View** — отображение. Blade-шаблоны в `resources/views`. Знают про вёрстку, но не про БД.
+- **Controller** — оркестратор. Принимает HTTP-запрос, дёргает модель, передаёт результат во view.
+
+Поток запроса в Laravel:
+
+1. **Route** (`routes/web.php`) принимает URL и направляет в метод контроллера.
+2. **Controller** валидирует ввод, дёргает **Model**.
+3. **Model** общается с БД.
+4. **Controller** возвращает `view(...)` или JSON.
+
+Цель — каждый слой делает свою работу. Бизнес-логика обычно выносится из контроллера в **Service/Action**-классы, чтобы контроллер оставался тонким.',
                 'code_example' => '// Route
 Route::get(\'/users/{id}\', [UserController::class, \'show\']);
 
@@ -71,7 +84,18 @@ class UserController extends Controller {
             [
                 'category' => 'Laravel',
                 'question' => 'Опиши структуру проекта Laravel - что лежит в основных папках?',
-                'answer' => 'app/ - основной код приложения (модели, контроллеры, провайдеры). bootstrap/ - стартовые файлы и кеш. config/ - конфигурационные файлы. database/ - миграции, сидеры, фабрики. public/ - точка входа index.php и статика. resources/ - views, css, js, lang-файлы. routes/ - файлы маршрутов (web.php, api.php, console.php). storage/ - логи, кеш, загрузки. tests/ - тесты. vendor/ - зависимости composer.',
+                'answer' => 'Основные папки в корне Laravel-проекта:
+
+- **`app/`** — код приложения: `Models`, `Http/Controllers`, `Http/Middleware`, `Providers`, `Console`, `Jobs`, `Events`, `Listeners`.
+- **`bootstrap/`** — стартовые файлы (`app.php` — конфиг ядра в L11+) и кеш фреймворка.
+- **`config/`** — конфиги (`app.php`, `database.php`, `auth.php`, ...).
+- **`database/`** — `migrations/`, `seeders/`, `factories/`.
+- **`public/`** — точка входа `index.php` и статика (CSS, JS, изображения). Сюда смотрит web-сервер.
+- **`resources/`** — `views/` (Blade), `js/`, `css/`, `lang/`.
+- **`routes/`** — `web.php`, `api.php`, `console.php`, `channels.php`.
+- **`storage/`** — логи, кеш, скомпилированные view, загруженные файлы (`app/`, `framework/`, `logs/`).
+- **`tests/`** — тесты (`Feature/`, `Unit/`).
+- **`vendor/`** — зависимости Composer (в Git **не коммитится**).',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 2,
@@ -102,7 +126,26 @@ app(\'cache\')->put(\'key\', \'value\', 60);',
             [
                 'category' => 'Laravel',
                 'question' => 'Как работает локализация в Laravel?',
-                'answer' => 'Lang-файлы лежат в lang/ (или resources/lang/). Хелпер __() читает строку, trans_choice - с учётом числа (plural). Можно использовать lang-ключи (json) или короткие ключи (php-массивы). Текущая локаль: app()->getLocale(), app()->setLocale(\'ru\').',
+                'answer' => 'Lang-файлы лежат в **`lang/`** (в Laravel 9+, до этого — `resources/lang/`). Публикуются командой `php artisan lang:publish`.
+
+Два формата ключей:
+
+- **JSON** (`lang/ru.json`) — ключ = английская фраза, значение = перевод. Удобно для длинных строк.
+- **PHP-массивы** (`lang/ru/messages.php`) — короткие ключи: `__(\'messages.greeting\')`. Удобно для группировки.
+
+Хелперы:
+
+- **`__(\'key\')`** или **`trans(\'key\')`** — читает строку.
+- **`trans_choice(\'apples\', $count)`** — учёт числа (`1 яблоко|:count яблок`).
+- **`@lang(\'...\')`** в Blade.
+
+Управление локалью:
+
+- **`app()->getLocale()`** — текущая.
+- **`app()->setLocale(\'ru\')`** — переключить.
+- Дефолт — `config(\'app.locale\')` (берётся из `APP_LOCALE` в `.env`).
+
+Обычно локаль ставится через middleware на основе сессии/заголовка `Accept-Language`/URL.',
                 'code_example' => '// lang/ru.json
 { "Welcome": "Добро пожаловать" }
 
@@ -292,7 +335,21 @@ unlink($tmp); unlink($pdf);                    // подчистить за со
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое helpers в Laravel и приведи примеры.',
-                'answer' => 'Хелперы - это глобальные функции, доступные везде. Примеры: route(), url(), config(), env(), auth(), now(), today(), abort(), back(), redirect(), response(), request(), session(), cookie(), view(), validator(), collect(), str(), tap(), throw_if(), throw_unless(), data_get(), data_set(), Arr::, Str::.',
+                'answer' => '**Хелперы** — глобальные функции Laravel, доступные везде. Не надо импортировать неймспейсы.
+
+Часто используемые:
+
+- **URL и роутинг**: `route()`, `url()`, `asset()`, `redirect()`, `back()`.
+- **Запрос/сессия/auth**: `request()`, `session()`, `cookie()`, `auth()`, `csrf_token()`.
+- **Ответ**: `response()`, `view()`, `abort()`, `abort_if()`, `abort_unless()`.
+- **Конфиг и окружение**: `config()`, `env()` (только в `config/`!).
+- **Время**: `now()`, `today()` — возвращают `Carbon`.
+- **Коллекции и строки**: `collect()`, `str()`, `tap()`.
+- **Валидация**: `validator()`.
+- **Доступ к массивам**: `data_get($array, \'user.profile.name\', \'default\')`, `data_set()`.
+- **Утилиты**: `throw_if()`, `throw_unless()`.
+
+Также есть статические классы: **`Str::`** (`Str::slug`, `Str::random`), **`Arr::`** (`Arr::get`, `Arr::pluck`).',
                 'code_example' => 'now()->addDays(7);
 str(\'Hello\')->upper(); // Stringable
 collect([1,2,3])->sum();

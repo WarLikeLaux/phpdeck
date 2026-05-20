@@ -13,7 +13,17 @@ class CacheSession
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Cache в Laravel и какие драйверы существуют?',
-                'answer' => 'Cache - это система кеширования данных для ускорения. Драйверы: database, file, redis, memcached, array (для тестов), dynamodb, null. Дефолт зависит от версии и .env: в Laravel 11 skeleton по умолчанию database (CACHE_STORE=database), в более старых версиях был file. Конфигурируется в config/cache.php. Используется через Cache фасад.',
+                'answer' => '**Cache** — система кеширования данных для ускорения (вместо повторных тяжёлых запросов в БД/API кладём результат в быстрое хранилище).
+
+Драйверы (`config/cache.php`):
+
+- **`redis`**, **`memcached`** — прод, быстрые in-memory.
+- **`database`** — таблица `cache`. Дефолт в Laravel 11 (`CACHE_STORE=database`).
+- **`file`** — на диск. Был дефолтом до L11.
+- **`array`** — только в памяти процесса, для тестов.
+- **`dynamodb`**, **`null`** — AWS / отключить.
+
+Доступ через фасад `Cache` или helper `cache()`. Ключевые методы: `put`, `get`, `has`, `remember`, `forget`, `flush`.',
                 'code_example' => 'Cache::put(\'key\', \'value\', 3600);
 $value = Cache::get(\'key\', \'default\');
 Cache::has(\'key\');
@@ -26,7 +36,20 @@ Cache::flush();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает Cache::remember?',
-                'answer' => 'Cache::remember - получить значение из кеша или, если его нет, выполнить closure, записать результат в кеш и вернуть. Простыми словами: "если в кеше есть - возьми, если нет - вычисли и положи". Также есть rememberForever (без TTL).',
+                'answer' => '**`Cache::remember($key, $ttl, $callback)`** — самый частый паттерн кеширования.
+
+Логика:
+
+1. Смотрит, есть ли `$key` в кеше.
+2. **Есть** → возвращает закешированное.
+3. **Нет** → выполняет `$callback`, записывает результат с TTL в секундах, возвращает.
+
+Удобно для **«вычислить один раз и не дёргать БД на каждый запрос»**.
+
+Вариации:
+
+- **`Cache::rememberForever($key, $callback)`** — без TTL, живёт пока не очистят.
+- **`Cache::flexible($key, [$fresh, $stale], $callback)`** — SWR-стратегия (stale-while-revalidate).',
                 'code_example' => '$users = Cache::remember(\'users.all\', 600, function () {
     return User::all();
 });
@@ -72,7 +95,22 @@ Cache::lock(\'foo\', 10)->block(5, function () {
             [
                 'category' => 'Laravel',
                 'question' => 'Как работает session в Laravel?',
-                'answer' => 'Сессия - это хранилище данных пользователя между запросами. Драйверы: database, file, cookie, redis, memcached, array, dynamodb. Дефолт зависит от версии и .env: в Laravel 11 skeleton по умолчанию database (SESSION_DRIVER=database), в более старых версиях был file. Доступ через session() helper, $request->session() или Session фасад. Защищена от session fixation, регенерация ID при логине.',
+                'answer' => '**Сессия** — серверное хранилище данных пользователя между HTTP-запросами. Идентифицируется cookie `laravel_session` с зашифрованным session id.
+
+Драйверы (`config/session.php`):
+
+- **`database`** — таблица `sessions`. Дефолт в Laravel 11 (`SESSION_DRIVER=database`).
+- **`file`** — файлы в `storage/framework/sessions`. Был дефолтом до L11.
+- **`redis`**, **`memcached`** — для нескольких серверов за балансировщиком.
+- **`cookie`** — на стороне клиента (зашифровано).
+- **`array`** — для тестов.
+
+Доступ через `session()` helper, `$request->session()` или фасад `Session`.
+
+Защита:
+
+- Cookie всегда `HttpOnly`.
+- Регенерация ID при логине (`session()->regenerate()`) защищает от **session fixation**.',
                 'code_example' => 'session([\'key\' => \'value\']);
 $value = session(\'key\', \'default\');
 session()->forget(\'key\');

@@ -33,7 +33,32 @@ $users = User::where(\'active\', true)->get();',
             [
                 'category' => 'Laravel',
                 'question' => 'Какие основные CRUD-методы есть у Eloquent-модели?',
-                'answer' => 'create() - создать запись из массива. save() - сохранить экземпляр. update() - обновить. delete() - удалить. find($id), findOrFail($id), first(), firstOrFail(), all(), get(). fresh() - получить актуальную копию из БД (новый экземпляр). refresh() - обновить ТЕКУЩИЙ экземпляр данными из БД.',
+                'answer' => 'Базовые CRUD-методы модели:
+
+**Create:**
+
+- `User::create([...])` — создать запись из массива (требует `$fillable`).
+- `$user->save()` — сохранить инстанс.
+
+**Read:**
+
+- `User::find($id)` — по PK, `null` если нет.
+- `User::findOrFail($id)` — то же, но 404.
+- `User::first()` / `firstOrFail()` — первая.
+- `User::all()`, `User::where(...)->get()` — коллекция.
+
+**Update:**
+
+- `$user->update([\'name\' => \'B\'])` или присваивание + `save()`.
+
+**Delete:**
+
+- `$user->delete()`.
+
+**Свежесть данных:**
+
+- `fresh()` — **новый** объект из БД, текущий не трогает.
+- `refresh()` — перечитать данные в **текущий** инстанс.',
                 'code_example' => '$user = User::create([\'name\' => \'A\', \'email\' => \'a@b.c\']);
 $user->name = \'B\';
 $user->save();
@@ -51,7 +76,18 @@ $user->delete();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое mass assignment и зачем нужны $fillable и $guarded?',
-                'answer' => 'Mass assignment - это создание/обновление модели массивом данных (User::create($input)). Это опасно: пользователь может подсунуть лишние поля (например is_admin). Поэтому Laravel требует явно указать разрешённые поля через $fillable (whitelist) или запрещённые через $guarded (blacklist). Технически можно объявить оба свойства, но при конфликте $fillable имеет приоритет, и $guarded фактически игнорируется - поэтому на практике используют что-то одно.',
+                'answer' => '**Mass assignment** — создание/обновление модели **массивом данных** сразу: `User::create($request->all())`.
+
+Опасность: пользователь может подсунуть лишние поля в форму — например, `is_admin=1` — и попасть в БД.
+
+Защита:
+
+- **`$fillable`** (whitelist) — список **разрешённых** полей. Всё остальное игнорируется.
+- **`$guarded`** (blacklist) — список **запрещённых** полей. `$guarded = []` означает «всё разрешено» (так делать **не стоит**).
+
+Если запрещённое поле попало в `create()`, Laravel при `Model::preventSilentlyDiscardingAttributes()` бросит `MassAssignmentException`. По умолчанию — тихо отфильтрует.
+
+На практике используют **`$fillable`** — явный whitelist безопаснее.',
                 'code_example' => 'class User extends Model {
     protected $fillable = [\'name\', \'email\', \'password\'];
     // или
@@ -64,7 +100,20 @@ $user->delete();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое casts в Eloquent?',
-                'answer' => 'Casts - это автоматическое преобразование атрибутов модели при чтении/записи. Например, поле в БД хранится как JSON-строка, а в коде вы работаете с массивом. Стандартные касты: int, bool, array, json, datetime, decimal:2, encrypted, AsArrayObject, AsCollection.',
+                'answer' => '**Casts** — автоматическое преобразование атрибутов модели **при чтении и записи**. Описываются в свойстве `$casts` (или методе `casts()` в L11+).
+
+Пример: поле в БД хранится как JSON-строка, а в коде вы работаете с массивом — без ручных `json_encode`/`decode`.
+
+Стандартные касты:
+
+- **Скаляры**: `int`, `bool`, `float`, `string`.
+- **Массивы/JSON**: `array`, `json`, `collection`, `AsArrayObject`, `AsCollection`.
+- **Даты**: `date`, `datetime`, `immutable_datetime`, `timestamp`.
+- **Деньги/точность**: `decimal:2`.
+- **Безопасность**: `encrypted`, `hashed`.
+- **Enums**: `UserStatus::class` (нужно backed enum).
+
+Бонус: на новых полях модели можно сразу не писать accessor — `decimal:2` уже округлит до 2 знаков.',
                 'code_example' => 'class User extends Model {
     protected $casts = [
         \'is_admin\' => \'bool\',
@@ -155,7 +204,20 @@ User::upsert([
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Query Builder в Laravel?',
-                'answer' => 'Query Builder - это инструмент для построения SQL-запросов через PHP-методы, не привязанный к моделям. Простыми словами: альтернатива Eloquent для случаев, когда не нужна модель, или для тяжёлых SQL.',
+                'answer' => '**Query Builder** — инструмент построения SQL-запросов через цепочки PHP-методов, **не привязанный к моделям**. Под капотом Eloquent сам использует Query Builder.
+
+Точка входа — фасад **`DB`**:
+
+- `DB::table(\'users\')->where(...)->get()` — стартует с таблицы.
+- Eloquent-модель сразу даёт билдер: `User::where(...)->get()`.
+
+Когда брать Query Builder вместо Eloquent:
+
+- **Нет нужды в модели** — отчёты, аналитика, миграции, ETL.
+- **Скорость** — без гидратации моделей и событий. Возвращает `stdClass`/массивы.
+- **Тяжёлый SQL** — оконные функции, CTE, агрегаты, JOIN на 5 таблиц.
+
+Возвращает `Collection` со `stdClass` объектами, а не модели.',
                 'code_example' => 'use Illuminate\Support\Facades\DB;
 
 $users = DB::table(\'users\')
@@ -425,7 +487,17 @@ class UserObserver {
             [
                 'category' => 'Laravel',
                 'question' => 'Как отключить timestamps у модели Eloquent?',
-                'answer' => 'По умолчанию Eloquent ожидает колонки created_at и updated_at и сам заполняет их при save()/update(). Чтобы отключить полностью - public $timestamps = false. Поменять имена колонок - константы CREATED_AT/UPDATED_AT. Формат хранения - $dateFormat. Разово сохранить без обновления updated_at - $model->timestamps = false перед save(), либо $model->updateQuietly([...]) (не триггерит и события модели).',
+                'answer' => 'По умолчанию Eloquent ожидает колонки **`created_at`** и **`updated_at`** и сам заполняет их при `save()`/`update()`.
+
+Варианты настройки:
+
+- **Полностью отключить** — `public $timestamps = false;` на модели.
+- **Поменять имена колонок** — константы `CREATED_AT` / `UPDATED_AT`.
+- **Поменять формат хранения** — `protected $dateFormat = \'U\';` (например, unix timestamp).
+- **Разово не трогать `updated_at`** — `$model->timestamps = false;` перед `save()`.
+- **`updateQuietly([...])`** — апдейт **без событий модели** (`saving`/`saved`/`updating`/`updated`), Observer не сработает.
+
+Миграция: одной строкой `$table->timestamps()` создаёт обе колонки `TIMESTAMP NULLABLE`.',
                 'code_example' => 'class Post extends Model
 {
     public $timestamps = false; // совсем нет created_at/updated_at

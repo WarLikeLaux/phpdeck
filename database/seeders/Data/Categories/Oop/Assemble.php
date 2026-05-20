@@ -12,7 +12,11 @@ class Assemble
                 'topic' => 'oop.assemble',
                 'difficulty' => 2,
                 'question' => 'Собери класс с конструктором и приватным свойством.',
-                'answer' => 'Constructor property promotion (PHP 8) объявляет и инициализирует свойство одной строкой.',
+                'answer' => '**Constructor property promotion** (PHP 8.0) объявляет и инициализирует свойство **в одной строке**.
+
+- Модификатор видимости (`private`/`public`/`protected`) перед параметром превращает его в свойство.
+- `readonly` фиксирует значение — записать можно только в конструкторе.
+- `final class` запрещает наследование — типичный приём для **Value Object**.',
                 'assemble_chunks' => [
                     'final class OrderTotal {',
                     '    public function __construct(',
@@ -56,7 +60,9 @@ class Assemble
                 'topic' => 'oop.assemble',
                 'difficulty' => 2,
                 'question' => 'Собери абстрактный класс Shape с одним абстрактным методом area().',
-                'answer' => 'abstract запрещает создавать объекты и помечает обязательный к реализации метод.',
+                'answer' => '- `abstract class` — **запрещает** создавать объекты через `new`.
+- `abstract public function area(): float;` — **обязательный** к реализации в потомках метод (без тела).
+- Потомок, не реализовавший все `abstract`-методы, тоже обязан быть `abstract`.',
                 'assemble_chunks' => [
                     'abstract class Shape',
                     '{',

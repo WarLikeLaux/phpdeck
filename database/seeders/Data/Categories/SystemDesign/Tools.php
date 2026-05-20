@@ -98,28 +98,151 @@ cat access.log | grep -c "500 "',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое find простыми словами?',
-                'answer' => 'Команда для поиска файлов по имени, типу, размеру. find . -name "*.php" — все PHP-файлы рекурсивно с текущей папки. find . -type d -name "logs" — папки с именем logs. find . -mtime -1 — изменённые за последний день.',
+                'answer' => '**`find`** — команда для **рекурсивного поиска файлов** по имени, типу, размеру, дате изменения, правам.
+
+Базовый синтаксис: `find <где> <условия> [-exec действие]`.
+
+**Самые частые флаги:**
+
+- `-name "*.php"` — по шаблону имени
+- `-iname "*.PHP"` — то же, регистронезависимо
+- `-type f` — только файлы, `-type d` — только папки
+- `-mtime -1` — изменённые за последние сутки
+- `-size +10M` — больше 10 МБ
+- `-path "*/vendor/*" -prune` — исключить папку из обхода
+- `-exec rm {} \;` — выполнить команду над каждым найденным',
+                'code_example' => '# Все PHP-файлы рекурсивно
+find . -name "*.php"
+
+# Папки с именем logs
+find . -type d -name "logs"
+
+# Изменённые за последний день
+find . -mtime -1
+
+# Файлы больше 10 МБ
+find /var/log -type f -size +10M
+
+# Поиск с исключением vendor/ и node_modules/
+find . -type f -name "*.php" \
+    -not -path "./vendor/*" \
+    -not -path "./node_modules/*"
+
+# Удалить все .log старше 7 дней
+find /var/log -name "*.log" -mtime +7 -delete',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое pipe (|) в shell простыми словами?',
-                'answer' => 'Передаёт вывод одной команды как ввод другой. Пример: ls | grep ".log" — список файлов передать в grep, тот отфильтрует только .log. Несколько pipe-ов можно цепочкой: cat file.log | grep ERROR | wc -l — посчитать число строк с ERROR.',
+                'answer' => '**Pipe** (`|`) передаёт **stdout одной команды** на **stdin другой**. Это основной механизм Unix: маленькие утилиты, склеенные в цепочку, делают сложную работу.
+
+Аналогия: труба, по которой данные текут от одной программы к другой.
+
+**Цепочки можно делать сколько угодно** — каждая команда получает результат предыдущей. Так строятся однострочные «pipelines» для анализа логов и поиска.',
+                'code_example' => '# Список файлов → отфильтровать только .log
+ls | grep ".log"
+
+# Посчитать число ERROR-строк в логе
+cat storage/logs/laravel.log | grep ERROR | wc -l
+
+# Топ-10 IP по числу обращений в access.log
+cat /var/log/nginx/access.log \
+    | awk \'{print $1}\' \
+    | sort \
+    | uniq -c \
+    | sort -rn \
+    | head -10
+
+# Только уникальные ошибки за последний час
+tail -n 10000 laravel.log | grep ERROR | sort -u',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое перенаправление > и >> в shell?',
-                'answer' => 'Записывает вывод команды в файл. echo "hi" > log.txt — перезаписывает файл. echo "hi2" >> log.txt — дописывает в конец. 2> errors.txt — перенаправить ОШИБКИ (stderr). &> all.txt — и stdout, и stderr.',
+                'answer' => 'Перенаправление **записывает вывод команды в файл** вместо терминала.
+
+**Базовые операторы:**
+
+- `>` — **перезаписать** файл (если есть — затрётся)
+- `>>` — **дописать в конец** файла
+- `<` — взять stdin **из файла**
+
+**Каналы потоков:**
+
+- `1>` или просто `>` — stdout (обычный вывод)
+- `2>` — stderr (ошибки)
+- `&>` или `> file 2>&1` — **оба потока** в один файл
+- `2>/dev/null` — выбросить ошибки в «никуда»
+
+Это позволяет складывать вывод скриптов в логи и разделять успехи и ошибки.',
+                'code_example' => '# Перезаписать / дописать
+echo "hi" > log.txt
+echo "hi2" >> log.txt
+
+# Только ошибки в отдельный файл
+php artisan migrate 2> errors.log
+
+# И stdout, и stderr в один файл
+php artisan queue:work &> queue.log
+# то же самое:
+php artisan queue:work > queue.log 2>&1
+
+# Спрятать ошибки (например, отсутствие файла)
+grep "TODO" *.php 2>/dev/null
+
+# Взять stdin из файла
+mysql -u root my_db < dump.sql',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое переменные окружения простыми словами?',
-                'answer' => 'Глобальные пары «имя=значение», доступные процессам в системе. Примеры: PATH (где искать программы), HOME (домашняя папка), DATABASE_URL (адрес БД). В bash смотреть: echo $HOME. Задать: export DB_HOST=localhost.',
+                'answer' => '**Переменные окружения** — глобальные пары `KEY=VALUE`, которые **наследуются дочерними процессами** от родителя. Через них приложениям передают **конфиг снаружи** — без правки кода.
+
+**Часто встречающиеся:**
+
+- `PATH` — список папок, где shell ищет команды
+- `HOME` — путь к домашней папке (`/home/user`)
+- `USER`, `SHELL`, `LANG`
+- `DATABASE_URL`, `APP_ENV`, `APP_KEY` — конфиг приложения
+
+**Где задают:**
+
+- временно — `export DB_HOST=localhost` (только в текущей сессии)
+- постоянно — в `~/.bashrc`, `~/.zshrc`, `~/.profile`
+- для одного процесса — `DB_HOST=localhost php artisan ...`
+- из файла — `.env` + `vlucas/phpdotenv` в Laravel
+- в проде — через `systemd`, Docker `-e`, k8s `env:` или `envFrom:`
+
+**Это главный механизм 12-factor app** — конфиг живёт в окружении, а не в коде.',
+                'code_example' => '# Посмотреть
+echo $HOME
+echo $PATH
+env | grep DB_       # все переменные с префиксом DB_
+printenv USER
+
+# Задать на сессию
+export DB_HOST=localhost
+export APP_ENV=production
+
+# Для одной команды (не остаётся в окружении)
+DB_HOST=localhost php artisan migrate
+
+# Постоянно — добавить в ~/.bashrc
+echo \'export EDITOR=nvim\' >> ~/.bashrc
+
+# В PHP читать
+$host = getenv("DB_HOST");
+// в Laravel — env("DB_HOST") (только в config-файлах)',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],
@@ -185,28 +308,176 @@ tail -f storage/logs/laravel.log | grep ERROR',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делают chmod и chown?',
-                'answer' => 'chmod меняет права доступа к файлу (rwx — read/write/execute). chmod 644 file — владелец читает/пишет, остальные читают. chmod +x script.sh — добавить право на исполнение. chown user:group file — сменить владельца и группу. Без этих прав веб-сервер может не прочитать файл или PHP-скрипт не запустится.',
+                'answer' => 'Две команды для управления **правами доступа** к файлам в Unix.
+
+**`chmod`** меняет **права** (`rwx` = read/write/execute) для **трёх категорий**: владелец / группа / остальные.
+
+Две формы записи:
+
+- **числовая** — `chmod 644 file` (`6` = rw для владельца, `4` = r для группы, `4` = r для остальных)
+- **символьная** — `chmod +x script.sh` (добавить execute всем), `chmod u+w file` (владельцу +write)
+
+Типовые значения:
+
+- `644` — обычный файл (`-rw-r--r--`)
+- `755` — папка или исполняемый скрипт (`-rwxr-xr-x`)
+- `600` — приватный файл (`.env`, ssh-ключи)
+- `700` — приватная папка (`~/.ssh`)
+
+**`chown`** меняет **владельца и группу** файла: `chown user:group file`. Чаще нужен `sudo`.
+
+**Зачем это знать:** веб-сервер (`www-data`, `nginx`) не сможет прочитать `.env` или записать в `storage/logs`, если права/владельца настроить неправильно — `403`/`500` ошибки.',
+                'code_example' => '# Права
+chmod 644 .env              # rw для владельца, r для остальных
+chmod 600 ~/.ssh/id_rsa     # только владельцу — обязательно для ssh-ключей
+chmod +x deploy.sh          # сделать скрипт исполняемым
+chmod -R 775 storage/       # рекурсивно для папок Laravel
+
+# Владелец и группа
+sudo chown www-data:www-data storage/ -R
+sudo chown $USER:$USER ./project -R   # вернуть себе после Docker
+
+# Посмотреть текущие
+ls -la .env
+# -rw-r--r-- 1 user user 1.2K Jan 10 12:00 .env',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое sudo простыми словами?',
-                'answer' => 'sudo (substitute user do) — выполнить команду с правами другого пользователя, обычно root. sudo apt install nginx — поставить пакет от имени админа. sudo -i — открыть shell с правами root. Нужно потому, что обычный пользователь не может ставить системные пакеты, править /etc, слушать порты ниже 1024.',
+                'answer' => '**`sudo`** (**s**ubstitute **u**ser **do**) — выполнить **одну команду** с правами другого пользователя, обычно **root**.
+
+Без `sudo` обычный пользователь **не может**:
+
+- ставить системные пакеты (`apt`, `yum`)
+- править файлы в `/etc`, `/usr`, `/var`
+- слушать порты ниже **1024** (`80`, `443`)
+- управлять сервисами через `systemctl`
+- читать `/var/log/syslog` и другие защищённые логи
+
+**Полезные формы:**
+
+- `sudo <команда>` — одна команда от root
+- `sudo -i` или `sudo -s` — открыть **shell** с правами root
+- `sudo -u www-data <команда>` — от имени **другого** пользователя (не root)
+- `sudo !!` — повторить **предыдущую** команду через `sudo` (классический фикс «забыл sudo»)
+
+Кто может использовать `sudo` — настраивается в `/etc/sudoers` (правят через `visudo`). По умолчанию пользователи группы `sudo`/`wheel`.',
+                'code_example' => '# Поставить пакет
+sudo apt install nginx
+
+# Правка системного файла
+sudo nano /etc/nginx/nginx.conf
+
+# От имени веб-сервера
+sudo -u www-data php artisan queue:work
+
+# Shell от root
+sudo -i
+
+# Забыл sudo — повторить через sudo
+$ apt install nginx
+Permission denied
+$ sudo !!
+sudo apt install nginx',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делают ps и kill?',
-                'answer' => 'ps — показать запущенные процессы. ps aux — все процессы с подробностями. ps aux | grep php — найти PHP-процессы. У каждого процесса есть PID. kill PID — послать процессу сигнал SIGTERM (попросить завершиться). kill -9 PID — SIGKILL, убить принудительно (не даёт graceful shutdown). pkill php-fpm — убить по имени.',
+                'answer' => 'Две парные команды для **управления процессами**: одна показывает, другая останавливает.
+
+**`ps`** — список запущенных процессов:
+
+- `ps aux` — **все** процессы со столбцами USER/PID/CPU/MEM/COMMAND
+- `ps aux | grep php` — найти PHP-процессы
+- `ps -ef` — то же в стиле System V
+- альтернатива — `top`/`htop` (живой dashboard)
+
+У каждого процесса есть **PID** — числовой идентификатор.
+
+**`kill`** — послать процессу **сигнал**:
+
+- `kill <PID>` — `SIGTERM` (15): **«попроси завершиться»**, процесс может сделать graceful shutdown
+- `kill -9 <PID>` — `SIGKILL`: **убить мгновенно**, нельзя перехватить (потеря данных, без cleanup)
+- `kill -HUP <PID>` — `SIGHUP` (1): перезагрузить конфиг (nginx, php-fpm)
+
+**`pkill`/`killall`** — убить по имени: `pkill php-fpm`, `killall node`.
+
+**Правило:** сначала `SIGTERM`, и только если не отвечает несколько секунд — `SIGKILL`.',
+                'code_example' => '# Найти процесс
+ps aux | grep "queue:work"
+# user  12345  0.3  1.2  ...  php artisan queue:work
+
+# Дерево процессов
+ps auxf
+pstree -p
+
+# Аккуратно завершить
+kill 12345
+
+# Принудительно, если не реагирует
+kill -9 12345
+
+# По имени
+pkill -f "queue:work"      # -f ищет по полной команде
+killall php-fpm
+
+# Перечитать конфиг nginx без рестарта
+sudo kill -HUP $(cat /var/run/nginx.pid)',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое ssh и для чего нужен?',
-                'answer' => 'SSH (Secure Shell) — протокол для безопасного входа на удалённый сервер по сети. ssh user@server.com — подключиться. Внутри уже доступен shell сервера. Аутентификация чаще по ключам (id_rsa/id_ed25519): публичный ключ кладёшь в ~/.ssh/authorized_keys на сервере, приватный держишь у себя. Пароли отключают как менее безопасные.',
+                'answer' => '**SSH** (**S**ecure **Sh**ell) — протокол **зашифрованного** входа на удалённый сервер по сети. Стандарт для админки серверов, деплоя и `git` поверх SSH (`git@github.com`).
+
+**Подключение:** `ssh user@server.com` — открывает shell сервера, дальше работаешь, как будто сидишь за ним.
+
+**Аутентификация — по ключам, не по паролю** (так безопаснее):
+
+- генерация: `ssh-keygen -t ed25519 -C "you@example.com"`
+- приватный ключ — у тебя: `~/.ssh/id_ed25519` (никому не показывать)
+- публичный — на сервере: `~/.ssh/authorized_keys`
+- скопировать удобно: `ssh-copy-id user@server.com`
+
+**Что ещё умеет:**
+
+- `ssh user@host "ls -la"` — выполнить **одну команду** удалённо
+- `ssh -L 5432:localhost:5432 user@server` — **port forwarding** (открыть удалённую БД на своём `localhost`)
+- `scp`/`rsync`/`sftp` — копирование файлов поверх SSH
+
+**Конфиг** `~/.ssh/config` — алиасы для серверов: `ssh prod` вместо `ssh -p 2222 deploy@prod.example.com`.',
+                'code_example' => '# Подключение
+ssh user@server.com
+ssh -p 2222 user@server.com    # нестандартный порт
+
+# Сгенерировать ключ
+ssh-keygen -t ed25519 -C "you@example.com"
+
+# Положить публичный ключ на сервер
+ssh-copy-id user@server.com
+
+# Одна команда удалённо
+ssh user@server "df -h"
+
+# Туннель: локальный 5432 → удалённый Postgres
+ssh -L 5432:localhost:5432 user@db.example.com
+
+# ~/.ssh/config — алиасы
+# Host prod
+#   HostName prod.example.com
+#   User deploy
+#   Port 2222
+#   IdentityFile ~/.ssh/id_ed25519_prod
+$ ssh prod',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],
@@ -220,7 +491,47 @@ tail -f storage/logs/laravel.log | grep ERROR',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делают wc, sort, uniq?',
-                'answer' => 'wc — счётчик: wc -l file — число строк, wc -w — число слов. sort — сортировка: sort file, sort -n — численно, sort -r — обратно. uniq убирает дубликаты, но только подряд идущие — поэтому обычно sort | uniq. Пример: cat access.log | awk \'{print $1}\' | sort | uniq -c | sort -rn — топ IP-адресов в логе.',
+                'answer' => 'Три **базовых утилиты** Unix, которые почти всегда работают **в pipe-цепочке** для анализа текста и логов.
+
+**`wc`** (word count) — счётчик:
+
+- `wc -l file` — число **строк**
+- `wc -w file` — число **слов**
+- `wc -c file` — число **байт**
+
+**`sort`** — сортировка:
+
+- `sort file` — лексикографически
+- `sort -n` — **численно** (`10` после `9`, а не до)
+- `sort -r` — обратный порядок
+- `sort -k2` — по **второй колонке**
+- `sort -u` — сортировка + уникальность
+
+**`uniq`** — убирает повторы. **Важное:** убирает **только подряд идущие** дубликаты, поэтому всегда после `sort`.
+
+- `uniq -c` — посчитать сколько раз встретилось
+
+**Классический рецепт:** `sort | uniq -c | sort -rn` — топ-N по количеству.',
+                'code_example' => '# Число строк
+wc -l routes/web.php
+
+# Топ-10 IP в access.log
+cat /var/log/nginx/access.log \
+    | awk \'{print $1}\' \
+    | sort \
+    | uniq -c \
+    | sort -rn \
+    | head -10
+#  1523 192.168.1.10
+#   876 10.0.0.5
+#   234 8.8.8.8
+
+# Топ-5 кодов ответа
+awk \'{print $9}\' access.log | sort | uniq -c | sort -rn | head -5
+
+# Уникальные строки без подсчёта
+sort -u file.txt',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],
@@ -282,7 +593,48 @@ $ !php           # последнюю команду, начинавшуюся �
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делает curl простыми словами?',
-                'answer' => 'curl — консольный HTTP-клиент. curl https://api.example.com — GET-запрос. curl -X POST -H "Content-Type: application/json" -d \'{"name":"Vasya"}\' https://api.example.com/users — POST с JSON. -i показывает заголовки ответа, -v подробный лог, -o file.json сохраняет ответ в файл. Стандартный инструмент для дебага API и health-чеков в скриптах.',
+                'answer' => '**`curl`** — **консольный HTTP-клиент**. Стандартный инструмент для:
+
+- дебага API (`GET`/`POST`/`PUT`/`DELETE` руками)
+- health-чеков в CI/CD и cron-скриптах
+- скачивания файлов
+- проверки SSL-сертификатов, заголовков, редиректов
+
+**Базовые флаги:**
+
+- `-X POST` — выбрать метод (по умолчанию `GET`)
+- `-H "Header: Value"` — добавить заголовок
+- `-d \'...\'` — тело запроса
+- `-i` — показать **заголовки ответа** + тело
+- `-I` — **только заголовки** (`HEAD`-запрос)
+- `-v` — verbose, весь handshake и обмен
+- `-o file.json` — сохранить ответ в файл
+- `-L` — следовать редиректам
+- `-u user:pass` — basic auth
+- `-w "%{http_code}\\n"` — напечатать только HTTP-код (удобно в скриптах)
+
+Альтернатива — `wget` (скачивание) и `httpie` (более человечный синтаксис).',
+                'code_example' => '# GET
+curl https://api.example.com/users
+curl -i https://api.example.com   # с заголовками
+curl -L https://google.com         # следовать редиректам
+
+# POST JSON
+curl -X POST https://api.example.com/users \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer eyJ..." \
+    -d \'{"name":"Vasya","email":"v@example.com"}\'
+
+# Скачать файл
+curl -o backup.sql.gz https://example.com/backup.sql.gz
+
+# Health-check: вернуть только HTTP-код
+code=$(curl -s -o /dev/null -w "%{http_code}" https://example.com/healthz)
+[ "$code" = "200" ] || exit 1
+
+# Посмотреть только заголовки
+curl -I https://github.com',
+                'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'system_design.tools',
             ],

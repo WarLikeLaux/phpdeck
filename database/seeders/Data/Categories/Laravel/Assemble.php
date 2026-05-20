@@ -13,7 +13,14 @@ class Assemble
             [
                 'category' => 'Laravel',
                 'question' => 'Собери Eloquent-запрос: всех активных юзеров, упорядоченных по имени.',
-                'answer' => 'Цепочка scope/where с orderBy и завершающим get возвращает Collection.',
+                'answer' => 'Типичная цепочка Eloquent:
+
+- **`User::`** — стартует Query Builder от модели.
+- **`where(\'active\', 1)`** — фильтр.
+- **`orderBy(\'name\')`** — сортировка по возрастанию (для убывания — `orderByDesc(\'name\')`).
+- **`get()`** — выполнить запрос и вернуть **`Collection`** моделей.
+
+Важно помнить: пока не вызвал терминальный метод (`get`/`first`/`paginate`/`count`), запрос **не выполняется**. Можно собирать цепочку условно через `when()` и выполнить в конце.',
                 'assemble_chunks' => ['User::', "where('active', 1)", '->', "orderBy('name')", '->', 'get()'],
                 'code_example' => 'User::where(\'active\', 1)->orderBy(\'name\')->get();',
                 'code_language' => 'php',

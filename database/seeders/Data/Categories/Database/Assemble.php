@@ -10,7 +10,16 @@ class Assemble
             [
                 'category' => 'Базы данных',
                 'question' => 'Собери SQL: 5 самых дорогих заказов с email клиента.',
-                'answer' => 'JOIN по внешнему ключу + ORDER BY DESC + LIMIT.',
+                'answer' => 'Шаблон: **`JOIN` по внешнему ключу** + **`ORDER BY ... DESC`** + **`LIMIT N`**.
+
+**Порядок частей запроса:**
+1. `SELECT` — что взять;
+2. `FROM` — главная таблица;
+3. `JOIN ... ON` — присоединить связанную таблицу;
+4. `ORDER BY` — сортировка по нужной колонке;
+5. `LIMIT` — обрезать до N строк.
+
+Здесь `INNER JOIN` уместен: нужны только те заказы, у которых **есть клиент** в `users`. Если важно показать и «осиротевшие» заказы — нужен `LEFT JOIN`.',
                 'code_language' => 'sql',
                 'assemble_chunks' => ['SELECT o.id, o.total, u.email', '
 FROM orders o', '

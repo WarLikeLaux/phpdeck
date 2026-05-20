@@ -13,7 +13,24 @@ class StorageFiles
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое File Storage и какие есть disks?',
-                'answer' => 'File Storage - абстракция над файловыми хранилищами через Flysystem. Disks: local (storage/app), public (storage/app/public, доступен через symlink), s3 (Amazon S3), ftp, sftp. Один интерфейс - разные хранилища.',
+                'answer' => '**File Storage** — абстракция Laravel над файловыми хранилищами поверх библиотеки **Flysystem**. Единый API для разных бэкендов.
+
+Стандартные disks (`config/filesystems.php`):
+
+- **`local`** — `storage/app`. **Приватные** файлы (не доступны из браузера).
+- **`public`** — `storage/app/public`. Публичные файлы, **доступны через симлинк** `public/storage` → `storage/app/public`.
+- **`s3`** — Amazon S3 / S3-совместимое хранилище (MinIO, Yandex Object Storage).
+- **`ftp`**, **`sftp`** — удалённый сервер.
+
+Использование:
+
+- **`Storage::put($path, $content)`** — сохранить.
+- **`Storage::get($path)`** — прочитать.
+- **`Storage::disk(\'s3\')->put(...)`** — на конкретный disk.
+- **`Storage::url($path)`** — публичный URL (только для `public`/`s3`).
+- **`Storage::delete($path)`** — удалить.
+
+Чтобы `public` disk стал доступен через `/storage/...`, нужно один раз создать симлинк: **`php artisan storage:link`**.',
                 'code_example' => 'Storage::disk(\'s3\')->put(\'avatars/1.jpg\', $contents);
 $url = Storage::disk(\'public\')->url(\'avatars/1.jpg\');
 $content = Storage::get(\'file.txt\');

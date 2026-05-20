@@ -120,7 +120,20 @@ if (file_exists($path) && is_readable($path)) {
             [
                 'category' => 'PHP',
                 'question' => 'Как в PHP получить тело HTTP-запроса (raw body)?',
-                'answer' => 'Через стрим php://input: $raw = file_get_contents("php://input") или построчно через fopen("php://input","r"). Это сырое, ещё не распарсенное тело запроса. Что важно знать: 1) Работает для любого Content-Type, кроме multipart/form-data — там тело уже разобрано в $_POST и $_FILES, php://input будет пустым. 2) $_POST автоматически парсится только для application/x-www-form-urlencoded и multipart/form-data; для application/json (типовой случай API) $_POST = [], нужно читать php://input и делать json_decode($raw, true). 3) Стрим можно перечитывать (в PHP 5.6+), но один раз — лучше сохранить в переменную. 4) Размер тела ограничен post_max_size в php.ini (даже для не-form-data в PHP 8.1+ оно работает как глобальный лимит на тело запроса); превышение даёт пустой $_POST и $_SERVER["CONTENT_LENGTH"] больше реально прочитанного. 5) В фреймворках работают абстракции: Laravel — $request->getContent(), Symfony — $request->getContent(), PSR-7 — $request->getBody()->getContents(); все они в итоге читают тот же php://input.',
+                'answer' => 'Через стрим **`php://input`**: `$raw = file_get_contents("php://input")` — сырое, ещё не распарсенное тело запроса.
+
+**Что важно знать:**
+- работает **для любого Content-Type**, КРОМЕ `multipart/form-data` (там тело уже разобрано в `$_POST` и `$_FILES`, `php://input` пуст)
+- **`$_POST` автоматически парсится** только для `application/x-www-form-urlencoded` и `multipart/form-data`
+- для **`application/json`** (типовой API) `$_POST = []`, нужно читать `php://input` и делать **`json_decode($raw, true)`**
+- размер тела ограничен **`post_max_size`** в `php.ini` (с PHP 8.1+ — глобальный лимит)
+
+**В фреймворках:**
+- **Laravel** — `$request->getContent()` или `$request->json()->all()`
+- **Symfony** — `$request->getContent()`
+- **PSR-7** — `$request->getBody()->getContents()`
+
+Все они в итоге читают тот же `php://input`.',
                 'code_example' => '<?php
 // API получает JSON
 $raw = file_get_contents("php://input");

@@ -175,7 +175,19 @@ class OrderController extends Controller
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает app()->bind() и app()->singleton()?',
-                'answer' => 'bind(Abstract::class, Concrete::class) — говорит контейнеру «когда попросят Abstract, создай Concrete». Каждый вызов app() создаёт НОВЫЙ объект. singleton() — то же, но объект создаётся ОДИН раз и переиспользуется (на весь жизненный цикл запроса).',
+                'answer' => 'Оба метода регистрируют **правило**: «когда попросят `Abstract`, создавай `Concrete`».
+
+Разница — **в жизненном цикле**:
+
+- **`bind(Abstract::class, Concrete::class)`** — каждый вызов `app(Abstract::class)` создаёт **новый** объект.
+- **`singleton(Abstract::class, ...)`** — объект создаётся **один раз** и переиспользуется при последующих запросах из контейнера.
+
+Что значит «жизненный цикл»:
+
+- В **обычном FPM** — один HTTP-запрос (новый процесс на каждый запрос).
+- В **Octane/RoadRunner/Swoole** — на **весь воркер** (между запросами!). Это опасно: singleton с request-зависимым состоянием может «протечь» в следующий запрос. Для такого случая есть **`scoped()`** — singleton, который Octane сбрасывает между запросами.
+
+Регистрируется обычно в **`AppServiceProvider::register()`**.',
                 'code_example' => '// в AppServiceProvider::register()
 $this->app->bind(PaymentGateway::class, StripeGateway::class);
 $this->app->singleton(Logger::class, fn() => new FileLogger("/var/log/app.log"));',
@@ -186,7 +198,47 @@ $this->app->singleton(Logger::class, fn() => new FileLogger("/var/log/app.log"))
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое автоматический resolve в Laravel?',
-                'answer' => 'Контейнер сам разбирается, как создать класс, если его конструктор принимает другие классы. Не нужно регистрировать каждый класс — Laravel читает type-hints и подставляет. Это работает «из коробки» в контроллерах: public function show(UserRepository $repo) — Laravel создаст репозиторий и передаст.',
+                'answer' => '**Автоматический resolve** (autowiring) — контейнер сам разбирается, как создать класс, **читая type-hints**.
+
+Как работает:
+
+1. Просим `app(OrderService::class)`.
+2. Контейнер через **Reflection** смотрит конструктор: `__construct(OrderRepo $repo)`.
+3. **Рекурсивно** создаёт `OrderRepo` (если у него тоже есть зависимости — собирает их тем же способом).
+4. Передаёт всё в конструктор `OrderService` и возвращает готовый объект.
+
+Регистрация **не нужна** — Laravel сам справится с любым конкретным классом, если все его зависимости резолвимы.
+
+Где это уже работает «из коробки»:
+
+- **Конструкторы контроллеров**, middleware, jobs, команд.
+- **Параметры методов контроллера**: `public function show(UserRepository $repo)`.
+- **`__construct` любого класса**, который получают через `app()` или DI.
+
+Когда **нужен** ручной bind: type-hint у конструктора — **интерфейс** (например, `PaymentGateway`). Контейнер не знает, какую конкретную реализацию подставить, — об этом говорят через `bind(Interface::class, Concrete::class)`.',
+                'code_example' => 'class OrderRepo {
+    public function __construct(private DB $db) {}
+}
+
+class OrderService {
+    public function __construct(private OrderRepo $repo) {}
+}
+
+// Просто работает - без bind() в провайдере
+$service = app(OrderService::class);
+
+// В контроллере - type-hint, Laravel внедрит сам
+class OrderController extends Controller
+{
+    public function show(int $id, OrderService $service)
+    {
+        return $service->find($id);
+    }
+}
+
+// Интерфейс - autowiring не справится, нужен bind()
+$this->app->bind(PaymentGateway::class, StripeGateway::class);',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.service_container',
             ],

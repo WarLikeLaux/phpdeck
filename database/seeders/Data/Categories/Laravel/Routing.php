@@ -30,7 +30,24 @@ Route::delete(\'/users/{id}\', [UserController::class, \'destroy\']);',
             [
                 'category' => 'Laravel',
                 'question' => 'Как объявить параметры маршрута, в том числе опциональные и с regex-ограничениями?',
-                'answer' => 'Параметры в фигурных скобках {id}. Опциональный - {name?} с обязательным значением по умолчанию в замыкании/контроллере. Regex-ограничения через ->where(). Также есть готовые helper-методы whereNumeric, whereAlpha, whereAlphaNumeric, whereUuid, whereUlid, whereIn.',
+                'answer' => 'Параметры — в **фигурных скобках**: `{id}`.
+
+Варианты:
+
+- **Обычный**: `{id}` — обязательный.
+- **Опциональный**: `{name?}` — нужно дать значение по умолчанию в сигнатуре метода.
+
+Ограничения regex через **`->where(\'имя\', \'regex\')`** или массивом для нескольких параметров.
+
+Готовые helper-методы:
+
+- **`whereNumber(\'id\')`** — только цифры.
+- **`whereAlpha(\'slug\')`** — только буквы.
+- **`whereAlphaNumeric(...)`** — буквы и цифры.
+- **`whereUuid(\'user\')`** / **`whereUlid(\'user\')`** — UUID/ULID.
+- **`whereIn(\'lang\', [\'ru\', \'en\'])`** — список значений.
+
+Если параметр не подходит под regex — Laravel вернёт **404**.',
                 'code_example' => 'Route::get(\'/user/{id}\', fn($id) => $id)
     ->where(\'id\', \'[0-9]+\');
 
@@ -45,7 +62,22 @@ Route::get(\'/post/{slug}\', [PostController::class, \'show\'])
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое именованные маршруты (named routes) и зачем они нужны?',
-                'answer' => 'Именованный маршрут - это маршрут с уникальным именем, по которому можно генерировать URL через route() и редиректить через redirect()->route(). Главный плюс: если URL изменится, не нужно менять ссылки по всему коду - имя остаётся тем же.',
+                'answer' => '**Именованный маршрут** — маршрут с уникальным **именем**, по которому можно:
+
+- Генерировать URL через хелпер **`route(\'имя\', [параметры])`**.
+- Редиректить через **`redirect()->route(\'имя\')`**.
+- Использовать в Blade: `<a href="{{ route(\'profile\') }}">`.
+
+Главный плюс: если URL изменится, не нужно искать и менять ссылки по всему коду — **имя остаётся тем же**.
+
+Имя задаётся через **`->name(\'profile\')`** в конце цепочки маршрута.
+
+Конвенция: **`<resource>.<action>`** — `posts.index`, `posts.show`, `posts.store`. У `Route::resource()` имена даются автоматически.
+
+Дополнительно:
+
+- В группе с `->name(\'admin.\')` имена внутри получат префикс: `admin.users.index`.
+- В контроллере проверить текущий маршрут: `$request->routeIs(\'admin.*\')`.',
                 'code_example' => 'Route::get(\'/user/profile\', [ProfileController::class, \'show\'])
     ->name(\'profile\');
 
@@ -58,7 +90,25 @@ return redirect()->route(\'profile\');',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое route groups (группы маршрутов)?',
-                'answer' => 'Route group - это способ применить общие настройки (middleware, prefix, namespace, name prefix) к группе маршрутов. Простыми словами: вместо того чтобы дублировать middleware на каждом роуте, оборачиваем их в группу.',
+                'answer' => '**Route group** — способ применить общие настройки сразу к **нескольким маршрутам**, чтобы не дублировать. Группы можно вкладывать.
+
+Что можно вынести в группу:
+
+- **`middleware([\'auth\', \'verified\'])`** — несколько middleware.
+- **`prefix(\'admin\')`** — общий URL-префикс: маршрут `/users` станет `/admin/users`.
+- **`name(\'admin.\')`** — префикс имени: имя `users.index` станет `admin.users.index`.
+- **`controller(UserController::class)`** — общий контроллер, в маршрутах указываем только метод.
+- **`domain(\'admin.example.com\')`** — субдомен.
+- **`as(\'admin.\')`** — алиас `->name()`.
+
+Вместо:
+
+```
+Route::get(\'/admin/users\', ...)->middleware(\'auth\')->name(\'admin.users.index\');
+Route::get(\'/admin/posts\', ...)->middleware(\'auth\')->name(\'admin.posts.index\');
+```
+
+Пишем группу с одним описанием атрибутов.',
                 'code_example' => 'Route::middleware([\'auth\'])->prefix(\'admin\')->name(\'admin.\')->group(function () {
     Route::get(\'/users\', [UserController::class, \'index\'])->name(\'users.index\');
     Route::get(\'/posts\', [PostController::class, \'index\'])->name(\'posts.index\');
@@ -231,7 +281,22 @@ Route::where(["id" => "[0-9]+"])->group(function () {
             [
                 'category' => 'Laravel',
                 'question' => 'Чем отличаются routes/web.php и routes/api.php?',
-                'answer' => 'web.php — для браузерных запросов: к нему применяется группа web middleware (сессии, cookies, CSRF, ShareErrorsFromSession), работает Auth через сессию. api.php — для API: stateless, без сессий и CSRF, применяется группа api middleware (часто throttle); URL автоматически с префиксом /api. В Laravel 11 для подключения api.php нужно один раз запустить php artisan install:api (создаёт routes/api.php и регистрирует группу в bootstrap/app.php).',
+                'answer' => 'Два разных файла маршрутов с разными middleware-группами:
+
+**`routes/web.php`** — для **браузерных запросов**:
+
+- Группа middleware **`web`** — сессии, cookies, **CSRF**, `ShareErrorsFromSession`.
+- Auth работает через **сессию** (`auth:web`).
+- Видно `$errors` и `old()` в Blade.
+
+**`routes/api.php`** — для **API**:
+
+- **Stateless** — нет сессий и CSRF.
+- Группа middleware **`api`** — обычно `throttle:api`.
+- Auth через **Bearer-токен** (`auth:sanctum`).
+- URL автоматически получают префикс **`/api`**.
+
+**Laravel 11**: `api.php` **не создаётся по умолчанию**. Чтобы подключить — `php artisan install:api`. Это создаст `routes/api.php`, поставит `Sanctum` и зарегистрирует группу в `bootstrap/app.php`.',
                 'code_example' => '// routes/web.php — браузер, сессии, CSRF
 Route::get(\'/dashboard\', [DashboardController::class, \'index\'])->middleware(\'auth\');
 

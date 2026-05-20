@@ -247,7 +247,19 @@ UserRegistered::dispatch($user);
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое listener в Laravel?',
-                'answer' => 'Класс с методом handle($event), реагирующий на событие. На один event можно повесить несколько listeners — все вызовутся при dispatch. Если listener реализует ShouldQueue — он выполнится асинхронно в очереди. В Laravel 11+ работает event auto-discovery: Laravel сам находит listener по type-hint аргумента handle() (а также методов вида handleX), отдельный массив $listen не нужен. В Laravel 10 и старше регистрация шла через свойство $listen в app/Providers/EventServiceProvider.php. Явная регистрация Event::listen() в AppServiceProvider::boot() работает всегда.',
+                'answer' => '**Listener** — класс с методом `handle($event)`, реагирующий на событие.
+
+Ключевые свойства:
+
+- На **один event** можно повесить **несколько listeners** — все вызовутся при `dispatch`.
+- Если listener реализует **`ShouldQueue`** — он выполнится **асинхронно** в очереди (контроллер не ждёт).
+- Создаётся через `php artisan make:listener SendWelcomeEmail --event=UserRegistered`.
+
+Регистрация:
+
+- **Laravel 11+** — **auto-discovery**: Laravel сам находит listener по type-hint аргумента `handle()`. Отдельный массив `$listen` **не нужен**.
+- **Laravel 10 и старше** — массив `$listen` в `app/Providers/EventServiceProvider.php`.
+- **Везде** — явная регистрация `Event::listen(...)` в `AppServiceProvider::boot()` работает.',
                 'code_example' => 'php artisan make:listener SendWelcomeEmail --event=UserRegistered
 
 class SendWelcomeEmail implements ShouldQueue
@@ -272,7 +284,44 @@ UserRegistered::dispatch($user); // если есть Dispatchable',
             [
                 'category' => 'Laravel',
                 'question' => 'Зачем нужны события в Laravel простыми словами?',
-                'answer' => 'Чтобы развязать код. Контроллер регистрации не должен знать про отправку email, начисление бонусов, оповещение в Slack — он просто бросает событие UserRegistered, а listeners сами разберутся. Это упрощает добавление новой реакции — просто добавь нового listener.',
+                'answer' => 'Чтобы **развязать код**.
+
+Без событий контроллер регистрации сам делает кучу всего:
+
+- Отправить welcome-email.
+- Начислить бонусные баллы.
+- Оповестить Slack.
+- Создать запись в CRM.
+
+С событиями контроллер просто бросает **`UserRegistered::dispatch($user)`** — а listeners сами разберутся. Каждая реакция — отдельный класс.
+
+Что это даёт:
+
+- **Открытость к расширению** — добавить SMS-уведомление = создать новый listener. Контроллер не трогаем.
+- **Тестируемость** — каждый listener тестируется отдельно. В тестах есть `Event::fake()` чтобы проверить факт диспатча.
+- **Асинхронность** — повесил `ShouldQueue`, ответ юзеру не тормозит.',
+                'code_example' => '// Без событий - контроллер знает обо всём
+public function register(Request $request) {
+    $user = User::create($request->all());
+    Mail::to($user)->send(new WelcomeMail());
+    BonusService::grantSignupBonus($user);
+    Slack::notify("New user: {$user->email}");
+    Crm::createContact($user);
+    return redirect()->route(\'home\');
+}
+
+// С событиями - одна строка, остальное в listeners
+public function register(Request $request) {
+    $user = User::create($request->all());
+    UserRegistered::dispatch($user);
+    return redirect()->route(\'home\');
+}
+
+// В тестах
+Event::fake();
+$this->post(\'/register\', [...]);
+Event::assertDispatched(UserRegistered::class);',
+                'code_language' => 'php',
                 'difficulty' => 2,
                 'topic' => 'laravel.events_listeners',
             ],

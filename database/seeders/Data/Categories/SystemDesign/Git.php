@@ -94,7 +94,25 @@ class Git
             [
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между git fetch и git pull?',
-                'answer' => 'git fetch скачивает новые коммиты, ветки и теги с remote и обновляет только remote-tracking-ветки (origin/main, origin/feature) — твоя локальная ветка и working tree остаются нетронутыми. Можно сначала глянуть git log main..origin/main и решить, что с этим делать. git pull = git fetch + автоматический merge (или rebase, если настроено pull.rebase=true) в текущую ветку. По умолчанию pull делает merge — это может создать неожиданный merge-commit, если ваши локальные коммиты разошлись с remote. Безопасные привычки: git pull --ff-only (откажется, если нужен реальный merge) для main и git pull --rebase для feature-веток, чтобы держать линейную историю.',
+                'answer' => 'Главное отличие — **`pull` трогает рабочую ветку**, `fetch` нет.
+
+**`git fetch`:**
+
+- скачивает новые коммиты/ветки/теги с remote
+- обновляет только **remote-tracking-ветки** (`origin/main`, `origin/feature`)
+- **твоя локальная ветка и working tree не меняются**
+- безопасно: можно `git log main..origin/main` глянуть и решить, что делать
+
+**`git pull`** = `git fetch` + **автоматический merge** (или `rebase`, если настроено `pull.rebase=true`) в текущую ветку.
+
+**Подвох:** `pull` по умолчанию делает **merge**, и если ваши локальные коммиты разошлись с remote — создаст лишний merge-commit «Merge branch \'main\' of...» прямо в истории.
+
+**Безопасные привычки:**
+
+- `git pull --ff-only` для `main` — откажется, если нужен реальный merge
+- `git pull --rebase` для feature-веток — держит **линейную историю**
+- `git config --global pull.ff only` — сделать `--ff-only` поведением по умолчанию
+- сначала `fetch`, потом смотреть `git log main..origin/main`, потом уже решать',
                 'code_example' => '# посмотреть, что прилетит, не применяя
 git fetch origin
 git log main..origin/main
@@ -135,7 +153,53 @@ git config --global pull.ff only',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое .gitignore, как работают правила и что делать с уже отслеживаемым файлом?',
-                'answer' => '.gitignore — файл со списком паттернов, которые git игнорирует при git add и git status. Главный нюанс: правила действуют только на untracked-файлы — если файл уже tracked, добавление его в .gitignore ничего не изменит. Синтаксис похож на glob: node_modules/ — папка в любом месте, *.log — файлы по расширению, /build — только в корне, !important.log — исключение из игнора, # — комментарий. Глобальный личный игнор (IDE-мусор) — ~/.gitignore_global через git config --global core.excludesFile. Если уже закоммитили лишний файл — git rm --cached <file>, потом коммит; для утёкших секретов этого мало: придётся переписывать историю (git filter-repo / BFG) и обязательно ротировать секрет.',
+                'answer' => '**`.gitignore`** — файл со списком **паттернов**, которые git **игнорирует** при `git add` и `git status`.
+
+**Главный подвох:** правила действуют **только на untracked-файлы**. Если файл уже **tracked** (был закоммичен раньше), добавление его в `.gitignore` **ничего не изменит** — git продолжит видеть изменения.
+
+**Синтаксис паттернов** (как glob):
+
+- `node_modules/` — папка с таким именем **в любом месте**
+- `*.log` — все файлы с расширением
+- `/build` — **только в корне** (с ведущим слешем)
+- `!important.log` — **исключение** из игнора
+- `#` — комментарий
+
+**Глобальный личный игнор** (IDE-мусор, который не должен попадать ни в один репозиторий):
+
+```
+git config --global core.excludesFile ~/.gitignore_global
+```
+
+**Уже закоммитили лишний файл** (например, `.env`):
+
+1. `git rm --cached .env` — убрать из git, оставить на диске
+2. `git commit -m "stop tracking .env"`
+3. добавить в `.gitignore`
+
+**Утёк секрет?** `git rm --cached` мало — он остаётся в **истории**. Нужно переписать историю (`git filter-repo` или `BFG`) и **обязательно ротировать секрет** — считай, что он уже скомпрометирован.',
+                'code_example' => '# .gitignore для Laravel
+/node_modules
+/vendor
+/public/build
+/public/hot
+/storage/*.key
+.env
+.env.*
+!.env.example
+*.log
+.idea/
+.vscode/
+.DS_Store
+
+# Убрать уже tracked .env из git, оставить на диске
+git rm --cached .env
+git commit -m "stop tracking .env"
+
+# Удалить из истории и ротировать
+git filter-repo --path .env --invert-paths
+git push --force-with-lease origin main',
+                'code_language' => 'bash',
                 'code_example' => '# .gitignore
 node_modules/
 vendor/
