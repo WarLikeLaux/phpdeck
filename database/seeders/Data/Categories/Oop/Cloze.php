@@ -26,7 +26,8 @@ class SendEmail {{implements}} Command {
                 'topic' => 'oop.cloze',
                 'difficulty' => 1,
                 'question' => 'Заполни наследование и переопределение метода.',
-                'answer' => 'extends задаёт родителя, parent:: вызывает реализацию родителя.',
+                'answer' => '- `extends` задаёт **родителя**.
+- `parent::` вызывает **реализацию родителя** внутри переопределённого метода.',
                 'cloze_text' => 'class Admin {{extends}} User {
     public function greet(): string {
         return {{parent}}::greet() . \' (admin)\';
@@ -38,7 +39,8 @@ class SendEmail {{implements}} Command {
                 'topic' => 'oop.cloze',
                 'difficulty' => 1,
                 'question' => 'Заполни модификаторы видимости в классе с приватным состоянием.',
-                'answer' => 'private скрывает поле, public открывает методы наружу.',
+                'answer' => '- `private` **скрывает** поле — доступ только внутри класса.
+- `public` **открывает** метод наружу — доступ откуда угодно.',
                 'cloze_text' => 'class Counter {
     {{private}} int $value = 0;
 

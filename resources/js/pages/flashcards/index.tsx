@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { CategoryBadge } from '@/components/category-badge';
 import { CodeBlock } from '@/components/code-block';
+import { MarkdownAnswer } from '@/components/markdown-answer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -608,9 +609,10 @@ function FlashcardCard({ card }: { card: Flashcard }) {
                 <FlashcardModes card={card} />
             </CardHeader>
             <CardContent className="flex flex-1 flex-col gap-4">
-                <p className="text-sm whitespace-pre-line text-muted-foreground">
-                    {card.answer}
-                </p>
+                <MarkdownAnswer
+                    content={card.answer}
+                    className="text-sm text-muted-foreground"
+                />
                 {card.code_example && (
                     <CodeBlock
                         code={card.code_example}

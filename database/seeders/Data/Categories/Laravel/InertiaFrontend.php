@@ -176,7 +176,24 @@ on(["echo:counter,Reset" => fn () => $this->count = 0]);
             [
                 'category' => 'Laravel',
                 'question' => 'Какие основные директивы Blade?',
-                'answer' => '@if/@elseif/@else/@endif — условия. @foreach($items as $i) ... @endforeach — циклы. @forelse — цикл с веткой @empty, если массив пуст. @extends(\'layouts.app\') + @section(\'content\')/@yield(\'content\') — наследование шаблонов. @include(\'partial\') — вставка частичного шаблона. @csrf — скрытое поле _token в формы. @method(\'PUT\') — для PUT/PATCH/DELETE из HTML-формы. @auth/@guest — проверка авторизации. @error(\'field\') — вывод ошибки валидации.',
+                'answer' => 'Самые ходовые директивы:
+
+**Условия и циклы:**
+- `@if` / `@elseif` / `@else` / `@endif` — условия.
+- `@foreach($items as $i) ... @endforeach` — обычный цикл.
+- `@forelse ... @empty ... @endforelse` — цикл с веткой, если массив пуст.
+
+**Наследование шаблонов:**
+- `@extends(\'layouts.app\')` + `@section(\'content\')` / `@yield(\'content\')`.
+- `@include(\'partial\')` — вставить другой шаблон.
+
+**HTML-формы:**
+- `@csrf` — скрытое поле `_token` (защита от CSRF).
+- `@method(\'PUT\')` — для PUT/PATCH/DELETE из HTML-формы.
+
+**Auth и ошибки:**
+- `@auth` / `@guest` — проверка авторизации.
+- `@error(\'field\') ... @enderror` — вывод ошибки валидации поля.',
                 'code_example' => '@extends(\'layouts.app\')
 
 @section(\'content\')
@@ -204,7 +221,10 @@ on(["echo:counter,Reset" => fn () => $this->count = 0]);
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между {{ $var }} и {!! $var !!} в Blade?',
-                'answer' => '{{ $var }} — автоматически экранирует HTML через htmlspecialchars (защита от XSS). Если в $var лежит <script>alert(1)</script>, отобразится как текст, не выполнится. {!! $var !!} — выводит как есть, без экранирования. Использовать только когда уверен в безопасности данных (например, заранее очищенный/отрендеренный markdown). Никогда не вставлять через {!! !!} пользовательский ввод напрямую.',
+                'answer' => '- `{{ $var }}` — автоматически **экранирует HTML** через `htmlspecialchars` (защита от **XSS**). Если в `$var` лежит `<script>alert(1)</script>`, отобразится как текст и не выполнится.
+- `{!! $var !!}` — выводит **как есть**, без экранирования.
+
+**Правило:** по умолчанию всегда `{{ }}`. `{!! !!}` — только когда уверен в безопасности данных (например, заранее очищенный/отрендеренный markdown). **Никогда** не вставлять через `{!! !!}` пользовательский ввод напрямую.',
                 'code_example' => '@php
     $name = \'<script>alert("XSS")</script>\';
     $html = \'<strong>Жирный</strong>\';
@@ -220,7 +240,17 @@ on(["echo:counter,Reset" => fn () => $this->count = 0]);
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое @csrf и зачем он нужен?',
-                'answer' => 'Директива Blade, вставляющая в форму скрытое поле <input type="hidden" name="_token" value="..."> с CSRF-токеном текущей сессии. Middleware VerifyCsrfToken (включён по умолчанию для web-роутов) сверяет _token из запроса с токеном сессии, при несовпадении возвращает 419 Page Expired. Так Laravel защищает от Cross-Site Request Forgery — со стороннего сайта невозможно отправить POST/PUT/DELETE-запрос от имени залогиненного юзера, так как в нём не будет валидного токена. Для AJAX-запросов токен передаётся через заголовок X-CSRF-TOKEN (берётся из <meta name="csrf-token">).',
+                'answer' => '**`@csrf`** — директива Blade, вставляющая в форму скрытое поле `<input type="hidden" name="_token" value="...">` с CSRF-токеном текущей сессии.
+
+Как работает защита:
+
+- Middleware `VerifyCsrfToken` включён по умолчанию для web-роутов.
+- Сверяет `_token` из запроса с токеном сессии.
+- При несовпадении — **HTTP 419 Page Expired**.
+
+**Зачем:** защищает от **CSRF** (Cross-Site Request Forgery) — со стороннего сайта нельзя отправить POST/PUT/DELETE-запрос от имени залогиненного юзера, так как в нём не будет валидного токена.
+
+Для AJAX токен передают в заголовке `X-CSRF-TOKEN` (берётся из `<meta name="csrf-token">`).',
                 'code_example' => '<form method="POST" action="{{ route(\'posts.store\') }}">
     @csrf
     <input name="title">

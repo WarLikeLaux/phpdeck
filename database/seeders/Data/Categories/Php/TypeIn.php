@@ -28,7 +28,11 @@ class TypeIn
             [
                 'category' => 'PHP',
                 'question' => 'Функция, возвращающая количество элементов массива.',
-                'answer' => 'count($array, $mode = COUNT_NORMAL). Алиас - sizeof.',
+                'answer' => '**`count($array, $mode = COUNT_NORMAL)`** — возвращает число элементов массива.
+
+Алиас — **`sizeof`** (то же самое, отличий нет).
+
+С флагом `COUNT_RECURSIVE` считает элементы во вложенных массивах.',
                 'short_answer' => 'count',
                 'difficulty' => 1,
                 'topic' => 'php.type_in',

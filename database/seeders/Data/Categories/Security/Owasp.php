@@ -10,7 +10,22 @@ class Owasp
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое OWASP Top 10 простыми словами?',
-                'answer' => 'Список из 10 самых распространённых классов уязвимостей веб-приложений, который раз в несколько лет составляет некоммерческая организация OWASP (Open Worldwide Application Security Project) на основе реальной статистики взломов. В версии 2021 десятка такая: 1) Broken Access Control — ошибки проверки прав, можно зайти на чужой ресурс по URL. 2) Cryptographic Failures — слабая криптография, пароли в md5, нет HTTPS. 3) Injection — SQLi, XSS, command injection. 4) Insecure Design — небезопасная бизнес-логика. 5) Security Misconfiguration — APP_DEBUG=true на проде, дефолтные пароли. 6) Vulnerable Components — старые версии библиотек с CVE. 7) Identification and Authentication Failures — слабый логин/сессии. 8) Software and Data Integrity Failures — supply chain атаки, unserialize. 9) Security Logging and Monitoring Failures — нет логов и алертов. 10) SSRF — сервер ходит туда, куда подсунули. Большая часть реальных взломов идёт именно через эти классы — поэтому Top 10 учат все разработчики.',
+                'answer' => 'Список из **10 самых распространённых классов уязвимостей** веб-приложений. Раз в несколько лет составляет некоммерческая организация **OWASP** (`Open Worldwide Application Security Project`) на основе реальной статистики взломов.
+
+**Версия 2021**:
+
+1. **Broken Access Control** — ошибки проверки прав, можно зайти на чужой ресурс по URL.
+2. **Cryptographic Failures** — слабая криптография, пароли в `md5`, нет `HTTPS`.
+3. **Injection** — `SQLi`, `XSS`, command injection.
+4. **Insecure Design** — небезопасная бизнес-логика.
+5. **Security Misconfiguration** — `APP_DEBUG=true` на проде, дефолтные пароли.
+6. **Vulnerable Components** — старые версии библиотек с `CVE`.
+7. **Identification and Authentication Failures** — слабый логин/сессии.
+8. **Software and Data Integrity Failures** — supply chain атаки, `unserialize`.
+9. **Security Logging and Monitoring Failures** — нет логов и алертов.
+10. **SSRF** — сервер ходит туда, куда подсунули.
+
+Большая часть реальных взломов идёт именно через эти классы — поэтому `OWASP Top 10` учат все разработчики.',
                 'difficulty' => 1,
                 'topic' => 'security.owasp',
             ],

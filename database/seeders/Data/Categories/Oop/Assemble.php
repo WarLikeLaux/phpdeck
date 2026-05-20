@@ -26,7 +26,7 @@ class Assemble
                 'topic' => 'oop.assemble',
                 'difficulty' => 1,
                 'question' => 'Собери интерфейс Logger с одним методом.',
-                'answer' => 'Интерфейс описывает только сигнатуры, без тела метода.',
+                'answer' => '**Интерфейс** описывает только **сигнатуры** методов, без тела. Все методы автоматически `public` и `abstract`.',
                 'assemble_chunks' => [
                     'interface Logger',
                     '{',
@@ -39,7 +39,8 @@ class Assemble
                 'topic' => 'oop.assemble',
                 'difficulty' => 1,
                 'question' => 'Собери наследование класса Admin от User с переопределением метода.',
-                'answer' => 'extends задаёт родителя, parent:: вызывает родительскую реализацию.',
+                'answer' => '- `extends` задаёт **родителя**.
+- `parent::` вызывает **родительскую** реализацию метода.',
                 'assemble_chunks' => [
                     'class Admin extends User',
                     '{',

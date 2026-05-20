@@ -39,7 +39,21 @@ $user = new User(); // автоматически подгрузится фай�
             [
                 'category' => 'PHP',
                 'question' => 'Что такое Composer простыми словами?',
-                'answer' => 'Менеджер зависимостей для PHP — аналог npm в JS, pip в Python, cargo в Rust. Скачивает сторонние библиотеки из репозитория packagist.org, кладёт их в папку vendor/ и генерирует автозагрузчик. Список зависимостей и их версии описаны в composer.json, фактически установленные версии зафиксированы в composer.lock. Базовые команды: composer install (поставить из lock), composer update (обновить), composer require vendor/package (добавить).',
+                'answer' => '**Composer** — менеджер зависимостей для PHP. Аналог `npm` в JS, `pip` в Python, `cargo` в Rust.
+
+**Что делает:**
+- скачивает сторонние библиотеки из репозитория **packagist.org**
+- кладёт их в папку **`vendor/`**
+- генерирует автозагрузчик `vendor/autoload.php`
+
+**Два ключевых файла:**
+- **`composer.json`** — список зависимостей и диапазоны версий
+- **`composer.lock`** — фактически установленные версии (для воспроизводимого билда)
+
+**Базовые команды:**
+- `composer install` — поставить из `composer.lock`
+- `composer update` — обновить пакеты
+- `composer require vendor/package` — добавить новый пакет',
                 'code_example' => 'composer require guzzlehttp/guzzle
 composer install
 composer update
@@ -54,7 +68,14 @@ require __DIR__ . "/vendor/autoload.php";',
             [
                 'category' => 'PHP',
                 'question' => 'Что лежит в папке vendor/?',
-                'answer' => 'Все установленные сторонние пакеты + автоген-файл vendor/autoload.php — единственная точка входа автозагрузчика Composer. Папка генерируется командой composer install и НЕ коммитится в git (она есть в .gitignore любого нормального шаблона). На сервере и в CI её создают заново через composer install (а для прода — composer install --no-dev --optimize-autoloader, чтобы не ставить dev-пакеты и собрать оптимизированный classmap). В коде vendor подключают одной строкой в bootstrap-файле.',
+                'answer' => '**Все установленные сторонние пакеты** плюс автоген-файл `vendor/autoload.php` — единственная точка входа автозагрузчика Composer.
+
+**Ключевые правила:**
+- папка генерируется командой `composer install`
+- **НЕ коммитится в git** (она есть в `.gitignore` любого нормального шаблона)
+- на сервере и в CI создаётся заново через `composer install`
+- для прода — **`composer install --no-dev --optimize-autoloader`** (без dev-пакетов и с оптимизированным classmap)
+- в коде подключается одной строкой в bootstrap: `require __DIR__ . "/../vendor/autoload.php";`',
                 'code_example' => '# Структура проекта
 project/
 ├── composer.json
@@ -86,7 +107,12 @@ composer install --no-dev --optimize-autoloader',
             [
                 'category' => 'PHP',
                 'question' => 'В чём разница между require и require-dev в composer.json?',
-                'answer' => 'В разделе require перечислены пакеты, нужные приложению в РАНТАЙМЕ (Laravel, Guzzle, sentry, etc.) — без них прод не запустится. В require-dev — пакеты только для разработки и тестов (PHPUnit, Pint, PHPStan, Larastan). На прод-сервере или в Docker-образе обычно ставят composer install --no-dev — dev-пакеты не попадают, образ легче и поверхность атаки меньше. Добавить пакет в dev: composer require --dev <vendor/package>.',
+                'answer' => '- **`require`** — пакеты, нужные приложению **в рантайме**: Laravel, Guzzle, Sentry. Без них прод **не запустится**.
+- **`require-dev`** — пакеты только **для разработки и тестов**: PHPUnit, Pint, PHPStan, Larastan.
+
+**На проде** обычно ставят **`composer install --no-dev`** — dev-пакеты не попадают, образ легче и поверхность атаки меньше.
+
+**Добавить пакет в dev:** `composer require --dev <vendor/package>`.',
                 'code_example' => '{
     "require": {
         "php": "^8.2",
@@ -140,7 +166,15 @@ spl_autoload_register(function (string $class) {
             [
                 'category' => 'PHP',
                 'question' => 'Как искать и устанавливать пакеты в Composer?',
-                'answer' => 'Главный каталог пакетов PHP — packagist.org, там лежит описание пакета, версии, статистика. Поиск с командной строки — composer search keyword. Установка пакета в проект — composer require vendor/package (он сам добавит запись в composer.json и обновит composer.lock). Для зависимостей только для разработки — composer require --dev (типичный пример: phpunit/phpunit, laravel/pint). Удаление — composer remove vendor/package. Обновить пакет до новой версии в рамках допустимого диапазона — composer update vendor/package.',
+                'answer' => 'Главный каталог пакетов PHP — **packagist.org**, там описание пакета, версии и статистика установок.
+
+**Основные команды:**
+- `composer search <keyword>` — поиск из командной строки
+- `composer require vendor/package` — установка (сам добавит запись в `composer.json` и обновит `composer.lock`)
+- `composer require --dev vendor/package` — установка только для разработки (PHPUnit, Pint)
+- `composer remove vendor/package` — удаление
+- `composer update vendor/package` — обновить один пакет в рамках диапазона версий
+- `composer require laravel/framework:^11.0` — указать версию явно',
                 'code_example' => '# Поиск
 composer search guzzle
 

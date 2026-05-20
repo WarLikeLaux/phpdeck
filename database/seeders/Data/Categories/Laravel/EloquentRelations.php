@@ -141,7 +141,16 @@ $user->teams->first()->pivot->isOwner();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое hasMany простыми словами?',
-                'answer' => 'Отношение «один-ко-многим»: у одной записи может быть много связанных. У User много Post — в модели User объявляется метод posts(), возвращающий $this->hasMany(Post::class). Доступ к коллекции: $user->posts (Collection моделей Post). FK по умолчанию ищется в таблице posts как user_id (имя родителя в snake_case + _id), PK по умолчанию — id. Если поля другие — указать вторым/третьим аргументом: hasMany(Post::class, \'author_id\', \'id\').',
+                'answer' => 'Отношение **«один-ко-многим»**: у одной записи может быть много связанных.
+
+Пример: у `User` много `Post`.
+
+- В модели `User` объявляется метод `posts()`, возвращающий `$this->hasMany(Post::class)`.
+- Доступ к коллекции: `$user->posts` — `Collection` моделей `Post`.
+- FK по умолчанию ищется в таблице `posts` как `user_id` (имя родителя в snake_case + `_id`), PK — `id`.
+- Если имена другие — указать аргументами: `hasMany(Post::class, \'author_id\', \'id\')`.
+
+Создать связанный пост через отношение — FK заполнится сам.',
                 'code_example' => 'class User extends Model {
     public function posts() {
         return $this->hasMany(Post::class);
@@ -164,7 +173,16 @@ $user->posts()->create([\'title\' => \'Привет\', \'body\' => \'...\']);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое belongsTo простыми словами?',
-                'answer' => 'Обратная сторона hasOne/hasMany. У Post один автор-User — в модели Post объявляется метод user(), возвращающий $this->belongsTo(User::class). Доступ: $post->user — одна модель User или null. FK хранится в ЭТОЙ таблице (posts.user_id), Laravel сам определяет имя по имени метода (user → user_id). Если имя поля другое — указать: belongsTo(User::class, \'author_id\').',
+                'answer' => 'Обратная сторона `hasOne`/`hasMany`: ребёнок «принадлежит» родителю.
+
+Пример: у `Post` один автор-`User`.
+
+- В модели `Post` объявляется метод `user()`, возвращающий `$this->belongsTo(User::class)`.
+- Доступ: `$post->user` — одна модель `User` или `null`.
+- **FK хранится в этой же таблице** (`posts.user_id`). Laravel определяет имя по имени метода: `user()` → `user_id`.
+- Если имя поля другое — указать: `belongsTo(User::class, \'author_id\')`.
+
+Привязка/отвязка: `$post->user()->associate($user)` / `$post->user()->dissociate()`.',
                 'code_example' => 'class Post extends Model {
     public function user() {
         return $this->belongsTo(User::class);

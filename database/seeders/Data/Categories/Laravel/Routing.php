@@ -13,7 +13,12 @@ class Routing
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое маршрут (route) в Laravel?',
-                'answer' => 'Маршрут - это правило, которое связывает URL и HTTP-метод с конкретным действием (контроллером или замыканием). Простыми словами: когда пользователь заходит на /users, Laravel смотрит в файл routes/web.php и находит, какой код выполнить.',
+                'answer' => '**Маршрут (route)** — правило, которое связывает **URL + HTTP-метод** с конкретным действием (методом контроллера или замыканием).
+
+- Лежат в `routes/web.php` (для браузера, с сессиями и CSRF) и `routes/api.php` (для API, stateless).
+- Когда приходит запрос — Laravel ищет подходящий маршрут и вызывает его обработчик.
+- Объявляются через фасад `Route`: `Route::get`, `Route::post`, `Route::put`, `Route::delete`, `Route::match`, `Route::any`.
+- Для CRUD есть `Route::resource(\'posts\', PostController::class)` — сразу 7 стандартных роутов.',
                 'code_example' => 'Route::get(\'/users\', [UserController::class, \'index\']);
 Route::post(\'/users\', [UserController::class, \'store\']);
 Route::put(\'/users/{id}\', [UserController::class, \'update\']);
@@ -242,7 +247,12 @@ php artisan install:api',
             [
                 'category' => 'Laravel',
                 'question' => 'Как передать параметр из URL в контроллер?',
-                'answer' => 'В маршруте параметр в фигурных скобках: {id}. В методе контроллера параметр приходит как обычный аргумент. Имена должны совпадать (или использовать Route Model Binding). Можно сразу type-hint-ить модель: Laravel сам найдёт по id (или вернёт 404 через findOrFail).',
+                'answer' => 'Параметр в маршруте — в **фигурных скобках**: `{id}`. В методе контроллера он приходит как обычный аргумент.
+
+Два варианта:
+
+1. **По имени** — имена в роуте и в сигнатуре метода должны **совпадать**. Контроллер сам делает `User::findOrFail($id)`.
+2. **Route Model Binding** — type-hint модели: Laravel сам находит запись по `id` или возвращает **404** через `findOrFail`. Меньше кода, нагляднее.',
                 'code_example' => '// routes/web.php
 Route::get(\'/users/{id}\', [UserController::class, \'show\']);
 

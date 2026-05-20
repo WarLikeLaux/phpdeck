@@ -13,7 +13,12 @@ class EloquentBasics
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Eloquent ORM?',
-                'answer' => 'Eloquent - это ORM (Object Relational Mapper) Laravel, реализующий паттерн Active Record. Простыми словами: каждая таблица в БД представлена классом-моделью, а каждая запись в таблице - объектом этого класса. Вместо SQL пишем понятный объектный код.',
+                'answer' => '**Eloquent** — встроенная в Laravel ORM (Object Relational Mapper), реализующая паттерн **Active Record**.
+
+- Каждая **таблица** в БД представлена классом-моделью в `app/Models`.
+- Каждая **запись** в таблице — объект этого класса.
+- Вместо SQL пишем объектный код: `User::find(1)`, `$user->save()`, `User::where(...)->get()`.
+- Поддерживает связи (`hasMany`, `belongsTo`), события модели, `$casts`, soft delete.',
                 'code_example' => 'class User extends Model {
     protected $fillable = [\'name\', \'email\'];
 }
@@ -400,7 +405,12 @@ class UserObserver {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое $table и $primaryKey в Eloquent-модели?',
-                'answer' => '$table — имя таблицы в БД, если оно отличается от автогенерации (по умолчанию имя модели в snake_case + множественное число: User → users). $primaryKey — имя поля PK, если не id. $incrementing = false — если PK не auto-increment. $keyType = \'string\' — если PK строка (например, UUID). Всё это публичные/protected свойства самой модели.',
+                'answer' => 'Свойства модели для переопределения соглашений по именованию:
+
+- `$table` — имя таблицы, если отличается от автогенерации (по умолчанию `snake_case` + множественное: `User` → `users`).
+- `$primaryKey` — имя поля PK, если не `id`.
+- `$incrementing = false` — если PK не AUTO_INCREMENT.
+- `$keyType = \'string\'` — если PK строка (например, UUID).',
                 'code_example' => 'class Article extends Model
 {
     protected $table = \'blog_articles\'; // иначе было бы articles
@@ -438,7 +448,16 @@ $post->save();',
             [
                 'category' => 'Laravel',
                 'question' => 'Как создать модель Laravel через artisan?',
-                'answer' => 'php artisan make:model User — только модель в app/Models/User.php. Опции: -m создаёт миграцию, -f — factory, -s — seeder, -c — контроллер, -r — resource-контроллер, --pivot — для pivot-моделей. Всё сразу: php artisan make:model Post -mfsc даст модель + миграцию + фабрику + сидер + контроллер одной командой.',
+                'answer' => 'Команда `php artisan make:model` создаёт модель в `app/Models`. Опции — флаги для попутной генерации связанных файлов:
+
+- `-m` — миграция.
+- `-f` — фабрика (для тестов и сидеров).
+- `-s` — сидер.
+- `-c` — контроллер.
+- `-r` — resource-контроллер (с методами `index/show/create/store/edit/update/destroy`).
+- `--pivot` — для pivot-моделей `belongsToMany`.
+
+Чаще всего пишут `make:model Post -mfsc` — модель + миграция + фабрика + сидер + контроллер одной командой.',
                 'code_example' => '# только модель
 php artisan make:model User
 
@@ -457,7 +476,13 @@ php artisan make:model Post -mr',
             [
                 'category' => 'Laravel',
                 'question' => 'Как Eloquent определяет имя таблицы для модели?',
-                'answer' => 'По умолчанию: имя класса в snake_case + множественное число. Post → posts, OrderItem → order_items, User → users. Если нужно другое имя — задай protected $table = \'my_table\'. Множественное число выбирает Str::plural() (учитывает английские правила: child → children, person → people). Для русскоязычных таблиц всегда указывай $table вручную.',
+                'answer' => 'По умолчанию: имя класса переводится в `snake_case` + множественное число.
+
+- `Post` → `posts`
+- `OrderItem` → `order_items`
+- `User` → `users`
+
+Множественное число выбирает `Str::plural()` — учитывает английские правила: `child` → `children`, `person` → `people`. Если нужно другое имя (или таблица не на английском) — задай `protected $table = \'my_table\'` явно.',
                 'code_example' => 'class Post extends Model {} // → posts
 class OrderItem extends Model {} // → order_items
 
@@ -471,7 +496,12 @@ class News extends Model {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между find() и findOrFail()?',
-                'answer' => 'User::find(5) — возвращает модель или null, если запись не найдена. User::findOrFail(5) — возвращает модель или бросает ModelNotFoundException, который Laravel автоматически превращает в HTTP 404. В контроллерах почти всегда используют findOrFail(), чтобы не писать if (!$user) abort(404). find() удобен, когда null — валидный сценарий (например, проверка существования).',
+                'answer' => 'Оба метода ищут запись по первичному ключу.
+
+- `User::find(5)` — вернёт модель или `null`, если запись не найдена.
+- `User::findOrFail(5)` — вернёт модель или бросит `ModelNotFoundException`, который Laravel автоматически превращает в **HTTP 404**.
+
+В контроллерах почти всегда используют `findOrFail()`, чтобы не писать `if (!$user) abort(404)`. `find()` удобен, когда `null` — валидный сценарий (например, проверка существования).',
                 'code_example' => '// Так писать не нужно
 $user = User::find($id);
 if (! $user) {

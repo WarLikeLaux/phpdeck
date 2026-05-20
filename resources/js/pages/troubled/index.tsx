@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { CategoryBadge } from '@/components/category-badge';
 import { CodeBlock } from '@/components/code-block';
+import { MarkdownAnswer } from '@/components/markdown-answer';
 import { NoteBlock } from '@/components/note-block';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -140,9 +141,10 @@ function TroubledRow({ row }: { row: Row }) {
                 <MetricsRow metrics={metrics} />
             </CardHeader>
             <CardContent className="flex min-w-0 flex-col gap-4">
-                <p className="text-sm break-words whitespace-pre-line text-muted-foreground">
-                    {flashcard.answer}
-                </p>
+                <MarkdownAnswer
+                    content={flashcard.answer}
+                    className="text-sm text-muted-foreground"
+                />
                 {flashcard.code_example && (
                     <CodeBlock
                         code={flashcard.code_example}

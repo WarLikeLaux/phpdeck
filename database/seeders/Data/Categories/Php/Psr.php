@@ -160,14 +160,32 @@ class AuthMiddleware implements MiddlewareInterface
             [
                 'category' => 'PHP',
                 'question' => 'Что такое PSR простыми словами?',
-                'answer' => 'PHP Standards Recommendations — набор стандартов от PHP-FIG (Framework Interop Group), которые принимают крупные фреймворки и библиотеки. Цель — чтобы код от разных авторов мог работать вместе. Самые ходовые: PSR-1 и PSR-12 — стиль кода (PascalCase для классов, отступы, фигурные скобки), PSR-4 — автозагрузка (namespace → путь к файлу), PSR-3 — единый интерфейс логгера (LoggerInterface), PSR-7 — HTTP-запросы и ответы, PSR-11 — DI-контейнер, PSR-15 — middleware. Знание PSR делает код переносимым между Laravel, Symfony и любыми другими совместимыми библиотеками без переписывания.',
+                'answer' => '**PSR** (PHP Standards Recommendations) — набор стандартов от **PHP-FIG** (Framework Interop Group), которые принимают крупные фреймворки и библиотеки.
+
+**Цель:** чтобы код от разных авторов работал вместе без переписывания.
+
+**Самые ходовые PSR:**
+- **PSR-1 / PSR-12** — стиль кода (PascalCase для классов, отступы, фигурные скобки)
+- **PSR-4** — автозагрузка (namespace → путь к файлу)
+- **PSR-3** — единый интерфейс логгера (`LoggerInterface`)
+- **PSR-7** — HTTP-запросы и ответы
+- **PSR-11** — DI-контейнер
+- **PSR-15** — middleware
+
+Знание PSR делает код переносимым между **Laravel**, **Symfony** и любыми другими совместимыми библиотеками.',
                 'difficulty' => 1,
                 'topic' => 'php.psr',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что такое namespace простыми словами?',
-                'answer' => 'Пространство имён — способ группировки классов, функций и констант, чтобы избежать конфликтов одинаковых имён в разных частях проекта. namespace App\\Models; в начале файла делает класс User полным именем App\\Models\\User — оно называется FQCN (Fully Qualified Class Name). В другом файле сокращают через use App\\Models\\User; или дают алиас через as. По PSR-4 namespace отображается на путь к файлу — это и позволяет Composer автозагружать классы.',
+                'answer' => '**Пространство имён** — способ группировки классов, функций и констант, чтобы избежать **конфликтов имён** в разных частях проекта.
+
+**Как работает:**
+- `namespace App\\Models;` в начале файла делает класс `User` полным именем `App\\Models\\User` — это и есть **FQCN** (Fully Qualified Class Name).
+- В другом файле сокращают через `use App\\Models\\User;` или дают алиас: `use App\\Models\\Post as PostModel;`.
+
+По **PSR-4** namespace отображается на путь к файлу — это и позволяет Composer **автозагружать** классы.',
                 'code_example' => '<?php
 // app/Models/User.php
 namespace App\\Models;
@@ -193,7 +211,14 @@ $p = new PostModel();',
             [
                 'category' => 'PHP',
                 'question' => 'Какие соглашения по именованию приняты в PHP (PSR-1/PSR-12)?',
-                'answer' => 'Классы — PascalCase (UpperCamelCase): UserController, OrderRepository. Методы — camelCase: getUserName, saveOrder. Свойства и переменные — camelCase: $firstName, $userId. Константы — UPPER_SNAKE_CASE: MAX_USERS, API_KEY. snake_case для переменных и методов в PHP считается устаревшим стилем (наследие PHP 4 и WordPress). Исключение — тестовые методы PHPUnit, где snake_case допускают для читаемости: test_user_can_login.',
+                'answer' => '- **Классы** — `PascalCase` (UpperCamelCase): `UserController`, `OrderRepository`
+- **Методы** — `camelCase`: `getUserName`, `saveOrder`
+- **Свойства и переменные** — `camelCase`: `$firstName`, `$userId`
+- **Константы** — `UPPER_SNAKE_CASE`: `MAX_USERS`, `API_KEY`
+
+**`snake_case`** для переменных и методов считается устаревшим стилем (наследие PHP 4 и WordPress).
+
+**Исключение** — тестовые методы PHPUnit, где `snake_case` допускают для читаемости: `test_user_can_login`.',
                 'code_example' => '<?php
 class UserController {              // PascalCase
     private const MAX_RETRIES = 3;  // UPPER_SNAKE_CASE

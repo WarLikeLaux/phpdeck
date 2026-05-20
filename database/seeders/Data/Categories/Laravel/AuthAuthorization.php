@@ -277,9 +277,26 @@ public function boot(): void
             [
                 'category' => 'Laravel',
                 'question' => 'Как получить текущего залогиненного пользователя в Laravel?',
-                'answer' => 'Auth::user() или auth()->user() — модель текущего юзера или null. Auth::id() — только id. Auth::check() — true/false. В контроллерах удобно через $request->user(). Если юзер не залогинен — все эти методы вернут null/false, поэтому до защищённой логики ставят middleware \'auth\', которое сделает редирект на /login.',
-                'code_example' => 'public function index(Request $request) {
-    $user = $request->user(); // или auth()->user()
+                'answer' => 'Несколько эквивалентных способов:
+
+- `Auth::user()` или `auth()->user()` — модель текущего юзера или `null`.
+- `Auth::id()` или `auth()->id()` — только `id`.
+- `Auth::check()` — `true`/`false`, залогинен ли.
+- В контроллере удобно через `$request->user()`.
+
+Если юзер не залогинен — все эти методы вернут `null`/`false`. Чтобы не проверять каждый раз — навешивают middleware `auth` на роут, и тогда внутри метода юзер **гарантированно** есть.',
+                'code_example' => 'use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+public function index(Request $request)
+{
+    $user = $request->user();      // или auth()->user(), или Auth::user()
+    $id   = auth()->id();          // только id
+
+    if (auth()->check()) {
+        // юзер залогинен
+    }
+
     return view(\'dashboard\', compact(\'user\'));
 }',
                 'code_language' => 'php',
@@ -289,7 +306,15 @@ public function boot(): void
             [
                 'category' => 'Laravel',
                 'question' => 'Как защитить маршрут от неавторизованных пользователей?',
-                'answer' => 'Навесь middleware \'auth\' на route: Route::get(\'/profile\', ...)->middleware(\'auth\') — без логина юзера редиректит на /login. На группу: Route::middleware(\'auth\')->group(...). В контроллере Laravel 11+ middleware задаётся через интерфейс HasMiddleware и статический метод middleware() (старый $this->middleware(\'auth\') в конструкторе из L10 убран — базовый Controller больше не имеет такого метода).',
+                'answer' => 'Навесить middleware **`auth`** — без логина Laravel редиректит на `/login`.
+
+Три места, где можно повесить:
+
+1. **На отдельный роут** — `->middleware(\'auth\')` в конце цепочки.
+2. **На группу роутов** — `Route::middleware(\'auth\')->group(...)`.
+3. **В контроллере (Laravel 11+)** — через интерфейс `HasMiddleware` и статический метод `middleware()`.
+
+В Laravel 11+ старый `$this->middleware(\'auth\')` в конструкторе **убран** — базовый `Controller` такого метода больше не имеет.',
                 'code_example' => '// На отдельном роуте
 Route::get(\'/profile\', [ProfileController::class, \'show\'])->middleware(\'auth\');
 

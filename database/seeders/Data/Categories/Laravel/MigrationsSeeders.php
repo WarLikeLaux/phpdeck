@@ -163,7 +163,28 @@ php artisan schema:dump --prune   # + удалить файлы миграций
             [
                 'category' => 'Laravel',
                 'question' => 'Какие основные типы колонок в миграции Laravel?',
-                'answer' => '$table->id() — BIGINT auto-increment PK. $table->string(\'name\', 255) — VARCHAR. $table->text(\'description\') — TEXT. $table->integer(\'age\'), $table->boolean(\'active\'), $table->decimal(\'price\', 8, 2). $table->timestamp(\'sent_at\'), $table->date(\'birthday\'), $table->json(\'meta\'). $table->foreignId(\'user_id\')->constrained() — FK на users.id одной строкой. $table->timestamps() — created_at + updated_at сразу. $table->softDeletes() — deleted_at для soft delete.',
+                'answer' => 'Основные методы `Blueprint` (внутри `Schema::create`):
+
+**Идентификаторы:**
+- `$table->id()` — `BIGINT UNSIGNED AUTO_INCREMENT` PK.
+- `$table->uuid(\'id\')->primary()` — UUID PK.
+
+**Строки и текст:**
+- `$table->string(\'name\', 255)` — `VARCHAR`.
+- `$table->text(\'description\')` — `TEXT`.
+
+**Числа:**
+- `$table->integer(\'age\')`, `$table->bigInteger(\'views\')`.
+- `$table->decimal(\'price\', 8, 2)`, `$table->float(\'rating\')`.
+
+**Дата/время и прочее:**
+- `$table->boolean(\'active\')`, `$table->date(\'birthday\')`, `$table->timestamp(\'sent_at\')`.
+- `$table->json(\'meta\')`, `$table->enum(\'role\', [\'admin\', \'user\'])`.
+
+**Стандартные комбинации:**
+- `$table->foreignId(\'user_id\')->constrained()` — FK на `users.id` одной строкой.
+- `$table->timestamps()` — сразу `created_at` + `updated_at`.
+- `$table->softDeletes()` — `deleted_at` для soft delete.',
                 'code_example' => 'Schema::create(\'posts\', function (Blueprint $table) {
     $table->id();
     $table->foreignId(\'user_id\')->constrained()->cascadeOnDelete();

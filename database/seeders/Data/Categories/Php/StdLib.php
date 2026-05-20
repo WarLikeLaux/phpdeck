@@ -103,7 +103,11 @@ $obj = unserialize($str, ["allowed_classes" => [User::class]]);',
             [
                 'category' => 'PHP',
                 'question' => 'Как прочитать файл целиком в строку в PHP?',
-                'answer' => 'file_get_contents($path) — простейший способ, читает весь файл в строку и возвращает её (или false при ошибке, плюс Warning). Зеркальная функция для записи — file_put_contents($path, $data), которая создаёт или перезаписывает файл. Для БОЛЬШИХ файлов так делать нельзя — всё содержимое попадёт в память; читают потоково через fopen + fgets/fread в цикле и закрывают через fclose.',
+                'answer' => '**`file_get_contents($path)`** — простейший способ. Читает весь файл в строку и возвращает её (или `false` при ошибке + Warning).
+
+**Зеркальная функция для записи:** `file_put_contents($path, $data)` — создаёт или перезаписывает файл.
+
+**Подводный камень:** для **больших файлов** так делать нельзя — всё содержимое попадёт в память. Читают **потоково** через `fopen` + `fgets`/`fread` в цикле и закрывают через `fclose`.',
                 'code_example' => '<?php
 $content = file_get_contents("config.json");
 if ($content === false) {
@@ -148,7 +152,16 @@ fclose($fh);',
             [
                 'category' => 'PHP',
                 'question' => 'Как работать с датой в PHP простыми словами?',
-                'answer' => 'Простые задачи решают функциями: date("Y-m-d H:i:s") отформатирует текущее время, time() вернёт Unix timestamp (секунды с 1970-01-01), strtotime("+1 day") разберёт человекочитаемую строку в timestamp. Для серьёзных задач (часовые пояса, арифметика дат, immutability) используют классы DateTime / DateTimeImmutable. Правило: предпочитать DateTimeImmutable — у DateTime методы мутируют объект и это источник багов. В Laravel поверх неё используется Carbon с удобным API.',
+                'answer' => '**Простые задачи — функции:**
+- `date("Y-m-d H:i:s")` — форматирует текущее время
+- `time()` — Unix timestamp (секунды с `1970-01-01`)
+- `strtotime("+1 day")` — разбирает человекочитаемую строку в timestamp
+
+**Серьёзные задачи (часовые пояса, арифметика, immutability) — классы:**
+- `DateTime` — изменяемый
+- **`DateTimeImmutable`** — неизменяемый, **предпочтительный** (у `DateTime` методы мутируют объект — источник багов)
+
+**В Laravel** поверх стандартных классов используется **`Carbon`** с удобным API.',
                 'code_example' => '<?php
 echo date("Y-m-d");              // "2026-05-19"
 echo time();                     // 1747...
@@ -165,7 +178,15 @@ echo $dt->format("Y-m-d");       // "2026-05-01" (не изменился)',
             [
                 'category' => 'PHP',
                 'question' => 'Что делают json_encode и json_decode?',
-                'answer' => 'json_encode($data) превращает PHP-массив/объект в JSON-строку. json_decode($json, true) делает обратное — из JSON в массив (true вторым аргументом) или в объект stdClass (без второго аргумента / false). По умолчанию при ошибке json_decode возвращает null, что легко пропустить — поэтому передают флаг JSON_THROW_ON_ERROR (PHP 7.3+): невалидный JSON выбросит JsonException. Полезные флаги для encode: JSON_UNESCAPED_UNICODE (не экранировать кириллицу), JSON_PRETTY_PRINT (форматирование).',
+                'answer' => '- **`json_encode($data)`** — превращает PHP-массив/объект в **JSON-строку**.
+- **`json_decode($json, true)`** — обратное преобразование. Второй аргумент `true` даёт **массив**, без него (или `false`) — объект `stdClass`.
+
+**Подводный камень:** по умолчанию при ошибке `json_decode` возвращает `null` — легко пропустить. Решение — флаг **`JSON_THROW_ON_ERROR`** (PHP 7.3+): невалидный JSON выбросит `JsonException`.
+
+**Полезные флаги для encode:**
+- `JSON_UNESCAPED_UNICODE` — не экранировать кириллицу
+- `JSON_PRETTY_PRINT` — форматирование с переносами
+- `JSON_UNESCAPED_SLASHES` — не экранировать `/`',
                 'code_example' => '<?php
 $data = ["name" => "Иван", "age" => 30];
 
@@ -187,7 +208,17 @@ try {
             [
                 'category' => 'PHP',
                 'question' => 'Какие функции в PHP применяют для математики простыми словами?',
-                'answer' => 'Базовые: abs($n) — модуль; round($n, $precision) — округление, floor/ceil — вниз/вверх; min(...$args) и max(...$args) — минимум и максимум (принимают и список аргументов, и массив); pow($base, $exp) или ** — степень; sqrt($n) — квадратный корень; intval/floatval — приведение к числу. Для случайных чисел общего назначения — rand / mt_rand, для криптостойких — random_int / random_bytes.',
+                'answer' => '**Базовые:**
+- `abs($n)` — модуль (`abs(-5) === 5`)
+- `round($n, $precision)` — округление, `floor` / `ceil` — вниз / вверх
+- `min(...$args)` и `max(...$args)` — минимум и максимум (принимают и список аргументов, и массив)
+- `pow($base, $exp)` или `**` — возведение в степень
+- `sqrt($n)` — квадратный корень
+- `intval` / `floatval` — приведение к числу
+
+**Случайные числа:**
+- `rand` / `mt_rand` — общего назначения
+- **`random_int`** / **`random_bytes`** — **криптостойкие** (для токенов, паролей)',
                 'code_example' => '<?php
 echo abs(-5);          // 5
 echo round(3.7);       // 4

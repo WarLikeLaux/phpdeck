@@ -99,7 +99,18 @@ pm.max_requests = 1000',
             [
                 'category' => 'PHP',
                 'question' => 'Чем PHP CLI отличается от PHP в веб-режиме простыми словами?',
-                'answer' => 'CLI (Command Line Interface) — запуск через php script.php в терминале. Веб-режим — это исполнение скрипта внутри FPM или mod_php в ответ на HTTP-запрос. У них ОТДЕЛЬНЫЕ php.ini-файлы (cli/php.ini и fpm/php.ini), и многие лимиты отличаются: в CLI по умолчанию нет ограничения max_execution_time и memory_limit мягче. В CLI нет суперглобальных $_GET/$_POST/$_SESSION, нет cookies — есть только argv/argc и STDIN/STDOUT. Узнать текущий режим — функцией php_sapi_name(). Используется для cron, миграций, очередей и одноразовых скриптов.',
+                'answer' => '- **CLI** (Command Line Interface) — запуск через `php script.php` в терминале.
+- **Веб-режим** — исполнение скрипта внутри **FPM** или mod_php в ответ на HTTP-запрос.
+
+**Главные отличия:**
+- **отдельные** `php.ini`-файлы (`cli/php.ini` и `fpm/php.ini`), лимиты отличаются
+- в CLI **нет** ограничения `max_execution_time`, `memory_limit` мягче
+- в CLI **нет суперглобальных** `$_GET` / `$_POST` / `$_SESSION` и cookies
+- в CLI есть `$argv` / `$argc` и потоки `STDIN` / `STDOUT`
+
+**Узнать текущий режим:** функция `php_sapi_name()` → `"cli"` или `"fpm-fcgi"`.
+
+**Где применяется CLI:** cron, миграции, очереди, одноразовые скрипты.',
                 'code_example' => '<?php
 // какой SAPI
 echo php_sapi_name();  // "cli" в терминале, "fpm-fcgi" в проде

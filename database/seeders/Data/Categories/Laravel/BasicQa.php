@@ -41,21 +41,82 @@ class BasicQa
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое контроллер в Laravel?',
-                'answer' => 'Класс с методами, обрабатывающий HTTP-запросы. Лежит в app/Http/Controllers. Метод получает Request, обращается к моделям/сервисам и возвращает Response, view или JSON. Связывается с URL через routes.',
+                'answer' => '**Контроллер** — класс, который обрабатывает HTTP-запрос: достаёт данные через модель, применяет бизнес-логику и возвращает ответ.
+
+- Лежит в `app/Http/Controllers`, наследует `Controller`.
+- Метод получает `Request`, возвращает `Response`, `view` или JSON.
+- Связывается с URL через `routes/web.php` или `routes/api.php`.
+- Создаётся командой `php artisan make:controller UserController`.',
+                'code_example' => 'use App\Http\Controllers\UserController;
+use App\Models\User;
+use Illuminate\Http\Request;
+
+// routes/web.php
+Route::get(\'/users/{id}\', [UserController::class, \'show\']);
+
+// app/Http/Controllers/UserController.php
+class UserController extends Controller
+{
+    public function show(int $id)
+    {
+        $user = User::findOrFail($id);
+
+        return view(\'users.show\', [\'user\' => $user]);
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.basic_qa',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое модель в Laravel?',
-                'answer' => 'Класс, представляющий одну таблицу в БД. Лежит в app/Models, наследует Eloquent\\Model, имя в единственном числе (User → таблица users). Через модель — CRUD: User::find(5), $user->save(), User::where(...)->get().',
+                'answer' => '**Модель** — класс, представляющий одну таблицу в БД. Один объект = одна строка.
+
+- Лежит в `app/Models`, наследует `Illuminate\\Database\\Eloquent\\Model`.
+- Имя в **единственном числе**, таблица — во множественном: `User` → `users`.
+- Через модель идёт CRUD: `find`, `save`, `update`, `delete`, `where`.
+- Создаётся командой `php artisan make:model Post` (с `-m` ещё и миграция).',
+                'code_example' => 'namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class User extends Model
+{
+    protected $fillable = [\'name\', \'email\'];
+}
+
+// Использование
+$user = User::find(5);                       // найти по id
+$user->name = \'Anna\';
+$user->save();                               // UPDATE
+
+User::create([\'name\' => \'Bob\', \'email\' => \'b@b.c\']); // INSERT
+User::where(\'active\', true)->get();          // SELECT с условием',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.basic_qa',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Какие базовые методы есть у Eloquent для чтения?',
-                'answer' => 'User::all() — все. User::find(5) — по PK (модель или null). User::findOrFail(5) — то же, но бросит 404. User::where(\'active\', true)->get() — с условием. User::first() — первая. User::count() — сколько.',
+                'answer' => 'Базовые методы выборки на модели:
+
+- `User::all()` — все записи (`Collection`).
+- `User::find(5)` — по первичному ключу, вернёт **модель или `null`**.
+- `User::findOrFail(5)` — то же, но бросит `ModelNotFoundException` → автоматически HTTP **404**.
+- `User::first()` / `User::firstOrFail()` — первая запись.
+- `User::where(\'active\', true)->get()` — с условием.
+- `User::count()` — количество (без загрузки моделей).
+- `User::pluck(\'email\')` — массив значений одной колонки.',
+                'code_example' => '$all     = User::all();                       // Collection всех юзеров
+$user    = User::find(5);                     // User|null
+$user    = User::findOrFail(5);               // 404 если не найден
+$first   = User::where(\'active\', true)->first();
+$active  = User::where(\'active\', true)->get();  // Collection
+$total   = User::count();                     // int
+$emails  = User::pluck(\'email\');               // [\'a@b.c\', \'c@d.e\', ...]',
+                'code_language' => 'php',
                 'difficulty' => 1,
                 'topic' => 'laravel.basic_qa',
             ],
@@ -103,7 +164,14 @@ public function store(StoreUserRequest $request)
             [
                 'category' => 'Laravel',
                 'question' => 'Как связаны route, controller, model и view в Laravel?',
-                'answer' => 'Это четыре главных слоя обычного запроса. Route принимает URL и направляет в Controller. Controller — оркестратор: дёргает Model для работы с БД и возвращает результат как View (HTML) или JSON. Model — данные (Eloquent). View — шаблон Blade. Маршрут указывает на метод контроллера, контроллер вызывает модель, потом отдаёт данные во view.',
+                'answer' => 'Это четыре главных слоя обычного запроса в Laravel:
+
+1. **Route** (`routes/web.php`) — принимает URL и направляет в нужный метод контроллера.
+2. **Controller** (`app/Http/Controllers`) — оркестратор: дёргает модель и решает, что вернуть.
+3. **Model** (`app/Models`, Eloquent) — работа с данными в БД.
+4. **View** (`resources/views`, Blade) — HTML-шаблон.
+
+Поток: запрос → роут → контроллер → модель → view (или JSON).',
                 'code_example' => '// routes/web.php
 Route::get(\'/users/{id}\', [UserController::class, \'show\']);
 
@@ -136,7 +204,18 @@ return redirect()->route(\'users.show\', $user);',
             [
                 'category' => 'Laravel',
                 'question' => 'Какие способы редиректа в Laravel?',
-                'answer' => 'redirect(\'/login\') — по URL. redirect()->route(\'home\') — по имени маршрута. redirect()->back() или back() — назад. redirect()->action([Ctrl::class, \'method\']) — на метод контроллера. С данными во flash-сессии: ->with(\'success\', \'Готово\'). С ошибками: ->withErrors($errors)->withInput().',
+                'answer' => 'Способы редиректа из контроллера:
+
+- `redirect(\'/login\')` — по URL.
+- `redirect()->route(\'home\')` — по имени маршрута (предпочтительно).
+- `back()` или `redirect()->back()` — на предыдущую страницу.
+- `redirect()->action([Ctrl::class, \'method\'])` — на метод контроллера.
+
+Дополнительно через цепочку:
+
+- `->with(\'success\', \'Готово\')` — flash-сообщение в сессию (живёт один запрос).
+- `->withInput()` — сохранить заполненные поля формы.
+- `->withErrors($errors)` — передать ошибки во view (`$errors`).',
                 'code_example' => 'return redirect(\'/login\');
 return redirect()->route(\'profile\', $user);
 return back()->with(\'success\', \'Сохранено\');
@@ -148,7 +227,12 @@ return redirect()->route(\'login\')->withInput()->withErrors([\'email\' => \'Н�
             [
                 'category' => 'Laravel',
                 'question' => 'Как создать новую запись через Eloquent простыми словами?',
-                'answer' => 'Два пути. Через create() — массово: User::create([\'name\' => \'A\', \'email\' => \'a@b.c\']) — требует $fillable на модели. Через new + save() — пошагово: $u = new User; $u->name = \'A\'; $u->email = \'a@b.c\'; $u->save(). create() возвращает уже сохранённую модель, удобно для одной строки кода.',
+                'answer' => 'Два основных способа:
+
+1. **Через `create()`** — массово из массива: `User::create([...])`. Требует `protected $fillable` на модели — список разрешённых полей. Возвращает уже сохранённую модель.
+2. **Через `new` + `save()`** — пошагово: создать объект, присвоить свойства, вызвать `save()`. Не требует `$fillable`.
+
+Обновление по аналогии — `update([...])` или `save()` после изменения свойств.',
                 'code_example' => '// Способ 1: create
 $user = User::create([\'name\' => \'Anna\', \'email\' => \'a@b.c\']);
 
@@ -171,7 +255,17 @@ $user->save();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое middleware простыми словами?',
-                'answer' => 'Прослойка, через которую проходит каждый HTTP-запрос ДО контроллера. Стандартные задачи: проверить, что юзер залогинен (\'auth\'), проверить CSRF, ограничить число запросов (\'throttle\'), залогировать запрос. Если middleware что-то не нравится — оно отклоняет запрос (например, редирект на /login) и контроллер вообще не вызовется. Готовое middleware вешается на роут через ->middleware(\'auth\') или на группу.',
+                'answer' => '**Middleware** — прослойка, через которую проходит каждый HTTP-запрос **до** контроллера (и ответ — после).
+
+Типичные задачи:
+
+- `auth` — пускать только залогиненных, иначе редирект на `/login`.
+- `verified` — только с подтверждённым email.
+- `throttle` — ограничить число запросов в минуту.
+- CSRF-проверка для POST/PUT/DELETE форм.
+- Логирование, добавление заголовков, локализация.
+
+Если middleware решает «нельзя» — оно возвращает свой ответ и контроллер **не вызовется**. Готовое middleware вешается на роут через `->middleware(\'auth\')` или на группу.',
                 'code_example' => '// Назначить готовое middleware на роут
 Route::get(\'/profile\', [ProfileController::class, \'show\'])->middleware(\'auth\');
 

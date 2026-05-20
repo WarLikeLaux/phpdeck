@@ -13,7 +13,18 @@ class Artisan
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое php artisan?',
-                'answer' => 'Artisan - это CLI-интерфейс Laravel. Простыми словами: командная строка для генерации кода (make:), управления БД (migrate), очередями (queue:work), кешем (cache:clear) и т.д. Можно создавать свои команды через make:command.',
+                'answer' => '**Artisan** — встроенный CLI-инструмент Laravel. Запускается из корня проекта командой `php artisan <команда>`.
+
+Что им делают:
+
+- **Генерация кода**: `make:controller`, `make:model`, `make:migration`, `make:test`.
+- **БД**: `migrate`, `migrate:fresh --seed`, `db:seed`.
+- **Очереди**: `queue:work`, `queue:retry`.
+- **Кеш**: `cache:clear`, `config:cache`, `route:cache`.
+- **Отладка**: `tinker` (REPL), `route:list`, `about`.
+- **Свои команды** — через `make:command`.
+
+`php artisan list` покажет все доступные команды.',
                 'code_example' => 'php artisan list                 # список всех команд
 php artisan make:model Post -mfc # модель + миграция + фабрика + контроллер
 php artisan migrate
@@ -105,7 +116,21 @@ Schedule::call(fn() => DB::table(\'sessions\')->delete())
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает php artisan route:list?',
-                'answer' => 'Выводит таблицу всех зарегистрированных маршрутов: HTTP-метод, URL, имя, действие (контроллер@метод), middleware. Полезно для понимания «какие endpoints есть в приложении» и для отладки имён. Фильтры: --path=user (только содержащие user), --method=POST, --name=admin.*, --except-vendor (без vendor-роутов пакетов), -v (показать middleware).',
+                'answer' => 'Выводит таблицу всех зарегистрированных маршрутов: HTTP-метод, URL, имя, действие (`контроллер@метод`), middleware.
+
+Полезно, чтобы:
+
+- Понять, какие endpoints вообще есть в приложении.
+- Найти имя маршрута для `route(\'...\')`.
+- Отладить «почему 404» — посмотреть, есть ли маршрут.
+
+Частые фильтры:
+
+- `--path=user` — только содержащие `user` в URL.
+- `--method=POST` — только POST.
+- `--name=admin.*` — по имени.
+- `--except-vendor` — без роутов пакетов.
+- `-v` — показать middleware каждого маршрута.',
                 'code_example' => 'php artisan route:list
 php artisan route:list --path=user
 php artisan route:list --method=POST
@@ -118,7 +143,19 @@ php artisan route:list -v --except-vendor',
             [
                 'category' => 'Laravel',
                 'question' => 'Какие команды artisan для создания файлов самые частые?',
-                'answer' => 'make:controller, make:model (с опцией -mfsc создаёт миграцию/фабрику/сидер/контроллер сразу), make:migration, make:seeder, make:factory, make:request (FormRequest для валидации), make:job, make:event, make:listener, make:middleware, make:command, make:resource (API Resource), make:test, make:policy, make:rule (кастомное validation rule).',
+                'answer' => 'Все генерирующие команды начинаются с `make:`.
+
+- `make:controller` — контроллер (с `--resource` — все CRUD-методы).
+- `make:model` — модель (с `-mfsc` ещё миграция/фабрика/сидер/контроллер).
+- `make:migration` — миграция.
+- `make:seeder`, `make:factory` — тестовые данные.
+- `make:request` — `FormRequest` для валидации.
+- `make:middleware` — middleware.
+- `make:job`, `make:event`, `make:listener` — фон/события.
+- `make:command` — своя artisan-команда.
+- `make:resource` — API Resource (трансформер JSON).
+- `make:policy`, `make:rule` — авторизация и правила валидации.
+- `make:test` — тест.',
                 'code_example' => 'php artisan make:controller PostController --resource
 php artisan make:model Post -mfsc
 php artisan make:migration add_status_to_posts_table --table=posts
@@ -135,7 +172,17 @@ php artisan make:test PostControllerTest',
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает php artisan serve?',
-                'answer' => 'Поднимает встроенный PHP-сервер для разработки на localhost:8000. Под капотом это обёртка над `php -S` — однопоточный dev-сервер, обрабатывает один запрос за раз. Удобно для быстрого локального запуска без nginx/apache. Только для dev! В проде используется FPM/Octane за nginx. Опции: --host (по умолчанию 127.0.0.1), --port (8000), --tries (попытки занять следующий свободный порт).',
+                'answer' => 'Поднимает встроенный PHP-сервер для разработки на `http://localhost:8000`.
+
+- Под капотом — обёртка над `php -S`, **однопоточный** dev-сервер (один запрос за раз).
+- Удобно для быстрого локального старта без `nginx`/`apache`.
+- **Только для разработки!** В проде — FPM или Octane за nginx.
+
+Полезные опции:
+
+- `--host=0.0.0.0` — доступ с других машин в сети (по умолчанию `127.0.0.1`).
+- `--port=8080` — другой порт (по умолчанию `8000`).
+- `--tries=10` — попытки занять следующий свободный порт.',
                 'code_example' => '# Запустить на localhost:8000
 php artisan serve
 

@@ -13,7 +13,18 @@ class Misc
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel?',
-                'answer' => 'Laravel - это PHP-фреймворк для разработки веб-приложений, основанный на архитектуре MVC. Простыми словами: это набор готовых инструментов и правил, который помогает быстро писать веб-сайты и API на PHP, не изобретая велосипед. Laravel включает ORM (Eloquent), систему маршрутизации, миграции, очереди, аутентификацию, шаблонизатор Blade и многое другое.',
+                'answer' => '**Laravel** — самый популярный PHP-фреймворк для веб-приложений и API, построенный на архитектуре **MVC**.
+
+Что входит «из коробки»:
+
+- ORM **Eloquent** (Active Record) для работы с БД.
+- Маршрутизация (`routes/web.php`, `routes/api.php`).
+- Шаблонизатор **Blade**.
+- Миграции, сидеры, фабрики.
+- Аутентификация, очереди, кеш, события, уведомления.
+- CLI **Artisan** для генерации кода и обслуживания.
+
+Создатель — Тейлор Отвелл. Стартовать: `composer create-project laravel/laravel my-app`.',
                 'code_example' => 'composer create-project laravel/laravel example-app
 cd example-app
 php artisan serve',
@@ -24,7 +35,16 @@ php artisan serve',
             [
                 'category' => 'Laravel',
                 'question' => 'Какие основные преимущества Laravel?',
-                'answer' => 'Преимущества Laravel: 1) Элегантный синтаксис и читаемый код. 2) Огромная экосистема пакетов (Sanctum, Horizon, Telescope, Octane, Scout). 3) Eloquent ORM - удобная работа с БД. 4) Встроенные миграции, сидеры, фабрики. 5) Очереди, события, кеш, сессии "из коробки". 6) Большое сообщество и документация. 7) Artisan CLI для генерации кода. 8) Активное развитие и регулярные релизы.',
+                'answer' => 'Главные плюсы Laravel:
+
+1. **Читаемый и элегантный синтаксис** — код легко поддерживать.
+2. **Полная экосистема**: `Sanctum`, `Horizon`, `Telescope`, `Octane`, `Scout`, `Cashier`, `Pulse`, `Reverb`.
+3. **Eloquent ORM** — работа с БД через объекты, со связями и событиями.
+4. **Миграции, сидеры, фабрики** — версионирование схемы и тестовых данных.
+5. **Из коробки**: очереди, события, кеш, сессии, аутентификация, валидация.
+6. **Artisan CLI** — генерация кода и обслуживание одной командой.
+7. **Огромное community** и подробная документация на laravel.com.
+8. **Регулярные релизы** — раз в год, активное развитие.',
                 'code_example' => null,
                 'code_language' => null,
                 'difficulty' => 1,
@@ -845,7 +865,28 @@ class User extends Resource {
             [
                 'category' => 'Laravel',
                 'question' => 'Какие основные helper-функции Laravel часто используются?',
-                'answer' => 'route(\'users.show\', $id) — URL по имени маршрута. url(\'/foo\') — абсолютный URL от APP_URL. asset(\'css/app.css\') — URL статики из public/. old(\'email\') — старое значение поля формы после ошибки валидации. now() — Carbon-инстанс на сейчас. config(\'app.name\') — значение из config/. env(\'KEY\') — переменная окружения (читать ТОЛЬКО внутри config/, иначе после config:cache вернёт null). auth(), request(), session(), redirect(), abort(), back(), collect(), str().',
+                'answer' => 'Глобальные функции, доступные везде:
+
+**URL и ассеты:**
+- `route(\'users.show\', $id)` — URL по имени маршрута.
+- `url(\'/foo\')` — абсолютный URL от `APP_URL`.
+- `asset(\'css/app.css\')` — URL статики из `public/`.
+
+**Формы и валидация:**
+- `old(\'email\')` — старое значение поля после ошибки валидации.
+- `csrf_token()` — CSRF-токен текущей сессии.
+
+**Конфиг и окружение:**
+- `config(\'app.name\')` — значение из `config/`.
+- `env(\'KEY\')` — переменная окружения. Читать **только внутри `config/`**, иначе после `config:cache` вернёт `null`/default.
+
+**Сервисы:**
+- `auth()`, `request()`, `session()`, `redirect()`, `back()`, `abort()`, `response()`, `view()`.
+
+**Утилиты:**
+- `now()`, `today()` — `Carbon`.
+- `collect([...])` — `Collection`.
+- `str(\'...\')` — `Stringable` (цепочки методов над строкой).',
                 'code_example' => '// в Blade
 <a href="{{ route(\'users.show\', $user) }}">Профиль</a>
 <link rel="stylesheet" href="{{ asset(\'css/app.css\') }}">
@@ -867,7 +908,17 @@ abort_if(! $user, 403);',
             [
                 'category' => 'Laravel',
                 'question' => 'Какие способы вернуть ответ из контроллера в Laravel?',
-                'answer' => 'return view(\'users.show\', [\'user\' => $user]) — HTML-страница из Blade. return redirect(\'/login\') или redirect()->route(\'home\') — редирект, можно с ->with() или ->withErrors(). return response()->json([\'ok\' => true], 201) — JSON с кодом. return response()->download($path) — файл на скачивание. return back() — назад на предыдущую страницу. abort(404) — прервать с 404. Можно вернуть массив/Eloquent-модель — Laravel сам сериализует в JSON.',
+                'answer' => 'Что можно вернуть из метода контроллера:
+
+- `view(\'users.show\', [\'user\' => $user])` — HTML-страница из Blade.
+- `redirect(\'/login\')` или `redirect()->route(\'home\')` — редирект (с `->with()` или `->withErrors()`).
+- `back()` — назад на предыдущую страницу.
+- `response()->json([\'ok\' => true], 201)` — JSON с HTTP-кодом.
+- `response()->download($path)` — файл на скачивание.
+- `response(\'Hello\', 200)->header(\'X-Custom\', \'v\')` — произвольный текст с заголовками.
+- `abort(404, \'Не найдено\')` — прервать с ошибкой.
+
+**Авто-сериализация:** если вернуть массив или Eloquent-модель — Laravel сам отдаст JSON.',
                 'code_example' => 'public function show(int $id)
 {
     $user = User::findOrFail($id);

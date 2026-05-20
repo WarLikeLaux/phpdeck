@@ -148,7 +148,30 @@ class StoreOrderRequest extends FormRequest {
             [
                 'category' => 'Laravel',
                 'question' => 'Какие самые частые validation rules в Laravel?',
-                'answer' => 'required — обязательное. email — формат email. integer/numeric — число. string — строка. min:N / max:N — длина строки или значение числа. unique:users,email — уникальность в БД. exists:users,id — должно существовать в БД. confirmed — требует парного поля password_confirmation. in:admin,editor — одно из перечисленных. nullable — разрешён null. array, boolean, date, url, regex:/.../ — типы и формат. Правила пишут строкой через | или массивом.',
+                'answer' => 'Самые ходовые правила валидации:
+
+**Обязательность и null:**
+- `required` — поле обязательно.
+- `nullable` — разрешён `null`.
+
+**Типы:**
+- `string`, `integer`, `numeric`, `boolean`, `array`, `date`, `url`.
+
+**Длина/диапазон:**
+- `min:N`, `max:N` — длина строки или значение числа.
+
+**Формат:**
+- `email`, `regex:/.../`.
+
+**БД:**
+- `unique:users,email` — уникальность в таблице.
+- `exists:users,id` — значение должно существовать в БД.
+
+**Прочее:**
+- `confirmed` — требует парного поля `<field>_confirmation` (типично для пароля).
+- `in:admin,editor,viewer` — одно из перечисленных значений.
+
+Записывают строкой через `|` или массивом (предпочтительно — лучше читается и не ломается при значениях со специальными символами).',
                 'code_example' => '$request->validate([
     \'name\'        => [\'required\', \'string\', \'max:255\'],
     \'email\'       => [\'required\', \'email\', \'unique:users,email\'],

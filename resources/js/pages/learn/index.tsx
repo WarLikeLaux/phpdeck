@@ -2,6 +2,7 @@ import { Form, Head, Link, router } from '@inertiajs/react';
 import { ArrowRight, BookOpen, Check, GraduationCap } from 'lucide-react';
 import { CategoryBadge } from '@/components/category-badge';
 import { CodeBlock } from '@/components/code-block';
+import { MarkdownAnswer } from '@/components/markdown-answer';
 import { NoteBlock } from '@/components/note-block';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -175,9 +176,7 @@ function LearnCard({
                     <span className="text-[10px] font-semibold tracking-wide text-emerald-700 uppercase dark:text-emerald-300">
                         Ответ
                     </span>
-                    <p className="text-base whitespace-pre-line">
-                        {flashcard.answer}
-                    </p>
+                    <MarkdownAnswer content={flashcard.answer} />
                 </div>
 
                 {flashcard.short_answer && (
