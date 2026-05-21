@@ -13,7 +13,39 @@ class ServiceProviders
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Service Provider и в чём разница между методами register и boot?',
-                'answer' => 'Service Provider - это класс, в котором вы регистрируете сервисы в контейнере и настраиваете их. register() - только биндинги в контейнер, нельзя обращаться к другим сервисам. boot() - вызывается после регистрации всех провайдеров, здесь можно использовать другие сервисы (роуты, события, директивы Blade).',
+                'answer' => '**Service Provider** — класс, описывающий, **как фреймворку поднять и связать сервисы** при старте приложения. **Центральное место** инициализации в Laravel.
+
+**Жизненный цикл — два этапа:**
+
+| Этап | Метод | Что можно | Что нельзя |
+|---|---|---|---|
+| **1. Регистрация** | **`register()`** | биндинги в контейнер (`bind`, `singleton`, `scoped`, `extend`) | **обращаться к другим сервисам** — они могут быть ещё не зарегистрированы |
+| **2. Загрузка** | **`boot()`** | роуты пакета, события, Blade-директивы, ViewComposer, валидация, политики | — |
+
+**Почему такое разделение:**
+- Контейнер строится **поэтапно**: сначала **все** провайдеры пишут биндинги, **потом** Laravel вызывает `boot()` у каждого. Это гарантирует, что в `boot()` все сервисы уже доступны.
+- Обращение к другому сервису в `register()` → разрешается **частичный** граф, что может «закостылить» биндинги.
+
+**Что обычно делают в `register()`:**
+- `$this->app->singleton(Interface::class, Concrete::class)`.
+- `$this->app->bind(...)` для фабрик с параметрами.
+- `$this->app->extend(...)` для декораторов.
+- `$this->mergeConfigFrom(...)` для конфигов пакета.
+
+**Что делают в `boot()`:**
+- `Route::middleware("api")->group(...)` — пакетные роуты.
+- `Event::listen(...)`.
+- `Blade::directive(...)`, `Blade::if(...)`.
+- `View::composer(...)`.
+- `Validator::extend(...)`.
+- `Gate::policy(...)`, `Gate::define(...)`.
+
+**Где регистрируются:**
+- **Laravel 11+** — в **`bootstrap/providers.php`**.
+- **Laravel ≤10** — в массиве `providers` в **`config/app.php`**.
+- В L11 дефолтный скаффолд оставил только `AppServiceProvider`; задачи `Auth/Event/Broadcast/Route`-провайдеров переехали в `bootstrap/app.php` и auto-discovery.
+
+**Создать:** `php artisan make:provider PaymentServiceProvider`.',
                 'code_example' => 'class AppServiceProvider extends ServiceProvider {
     public function register(): void {
         $this->app->singleton(PaymentInterface::class, StripePayment::class);

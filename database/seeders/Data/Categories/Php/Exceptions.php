@@ -10,7 +10,26 @@ class Exceptions
             [
                 'category' => 'PHP',
                 'question' => 'Как работают исключения в PHP?',
-                'answer' => 'Исключение - объект, выбрасываемый через throw. Перехватывается через try/catch. finally выполняется всегда (даже при return/throw). Иерархия: Throwable - корень, его наследуют Exception (можно ловить) и Error (внутренние ошибки PHP). Можно ловить несколько типов через | (multi-catch, PHP 7.1+). С PHP 8 throw - выражение, можно использовать в ?: и ??.',
+                'answer' => '**Исключение** — объект, выбрасываемый через `throw` и перехватываемый через `try/catch`. **Прерывает** обычный поток и «всплывает» вверх по стеку, пока не найдёт подходящий `catch`.
+
+**Блоки:**
+- **`try`** — защищаемый код.
+- **`catch (Type $e)`** — обработчик; можно несколько подряд для разных типов; конкретные **сверху**, общие — **снизу**.
+- **`finally`** — выполняется **всегда** (даже при `return`/`throw` внутри `try`/`catch`). Для закрытия ресурсов.
+
+**Иерархия (важно):**
+- **`Throwable`** — корневой **интерфейс**.
+- **`Exception`** — ошибки приложения (`InvalidArgumentException`, `RuntimeException`, ваши кастомы).
+- **`Error`** — ошибки движка (`TypeError`, `ValueError`, `DivisionByZeroError`, `ParseError`).
+- **`Exception` и `Error` — не родственники**, две параллельные ветки.
+
+**Возможности:**
+- **Multi-catch через `|`** (PHP **7.1+**): `catch (TypeError | ValueError $e)`.
+- **`throw` как выражение** (PHP **8+**): можно в `??`, `?:`, стрелочных функциях:
+  - `$user = $repo->find($id) ?? throw new NotFoundException();`
+- **Chained exceptions** — третий аргумент конструктора `previous`: оборачиваем `PDOException` в свой `DatabaseException`, сохраняя цепочку.
+
+**Подводный камень:** `catch (Exception $e)` **не поймает** `TypeError` — для всего сразу пишут `catch (Throwable $e)`.',
                 'code_example' => '<?php
 try {
     if ($x < 0) {
@@ -44,7 +63,28 @@ try {
             [
                 'category' => 'PHP',
                 'question' => 'Чем Exception отличается от Error и почему важно ловить Throwable, а не Exception?',
-                'answer' => 'И Exception, и Error реализуют интерфейс Throwable, но НЕ являются родственниками - они два независимых корня иерархии. Это критично: catch (Exception $e) НЕ поймает TypeError, ValueError, DivisionByZeroError, ArgumentCountError, AssertionError - это всё наследники Error. В PHP 8 многие ситуации, которые раньше были Warning или Fatal Error без возможности перехвата, переведены в Error: вызов несуществующего метода, передача неподходящего типа в функцию, undefined-обращения в strict-режиме - всё это TypeError/Error. Поэтому global-обработчик в проде должен ловить Throwable: catch (Throwable $e) поймает И Exception (бизнес-логика), И Error (рантайм-проблемы), залогирует и красиво ответит клиенту вместо white screen of death. Exception - для ожидаемых ситуаций, которые программа умеет обрабатывать (валидация, NotFound, ConflictException). Error - для проблем рантайма; их обычно НЕ ловят локально, но обязательно перехватывают на верхнем уровне (middleware/exception handler) для логирования.',
+                'answer' => '**Главное:** **`Exception`** и **`Error`** — **две независимые ветки** иерархии. Общий предок — интерфейс **`Throwable`**, прямого родства между ними **нет**.
+
+**Что куда относится:**
+
+| Ветка | Назначение | Примеры |
+|---|---|---|
+| **`Exception`** | бизнес/приложение | `InvalidArgumentException`, `RuntimeException`, `LogicException`, `JsonException`, ваши кастомные |
+| **`Error`** | проблемы движка/runtime | `TypeError`, `ValueError`, `DivisionByZeroError`, `ArgumentCountError`, `AssertionError`, `ParseError` |
+
+**Ловушка собеса:** `catch (Exception $e)` **НЕ поймает** `TypeError` / `ValueError` / `DivisionByZeroError` — это всё `Error`.
+
+**Почему это особенно важно в PHP 8+:**
+- Раньше многие сбои были `Warning` / `Fatal Error` **без возможности перехвата**.
+- В PHP 8 они стали **`Error`**: несоответствие типов, передача `null` в non-nullable, обращение к свойству на `null`, деление на ноль.
+
+**Правило для production-кода:**
+- **Локально** ловят конкретный класс (`InvalidArgumentException`, `JsonException`) — обрабатывают **ожидаемые** ситуации.
+- **На верхнем уровне** (global exception handler, middleware) ловят **`Throwable`** — поймает и приложение, и движок. Это спасает от white screen of death.
+
+**Разделение по смыслу:**
+- **`Exception`** — «ситуация, которую программа умеет обработать» (валидация, NotFound).
+- **`Error`** — «программный баг» — локально не лечат, но обязательно **логируют** на верху.',
                 'code_example' => '<?php
 try {
     intdiv(10, 0);  // DivisionByZeroError (наследник Error)

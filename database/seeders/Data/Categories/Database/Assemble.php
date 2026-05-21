@@ -32,7 +32,17 @@ LIMIT 5', ';'],
             [
                 'category' => 'Базы данных',
                 'question' => 'Собери UPDATE с подзапросом на максимум.',
-                'answer' => 'Можно использовать коррелированный подзапрос или CTE для денормализованного поля.',
+                'answer' => 'Задача: для каждого пользователя записать **последнюю дату его заказа** в денормализованное поле `users.last_order_at`.
+
+**Паттерн — `UPDATE` + коррелированный подзапрос:**
+1. **`UPDATE users u`** — целевая таблица с алиасом для ссылки во вложенном запросе;
+2. **`SET last_order_at = (SELECT MAX(created_at) FROM orders o WHERE o.user_id = u.id)`** — для каждой строки `users` считаем максимум по её заказам;
+3. **`WHERE EXISTS (...)`** — обновляем **только тех**, у кого есть хоть один заказ. Без этого пользователи без заказов получат `NULL`.
+
+**Альтернатива через `JOIN`** (быстрее на больших таблицах в PG):
+- `UPDATE users u SET last_order_at = t.max_at FROM (SELECT user_id, MAX(created_at) AS max_at FROM orders GROUP BY user_id) t WHERE t.user_id = u.id;`
+
+**Подводный камень:** в **MySQL** нельзя одной командой делать `UPDATE` таблицы и `SELECT` из той же — пришлось бы оборачивать в `JOIN`.',
                 'code_language' => 'sql',
                 'assemble_chunks' => ['UPDATE users u', '
 SET last_order_at = (SELECT MAX(created_at) FROM orders o WHERE o.user_id = u.id)', '

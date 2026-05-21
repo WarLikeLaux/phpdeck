@@ -67,7 +67,25 @@ php artisan optimize',
             [
                 'category' => 'Laravel',
                 'question' => 'Что делают artisan optimize, route:cache, config:cache, view:cache?',
-                'answer' => 'config:cache - объединяет все config-файлы в один кеш. route:cache - кеширует роуты в один файл. view:cache - предкомпилирует Blade-шаблоны. event:cache - кеширует события. optimize - вызывает несколько кешей сразу. Все вместе ускоряют работу в продакшене. После деплоя нужно выполнить, после изменений - сбрасывать СООТВЕТСТВУЮЩИЙ кеш или все сразу через optimize:clear (это объединяет config:clear, route:clear, view:clear, event:clear, cache:clear). Частая ошибка - запустить только config:clear после правок и удивляться, что закешированные роуты/вьюхи всё ещё старые: каждый clear сбрасывает только свой кеш.',
+                'answer' => 'Команды для **ускорения boot-цикла Laravel в продакшене**. Все они сохраняют в `bootstrap/cache/` предкомпилированные структуры, чтобы фреймворк не парсил/не разрешал их на каждый запрос.
+
+| Команда | Что кеширует | Куда |
+| --- | --- | --- |
+| `config:cache` | Все `config/*.php` сливаются в один массив | `bootstrap/cache/config.php` |
+| `route:cache` | Все `routes/*.php` сериализуются | `bootstrap/cache/routes-v7.php` |
+| `view:cache` | Blade-шаблоны компилируются в PHP | `storage/framework/views/*` |
+| `event:cache` | Карта `Event → Listener` | `bootstrap/cache/events.php` |
+| `optimize` | **Запускает всё перечисленное за один шаг** | — |
+
+**Подводные камни:**
+
+- **`config:cache` замораживает `env()`** — после кэша `.env` не читается, `env()` в коде видит только OS-переменные. Правило: использовать `env()` **только в `config/*.php`**, в коде — `config(\'...\')`.
+- **`route:cache` ломается** на `Closure`-роутах, замыкающих `$this`/несериализуемые объекты. Обычные closure после L8.62 работают (через `laravel/serializable-closure`).
+- Сброс кэшей нужен **точечно**: `config:clear`, `route:clear`, `view:clear`, `event:clear` — каждый чистит **только свой** кэш. Распространённая ошибка — запустить `config:clear` и удивляться, что закешированные роуты остались.
+
+**Универсальный сброс** — **`optimize:clear`** = `config:clear` + `route:clear` + `view:clear` + `event:clear` + `cache:clear` + `compiled:clear`.
+
+**Деплой-связка:** `composer install --no-dev --optimize-autoloader && php artisan optimize && php artisan migrate --force`.',
                 'code_example' => 'php artisan config:cache
 php artisan route:cache
 php artisan view:cache
@@ -83,7 +101,37 @@ php artisan optimize:clear',
             [
                 'category' => 'Laravel',
                 'question' => 'Как создать кастомную artisan команду?',
-                'answer' => 'Через php artisan make:command. Класс наследуется от Command, имеет $signature (имя и аргументы) и $description. Логика в методе handle(). Зависимости можно инжектить в handle() или конструктор. Синтаксис опций: {--queue} - bool-флаг, {--queue=} - опция со значением, {--queue=default} - со значением по умолчанию, {--Q|queue=} - короткий alias.',
+                'answer' => '**`php artisan make:command SendEmails`** создаёт класс в `app/Console/Commands/`, наследник **`Illuminate\\Console\\Command`**.
+
+**Структура класса:**
+
+- **`$signature`** — имя команды и описание аргументов/опций (DSL).
+- **`$description`** — короткое описание для `artisan list`.
+- **`handle()`** — точка входа; возвращает `Command::SUCCESS` / `FAILURE` / `INVALID`.
+- **Зависимости** — type-hint в `handle()` или в **конструкторе** (резолвятся через контейнер).
+
+**Синтаксис аргументов в `$signature`:**
+
+| Запись | Значит |
+| --- | --- |
+| `{user}` | Обязательный аргумент |
+| `{user?}` | Опциональный |
+| `{user=default}` | Со значением по умолчанию |
+| `{user*}` | Массив значений |
+| `{--queue}` | **Bool-флаг** |
+| `{--queue=}` | Опция со значением |
+| `{--queue=default}` | Опция с дефолтом |
+| `{--Q\|queue=}` | Короткий alias `-Q` |
+| `{--tag=*}` | Опция-массив |
+
+**Полезный API внутри `handle()`:**
+
+- Чтение: `$this->argument(\'user\')`, `$this->option(\'queue\')`.
+- Вывод: `$this->info()`, `$this->warn()`, `$this->error()`, `$this->table([...], [...])`, **`$this->components->task(\'msg\', fn () => ...)`** (Laravel 9+ удобный спиннер).
+- Интерактив: `$this->ask()`, `$this->confirm()`, `$this->choice()`. На L11 — пакет **`laravel/prompts`** с красивым UI.
+- Прогресс: `$this->withProgressBar($items, fn ($i) => ...)`.
+
+**Авторегистрация:** в Laravel 11 классы в `app/Console/Commands/` подхватываются автоматически — `Kernel.php` больше не нужен (его в L11 нет).',
                 'code_example' => 'php artisan make:command SendEmails
 
 class SendEmails extends Command {
@@ -109,7 +157,42 @@ php artisan app:send-emails 1 -Qhigh --dry',
             [
                 'category' => 'Laravel',
                 'question' => 'Как планировать задачи (Task Scheduling) в Laravel?',
-                'answer' => 'В Laravel есть встроенный планировщик задач, описываемый в коде, а не в crontab. На сервере добавляется ОДНА cron-запись на php artisan schedule:run каждую минуту, всё остальное - в коде. Доступны методы everyMinute, hourly, daily, cron(), withoutOverlapping и др.',
+                'answer' => 'В Laravel есть встроенный **планировщик задач**, описываемый **в коде**, а не в crontab. На сервере — **одна** cron-запись на `php artisan schedule:run` **каждую минуту**, остальное — в PHP.
+
+**Где описывают расписание (Laravel 11):**
+
+- **`routes/console.php`** — рекомендованное место.
+- Регистрация через фасад `Schedule`.
+
+**Виды задач:**
+
+- **`Schedule::command(\'reports:generate\')`** — artisan-команда.
+- **`Schedule::job(new CleanLogs)`** — диспатч job в очередь.
+- **`Schedule::call(fn () => ...)`** — closure.
+- **`Schedule::exec(\'bash backup.sh\')`** — внешняя shell-команда.
+
+**Частоты:**
+
+- `everyMinute`, `everyFiveMinutes`, `everyFifteenMinutes`, `hourly`, `dailyAt(\'02:00\')`, `weeklyOn(1, \'09:00\')`, `monthly`, `quarterly`, `yearly`.
+- Произвольный crontab: **`->cron(\'*/5 * * * *\')`**.
+- Окружение: `->environments([\'production\'])`.
+- Зона: `->timezone(\'Europe/Moscow\')`.
+
+**Защита от наложений и дублей:**
+
+- **`->withoutOverlapping(int $expiresAt = 1440)`** — атомарный lock через cache; не даст запустить задачу, пока предыдущая идёт.
+- **`->onOneServer()`** — на кластере выполнит только **один** сервер (нужен общий cache: Redis/database).
+- **`->runInBackground()`** — не блокировать остальные задачи.
+
+**Логирование:** `->sendOutputTo($path)`, `->emailOutputTo($email)`, `->onFailure(fn () => ...)`, `->onSuccess(...)`.
+
+**Серверный cron** (ставится раз):
+
+```
+* * * * * cd /var/www && php artisan schedule:run >> /dev/null 2>&1
+```
+
+`schedule:run` стартует **каждую минуту** и сам решает, что запускать. Альтернатива на CI/k8s — **`schedule:work`** (long-running процесс) или **`schedule:list`** (увидеть всё запланированное).',
                 'code_example' => '// routes/console.php (Laravel 11+) или Console/Kernel
 Schedule::command(\'reports:generate\')->dailyAt(\'02:00\');
 Schedule::job(new CleanLogs)->weekly();

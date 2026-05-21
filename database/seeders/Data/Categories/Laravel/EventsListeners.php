@@ -13,7 +13,27 @@ class EventsListeners
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Events и Listeners?',
-                'answer' => 'Event - это объект, описывающий "что-то произошло" (UserRegistered, OrderPaid). Listener - класс, реагирующий на событие. Простыми словами: одно событие может иметь много слушателей, что позволяет отделять логику. Слушатель может реализовать ShouldQueue для асинхронной обработки. Статический метод dispatch() даёт трейт Illuminate\\Foundation\\Events\\Dispatchable - он автоматически добавляется при php artisan make:event. Без трейта нужно использовать event(new Foo($x)).',
+                'answer' => '**Event** — обычный PHP-класс, описывающий «что-то произошло»: `UserRegistered`, `OrderPaid`, `MessageSent`. В конструкторе хранятся данные события (модель, payload).
+
+**Listener** — класс с методом `handle($event)`, реагирующий на событие.
+
+**Ключевая идея — развязка кода:**
+
+- Код, бросающий событие, **не знает**, кто на него отреагирует.
+- На одно событие — **несколько listeners**, каждый получит объект события в `handle()`.
+- Добавить новую реакцию (SMS, бонусы, Slack) = создать новый listener, **не трогая код-источник**.
+
+**Как бросить событие:**
+
+- **`UserRegistered::dispatch($user)`** — статический метод от трейта `Illuminate\\Foundation\\Events\\Dispatchable` (добавляется в `make:event`).
+- **`event(new UserRegistered($user))`** — без трейта.
+
+**Регистрация в Laravel 11+:**
+
+- **Auto-discovery** — Laravel находит listener по type-hint аргумента `handle()`. Никаких `$listen`-массивов **не нужно**.
+- **Явно** — `Event::listen(UserRegistered::class, SendWelcomeEmail::class)` в `AppServiceProvider::boot()`.
+
+**Async через очередь:** listener реализует `ShouldQueue` → выполняется в воркере, контроллер не ждёт SMTP/HTTP-вызовы.',
                 'code_example' => 'use Illuminate\\Foundation\\Events\\Dispatchable;
 
 class UserRegistered {
@@ -70,7 +90,32 @@ class OrderShipped implements ShouldBroadcast {
             [
                 'category' => 'Laravel',
                 'question' => 'Чем listener с интерфейсом ShouldQueue отличается от обычного слушателя события?',
-                'answer' => 'Обычный listener выполняется СИНХРОННО в том же процессе, что и dispatch события - блокирует ответ на HTTP-запрос. Если в handle() есть Mail::send (SMTP-вызов 1-2 сек) или HTTP-вызов внешнего API - пользователь ждёт. Listener, реализующий ShouldQueue, сериализуется (вместе с event-объектом) и отправляется в очередь, обрабатывается отдельным воркером queue:work. Контроллер возвращает ответ мгновенно, тяжёлая работа происходит асинхронно. Бонус: на listener распространяются все механизмы Job-а - public int $tries, public function backoff(), public function failed(\\Throwable $e), public function viaConnection(), retryUntil(), middleware(), $afterCommit. ShouldBroadcastNow / ShouldBroadcast - то же самое для broadcast-событий: оба отправляются в очередь, если есть ShouldQueue. Подводный камень: event-объект должен быть serializable (нет Closure, PDO, file handles); если в event Eloquent-модель - сериализуется только её ID, при handle модель re-fetch-ится из БД (SerializesModels трейт).',
+                'answer' => '**Обычный listener** выполняется **синхронно** в том же процессе, что и `dispatch` события — **блокирует ответ** на HTTP-запрос. Если в `handle()` есть `Mail::send` (SMTP 1-2 сек) или HTTP к внешнему API — пользователь ждёт.
+
+**Listener с `ShouldQueue`** сериализуется (вместе с event-объектом) и отправляется в очередь, обрабатывается воркером `queue:work`. Контроллер возвращает ответ мгновенно.
+
+**Сравнение:**
+
+| Свойство | Обычный | `ShouldQueue` |
+|---|---|---|
+| Где выполняется | В web-процессе | В воркере `queue:work` |
+| Блокирует ответ | Да | Нет |
+| Доступны Job-механизмы | Нет | `$tries`, `$backoff`, `failed()`, `middleware`, `$afterCommit` |
+| Failover при сбое | Уронит запрос | Уходит в `failed_jobs`, можно `queue:retry` |
+
+**Бонус — на listener распространяются все Job-механизмы:**
+
+- `public int $tries = 5` / `$backoff = [10, 30, 120]`.
+- `public function failed(UserRegistered $event, \\Throwable $e)`.
+- `public bool $afterCommit = true` — ждать commit транзакции.
+- `public function shouldQueue(UserRegistered $event): bool` — условный skip.
+
+**Подводный камень — сериализуемость:**
+
+- Event-объект должен быть **serializable**: никаких `Closure`, `PDO`, file handles.
+- Если в event Eloquent-модель → трейт `SerializesModels` сохраняет **только ID**, при handle модель **re-fetch-ится из БД**. Если её удалили между dispatch и handle — `ModelNotFoundException`.
+
+**Связанные интерфейсы:** `ShouldBroadcastNow` / `ShouldBroadcast` — для событий, передаваемых клиенту через WebSocket.',
                 'code_example' => '<?php
 // Синхронно - блокирует ответ
 class SendWelcomeEmail
@@ -120,7 +165,34 @@ event(new UserRegistered($user));',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Reverb и чем он отличается от Pusher и Soketi?',
-                'answer' => 'Reverb (laravel/reverb) - официальный высокопроизводительный WebSocket-сервер от Laravel, появившийся в Laravel 11. Написан на чистом PHP поверх ReactPHP (event loop), совместим с протоколом Pusher - то есть Laravel Echo и любые существующие Pusher-клиенты работают БЕЗ изменений в коде. Pusher - внешний платный SaaS-сервис (платишь за connections и messages), Soketi - open-source альтернатива на Node.js, который тоже совместим с Pusher-протоколом. Reverb решает ту же задачу, но в виде официально поддерживаемого PHP-сервера, который ставится одной командой php artisan install:broadcasting. Преимущества Reverb: 1) Один стек (PHP, как и приложение), не нужно держать Node-демона. 2) Официальная поддержка Laravel-команды. 3) Бесплатно. 4) Производительность сопоставима с Soketi. Минус: новый продукт, экосистема плагинов меньше. Pusher оставляют, если нужен managed-сервис без обслуживания.',
+                'answer' => '**Laravel Reverb** (`laravel/reverb`) — официальный высокопроизводительный WebSocket-сервер от Laravel, появившийся в **Laravel 11**.
+
+- Написан на чистом PHP поверх **ReactPHP** (event loop).
+- **Совместим с Pusher-протоколом** — Laravel Echo и любые Pusher-клиенты работают **без изменений в коде**.
+- Ставится одной командой: `php artisan install:broadcasting`.
+
+**Сравнение трёх вариантов:**
+
+| Параметр | **Reverb** | **Pusher** | **Soketi** |
+|---|---|---|---|
+| Тип | Self-hosted PHP | Managed SaaS | Self-hosted Node.js |
+| Цена | Бесплатно | Платно (connections + messages) | Бесплатно |
+| Стек | PHP + ReactPHP | — | Node.js |
+| Поддержка | Laravel core team | Pusher Inc | Open-source community |
+| Pusher-протокол | Совместим | Источник | Совместим |
+| Подходит | Self-hosted прод, single-stack | Managed без операций | Self-hosted, Node-команды |
+
+**Преимущества Reverb:**
+
+- **Один стек** (PHP, как и приложение) — не нужно держать Node-демона.
+- **Официальная поддержка** Laravel-команды.
+- **Бесплатно**.
+- Производительность сопоставима с Soketi.
+
+**Минусы:**
+
+- Новый продукт — экосистема плагинов меньше.
+- Pusher оставляют, если нужен **managed**-сервис без обслуживания инфраструктуры.',
                 'code_example' => '# Установка
 php artisan install:broadcasting    # выбираешь reverb
 # или вручную:
@@ -165,7 +237,39 @@ window.Echo = new Echo({
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Echo и как он связан с broadcasting?',
-                'answer' => 'Echo (laravel-echo, npm-пакет) - JavaScript-клиент, который подписывается на каналы broadcasting и слушает события, транслируемые сервером через Pusher/Reverb/Ably. Сам по себе протокол не реализует - это надстройка над pusher-js (или socket.io-client). На сервере событие реализует ShouldBroadcast, broadcastOn() возвращает Channel/PrivateChannel/PresenceChannel, broadcastAs() задаёт имя события для клиента, broadcastWith() - payload. На клиенте Echo.channel("chat")  .listen("MessageSent", e => ...) - публичный, .private("orders.42").listen(...) - с авторизацией через /broadcasting/auth, .join("room.5") - presence (получаешь here/joining/leaving события). Авторизация private/presence-каналов идёт в routes/channels.php через Broadcast::channel("orders.{userId}", fn(User $u, $userId) => $u->id === (int)$userId). Без Echo пришлось бы вручную работать с pusher-js, форматировать имена каналов, разбирать сообщения - Echo прячет это в красивый API.',
+                'answer' => '**Laravel Echo** (`laravel-echo`, npm-пакет) — JS-клиент, который подписывается на broadcasting-каналы и слушает события, транслируемые сервером через **Pusher/Reverb/Ably**.
+
+Сам протокол **не реализует** — это надстройка над `pusher-js` (или `socket.io-client`). Прячет работу с именами каналов, авторизацией, парсингом payload в красивый API.
+
+**Серверная сторона события:**
+
+- **`implements ShouldBroadcast`** — Laravel отправит событие в broadcasting-драйвер.
+- **`broadcastOn()`** возвращает `Channel` / `PrivateChannel` / `PresenceChannel`.
+- **`broadcastAs()`** — кастомное имя события для клиента (иначе FQCN).
+- **`broadcastWith()`** — payload (если нужно отдать не все public-свойства).
+
+**Три типа каналов:**
+
+| Канал | Использование | Аутентификация |
+|---|---|---|
+| **Public** | `Echo.channel(\'news\')` | Не нужна |
+| **Private** | `Echo.private(\'orders.42\')` | `/broadcasting/auth` + правило в `routes/channels.php` |
+| **Presence** | `Echo.join(\'room.5\')` | Как private + получает `here`/`joining`/`leaving` |
+
+**Авторизация private/presence:**
+
+```php
+// routes/channels.php
+Broadcast::channel(\'orders.{userId}\', fn (User $u, $userId) =>
+    $u->id === (int) $userId
+);
+```
+
+**Подводные камни:**
+
+- Имя custom-события из `broadcastAs()` слушают с **точкой**: `.listen(\'.message.sent\', ...)`.
+- Для presence-канала callback в `Broadcast::channel` должен **вернуть массив с данными** юзера, а не bool.
+- Без `install:broadcasting` нет `routes/channels.php` — Laravel 11 не создаёт его по умолчанию.',
                 'code_example' => '<?php
 // Server - событие
 class MessageSent implements ShouldBroadcast

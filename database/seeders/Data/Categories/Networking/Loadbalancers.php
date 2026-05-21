@@ -10,21 +10,82 @@ class Loadbalancers
             [
                 'category' => 'Сети',
                 'question' => 'В чём разница между L4 и L7 балансировщиками нагрузки?',
-                'answer' => 'L4 (transport layer) — балансирует TCP/UDP без разбора содержимого. Видит только адреса и порты. Каждое соединение целиком уходит к одному backend и держится до закрытия. Примеры: AWS NLB, HAProxy в TCP mode, nginx stream module, LVS, Cilium. Скорость — экстремально высокая (миллионы PPS, минимальная latency, легко работает на железе или DPDK), не разбирает payload — не нужно завершать TLS на балансировщике. Минусы: не видит HTTP-семантику — не может балансировать по path / cookie / header, не может ретраить отдельный запрос внутри keepalive-коннекта. L7 (application layer) — терминирует TCP, парсит протокол (обычно HTTP/HTTP2/gRPC), распределяет КАЖДЫЙ запрос. Примеры: AWS ALB, nginx, HAProxy в HTTP mode, Envoy, Traefik. Плюсы: маршрутизация по host/path (api.example.com → service A, /admin → service B), per-request retry, sticky sessions через cookie, request modification (rewrite, set-headers), TLS termination, gzip/brotli, rate limit по user-id из JWT. Минусы: ниже throughput из-за парсинга, больше задержка, требует приватный ключ TLS на LB. На практике: фронтальный L4 NLB → внутренний L7 (nginx/Envoy) → backend. Это даёт суперскорость на L4 (для DDoS-сопротивления и низкой задержки на handshake) + умную маршрутизацию на L7.',
+                'answer' => 'Разница в **уровне OSI**, на котором балансировщик принимает решение.
+
+**`L4` (transport layer)** — балансирует `TCP`/`UDP` без разбора содержимого. Видит только адреса и порты. **Каждое соединение целиком** уходит к одному backend и держится до закрытия.
+
+- **Примеры:** AWS `NLB`, HAProxy в TCP-mode, nginx `stream` module, LVS, Cilium.
+- **Плюсы:** экстремальная скорость (миллионы PPS), минимальная latency, не нужно терминировать `TLS` на балансировщике.
+- **Минусы:** не видит HTTP-семантику — нельзя балансировать по `path`/`cookie`/`header`, нельзя ретраить отдельный запрос внутри keepalive-коннекта.
+
+**`L7` (application layer)** — терминирует TCP, парсит протокол (`HTTP`/`HTTP/2`/`gRPC`), распределяет **каждый запрос**.
+
+- **Примеры:** AWS `ALB`, nginx, HAProxy в HTTP-mode, Envoy, Traefik.
+- **Плюсы:**
+    - Маршрутизация по host/path: `api.example.com` → service A, `/admin` → service B.
+    - Per-request retry, sticky sessions через cookie.
+    - Request modification (rewrite, set-headers), `TLS` termination, `gzip`/`brotli`.
+    - Rate limit по user-id из JWT.
+- **Минусы:** ниже throughput из-за парсинга, больше задержка, нужен приватный ключ `TLS` на LB.
+
+**Типичный продакшен:** фронтальный `L4 NLB` → внутренний `L7` (nginx/Envoy) → backend. Это сочетает суперскорость L4 (DDoS-сопротивление и низкая задержка на handshake) с умной маршрутизацией L7.',
                 'difficulty' => 3,
                 'topic' => 'networking.loadbalancers',
             ],
             [
                 'category' => 'Сети',
                 'question' => 'Какие основные алгоритмы балансировки и когда какой выбрать?',
-                'answer' => 'Round Robin (RR) — поочерёдное распределение между backend-ами. Простой, без состояния, подходит для одинаковых stateless-сервисов. Минус — не учитывает реальную нагрузку конкретного backend (один может быть нагружен тяжёлым запросом). Weighted Round Robin — каждому backend задан вес, чаще достаются более сильные машины. Используется для canary (новой версии даём вес 5%) и при гетерогенном железе. Least Connections — выбирает backend с минимумом активных соединений. Хорош когда запросы имеют сильно разную длительность (например, WebSocket долгие vs HTTP короткие смешаны). Требует трекать active count per backend — лёгкое состояние. Least Time / Least Response Time — выбирает по среднему latency. Активно адаптируется к деградации одного из backend. Используется HAProxy, Envoy. IP Hash / Source Hash — хешируется src_ip клиента, всегда попадает на один и тот же backend. Базовая sticky session БЕЗ cookie — но ломается за NAT (все клиенты за одним IP попадают на один backend) и при изменении количества backend (все хеши перераспределяются). Consistent Hashing — улучшение: при добавлении/удалении backend перетасовывается ~1/N ключей. Используется в Memcached, Cassandra, для распределённого кэша. Random / Random with two choices — случайный выбор; «two choices» (Power of Two) выбирает двух случайных и берёт менее загруженного — почти оптимально с минимальным состоянием. Рекомендация Envoy для общего случая. На практике для веб-приложений: round_robin с health checks — 95% случаев.',
+                'answer' => '**Round Robin (`RR`)** — поочерёдное распределение. Простой, без состояния, подходит для одинаковых stateless-сервисов. Минус — не учитывает реальную нагрузку backend.
+
+**Weighted Round Robin** — у каждого backend задан **вес**. Используется для **canary** (новой версии даём вес 5%) и при гетерогенном железе.
+
+**Least Connections** — backend с **минимумом активных соединений**. Хорош, когда запросы сильно разной длительности (WebSocket долгие vs HTTP короткие смешаны). Требует трекать active count — лёгкое состояние.
+
+**Least Time / Least Response Time** — по среднему **latency**. Активно адаптируется к деградации одного backend. Реализовано в HAProxy, Envoy.
+
+**IP Hash / Source Hash** — хеш `src_ip` клиента, всегда **тот же backend**. Базовый sticky без cookie. Минусы:
+
+- За **NAT** все клиенты падают на один backend.
+- При изменении количества backend **все хеши перераспределяются**.
+
+**Consistent Hashing** — при добавлении/удалении backend перетасовывается **~1/N** ключей вместо всех. Используется в Memcached, Cassandra, распределённых кэшах.
+
+**Random / Power of Two Choices** — случайный выбор. **«Two choices»** выбирает двух случайных и берёт **менее загруженного** — почти оптимально с минимальным состоянием. Рекомендация **Envoy** для общего случая.
+
+**Практика:** для веб-приложений в **95% случаев** — `round_robin` + health checks. Sticky/hash включают только под конкретную необходимость (WebSocket, локальный кэш).',
                 'difficulty' => 3,
                 'topic' => 'networking.loadbalancers',
             ],
             [
                 'category' => 'Сети',
                 'question' => 'Что такое sticky sessions и какие у них плюсы и минусы?',
-                'answer' => 'Sticky session (session affinity) — балансировщик отправляет все запросы одного клиента на ОДИН и тот же backend, обычно по cookie или IP. Реализации: 1) Application-managed — сервер при первом запросе ставит cookie вроде JSESSIONID; LB читает её и помнит сопоставление. 2) LB-managed — балансировщик сам ставит свою cookie (например, AWSALB), значение содержит идентификатор target. 3) IP hash — без cookie, по src_ip (ломается за NAT/корпоративными прокси). Зачем: 1) Приложение хранит сессию в локальной памяти/диске backend — нельзя обработать запрос на другом сервере. 2) WebSocket / long-polling требуют попадания на тот же сервер. 3) Кэширование на уровне процесса — heavy объект уже в памяти конкретного worker. Минусы: 1) Hot spots — VIP-клиенты на одном backend, остальные простаивают. 2) Restart backend = все его сессии теряются (или мигрируют не сразу). 3) Усложняет горизонтальное масштабирование: при добавлении пода нагрузка не перераспределяется автоматически — только новые клиенты. 4) Усложняет canary — sticky клиент остаётся на старой версии до релогина. Лучшая практика — НЕ полагаться на sticky: хранить сессию во внешнем хранилище (Redis, Memcached, signed cookies) → любой backend обрабатывает любой запрос → нагрузка распределяется равномерно. Sticky оправдан только для WebSocket/SSE или legacy-приложений без shared state.',
+                'answer' => '**Sticky session** (session affinity) — балансировщик отправляет все запросы одного клиента на **один и тот же backend**.
+
+**Реализации:**
+
+- **Application-managed** — приложение ставит cookie (`JSESSIONID`, `laravel_session`), LB запоминает сопоставление.
+- **LB-managed** — балансировщик сам ставит cookie (например, `AWSALB`) с идентификатором target.
+- **IP hash** — без cookie, по `src_ip` (ломается за NAT/корпоративными прокси).
+
+**Когда нужен:**
+
+- Приложение хранит **сессию в памяти/на диске backend** — другой сервер не знает контекст.
+- **WebSocket / long-polling** — это одно физическое соединение, оно живёт на одном backend.
+- Прогретый локальный кэш конкретного worker (heavy объект уже в памяти).
+
+**Минусы:**
+
+- **Hot spots** — VIP-клиенты осели на одном backend, остальные простаивают.
+- **Restart backend** = все его сессии теряются (или мигрируют не сразу).
+- Усложняет **горизонтальное масштабирование** — при добавлении пода нагрузка не перераспределяется (новые клиенты только).
+- Усложняет **canary** — sticky-клиент остаётся на старой версии до релогина.
+
+**Лучшая практика — НЕ полагаться на sticky:**
+
+- Хранить сессию во внешнем хранилище: `Redis`, `Memcached`, signed cookies.
+- Любой backend обрабатывает любой запрос → нагрузка равномерная.
+
+Sticky оправдан только для **WebSocket/SSE** или legacy-приложений без shared state.',
                 'difficulty' => 3,
                 'topic' => 'networking.loadbalancers',
             ],
@@ -128,7 +189,21 @@ class Loadbalancers
             [
                 'category' => 'Сети',
                 'question' => 'В чём разница между forward proxy и reverse proxy?',
-                'answer' => 'Оба прокси гоняют HTTP/TCP между клиентом и сервером, но стоят с разных сторон и решают разные задачи. Forward proxy стоит на стороне КЛИЕНТОВ и проксирует их исходящий трафик НАРУЖУ: клиент явно настроен ходить через него (HTTP_PROXY, system proxy), сервер видит IP прокси, а не клиента. Применения: корпоративный egress-фильтр (что сотрудникам можно открывать), кэш исходящего трафика (Squid), VPN-выход, Tor, обход геоблокировок, инспекция исходящего HTTPS через MITM-сертификат. Reverse proxy стоит на стороне СЕРВЕРА и проксирует ВХОДЯЩИЙ трафик к своему бэкенду: клиент думает, что говорит с настоящим приложением, на деле — с прокси, и не знает про бэкенды за ним. Применения: nginx/Caddy/Traefik перед PHP-FPM или upstream-сервисом, балансировщик перед кластером, TLS-терминация, отдача статики, кэш, gzip/brotli, rate limit, WAF, route /api → service-a, /admin → service-b. Запоминалка: forward скрывает КЛИЕНТА от сервера, reverse скрывает СЕРВЕР от клиента. Софт часто один и тот же (nginx, HAProxy, Envoy) — разница в конфиге и направлении.',
+                'answer' => 'Оба прокси гоняют HTTP/TCP между клиентом и сервером, но **стоят с разных сторон** и решают разные задачи.
+
+**Запоминалка:** forward скрывает **клиента** от сервера, reverse скрывает **сервер** от клиента.
+
+| | **Forward proxy** | **Reverse proxy** |
+|---|---|---|
+| Стоит у | клиента | сервера |
+| Прячет | клиента | бэкенд |
+| Кто видит IP клиента | прокси видит, сервер — нет | сервер за прокси не видит |
+| Конфигурация | клиент явно настраивает (`HTTP_PROXY`, system proxy) | прозрачно для клиента |
+| Применения | corp egress-фильтр, Squid-кэш, VPN/Tor, обход геоблоков, MITM-инспекция HTTPS | nginx/Caddy/Traefik перед PHP-FPM, балансировщик, `TLS`-терминация, статика, `gzip`/`brotli`, WAF, маршрутизация `/api` → service-a |
+
+**Софт часто один и тот же** (`nginx`, HAProxy, Envoy) — разница в конфиге и направлении.',
+                'code_example' => "# Forward proxy: клиент явно ходит через корпоративный Squid\nexport HTTP_PROXY=http://corp-proxy:3128\ncurl https://example.com\n\n# Reverse proxy: nginx перед app — типовой конфиг\n# server {\n#     listen 443 ssl;\n#     server_name example.com;\n#     location / {\n#         proxy_pass http://app:9000;\n#         proxy_set_header Host \$host;\n#         proxy_set_header X-Real-IP \$remote_addr;\n#         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n#     }\n# }",
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'networking.loadbalancers',
             ],

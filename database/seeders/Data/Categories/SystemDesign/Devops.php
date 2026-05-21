@@ -120,21 +120,99 @@ CMD ["php-fpm"]',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Чем Docker отличается от виртуальной машины (VM)?',
-                'answer' => 'VM виртуализирует железо - запускает полную гостевую ОС со своим ядром. Docker контейнер использует ядро хоста и изолирован через namespaces/cgroups. Простыми словами: VM - целая отдельная квартира, Docker - комната в квартире хозяина. VM весит гигабайты, стартует минуты. Контейнер весит мегабайты, стартует секунды. VM безопаснее изолирован, контейнер быстрее и легче. Часто используют вместе: VM с Docker внутри.',
+                'answer' => '**Главное различие — что виртуализируется:**
+
+- **VM** виртуализирует **железо** через гипервизор (KVM, Xen, VMware, Hyper-V) — запускает **полную гостевую ОС со своим ядром**
+- **Docker** контейнер использует **ядро хоста** и изолирован через **`namespaces`** (изоляция процессов, сети, mount, PID) и **`cgroups`** (лимиты CPU / памяти / I/O)
+
+Аналогия: **VM — отдельная квартира**, **Docker — комната в квартире хозяина**.
+
+**Сравнение:**
+
+| | VM | Docker container |
+| --- | --- | --- |
+| **Гостевая ОС** | да (своё ядро) | нет (ядро хоста) |
+| **Размер** | гигабайты | **мегабайты** |
+| **Старт** | минуты | **секунды** |
+| **Overhead** | заметный | минимальный |
+| **Изоляция** | сильная (security boundary) | слабее (kernel sharing) |
+| **Плотность** | десятки на хост | **сотни-тысячи на хост** |
+| **Кросс-OS** | да (Linux на macOS, Windows на Linux) | нет (Linux ядро для Linux-контейнеров) |
+
+**Когда что:**
+
+- **VM** — multi-tenant, разные ОС, **сильная security изоляция** (банки, hosting)
+- **Docker** — микросервисы, CI/CD, dev-окружение, density
+
+**Часто комбинируют:** **VM с Docker внутри** (k8s nodes — это VM, в каждой запускаются контейнеры). На macOS / Windows Docker сам работает внутри легковесной Linux-VM (Docker Desktop, Colima), потому что нативного Linux-ядра у хоста нет.',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Kubernetes простыми словами?',
-                'answer' => 'Kubernetes (k8s) - оркестратор контейнеров. Простыми словами: дирижёр оркестра - управляет десятками/тысячами Docker-контейнеров, решает где их запускать, перезапускает упавшие, балансирует нагрузку, масштабирует под нагрузку. Сам Docker не умеет это, k8s сверху. Основные сущности: Pod (группа контейнеров), Deployment (как развернуть), Service (стабильный адрес для подов), Ingress (маршрутизация HTTP).',
+                'answer' => '**Kubernetes (k8s)** — **оркестратор контейнеров**. Сам Docker умеет запускать контейнеры, но не умеет: «следить за здоровьем», «балансировать», «перевыкатывать». **k8s — слой сверху**, который этим занимается.
+
+Аналогия: **дирижёр оркестра** — управляет десятками/тысячами Docker-контейнеров, решает **где их запускать, перезапускает упавшие, балансирует нагрузку, масштабирует под нагрузку**.
+
+**Что даёт k8s:**
+
+- **Self-healing** — упавший pod пересоздаётся, не отвечающий health-check удаляется из балансировки
+- **Декларативность** — описываешь желаемое состояние в YAML, controller-loop приводит к нему
+- **Service discovery** — сервисы находят друг друга по DNS-имени
+- **Load balancing** — встроенный round-robin между подами
+- **Rolling updates / rollback** — выкатка без простоя, `kubectl rollout undo`
+- **Auto-scaling** — горизонтальное (HPA) и вертикальное (VPA)
+
+**Основные сущности:**
+
+| Объект | Что делает |
+| --- | --- |
+| **Pod** | минимальная единица — один или несколько контейнеров |
+| **Deployment** | управляет ReplicaSet — «хочу N подов с таким образом» |
+| **Service** | стабильный сетевой адрес для группы подов |
+| **Ingress** | L7 маршрутизация HTTP/HTTPS снаружи в Service |
+| **ConfigMap / Secret** | конфигурация и секреты для подов |
+| **PersistentVolume** | постоянное хранилище |
+| **Namespace** | логическое разделение ресурсов |
+
+**Альтернативы:** Nomad (HashiCorp), Docker Swarm (умер), ECS / Fargate (AWS), Cloud Run (GCP).',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Pod, Deployment, Service в Kubernetes?',
-                'answer' => 'Pod — наименьшая единица k8s, обычно один контейнер (иногда несколько связанных в одном сетевом namespace: app + sidecar для логирования или service mesh). Эфемерный: упал — создаётся новый с новым IP. Deployment — декларативное описание «хочу N реплик такого пода с такой стратегией обновления»; сам управляет ReplicaSet, который создаёт и пересоздаёт поды, держит actual ~= desired state. Service — стабильная точка входа к набору подов через label selector: у подов меняются IP, у Service постоянный ClusterIP/DNS. Типы: ClusterIP (только внутри кластера), NodePort (доступ через порт на любой ноде), LoadBalancer (внешний LB от облака). Простыми словами: Pod — единица запуска, Deployment — оркестратор реплик, Service — стабильный адрес перед ними.',
+                'answer' => 'Три **базовые сущности** k8s, на которых строится всё остальное.
+
+**`Pod`** — **наименьшая единица k8s**:
+
+- Обычно **один контейнер**, иногда несколько связанных в одном сетевом namespace (**app + sidecar** для логирования или service mesh)
+- Контейнеры в поде делят сеть (`localhost`) и тома
+- **Эфемерный**: упал — создаётся **новый с новым IP**
+- Сам по себе pod не пересоздаётся, нужен контроллер выше
+
+**`Deployment`** — **декларативное описание** «хочу N реплик такого пода с такой стратегией обновления»:
+
+- Управляет **`ReplicaSet`** → тот создаёт и пересоздаёт поды
+- Держит **actual ≈ desired state**
+- Умеет rolling update, rollback (`kubectl rollout undo`)
+
+**`Service`** — **стабильная точка входа** к набору подов через **label selector**:
+
+- У подов меняются IP, у Service **постоянный ClusterIP / DNS-имя**
+- Встроенный L4 балансировщик между подами
+
+**Типы Service:**
+
+| Type | Доступ | Когда |
+| --- | --- | --- |
+| `ClusterIP` *(default)* | только внутри кластера | межсервисный трафик |
+| `NodePort` | через порт на **любой ноде** | dev/staging без LB |
+| `LoadBalancer` | внешний LB от облака | публичные API |
+| `ExternalName` | DNS CNAME | алиас на внешний сервис |
+
+**Связка:** `Pod` — единица запуска, `Deployment` — оркестратор реплик, `Service` — **стабильный адрес перед ними**.',
                 'code_example' => 'apiVersion: apps/v1
 kind: Deployment
 metadata: { name: api }
@@ -155,33 +233,196 @@ spec:
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое blue-green deployment?',
-                'answer' => 'Blue-green - стратегия деплоя без простоя. Имеешь две идентичные среды: blue (текущая прод) и green (новая версия). Деплоишь в green, прогоняешь тесты, переключаешь трафик с blue на green одной командой (через load balancer или DNS). Если проблема - моментально переключаешь обратно. Плюсы: instant rollback, нет downtime. Минусы: двойные ресурсы, миграции БД сложнее (схема должна работать с обеими версиями).',
+                'answer' => '**Blue-green** — стратегия **деплоя без простоя через две идентичные среды**:
+
+- **blue** — текущая прод-версия, обслуживает 100% трафика
+- **green** — новая версия, развёрнута параллельно, трафика пока не получает
+
+**Поток деплоя:**
+
+1. Деплоим новую версию в `green`
+2. Прогоняем **smoke-тесты** и health-checks
+3. Переключаем **роутинг с blue на green** одной командой (через **load balancer**, **DNS** или **k8s Service selector**)
+4. `blue` остаётся стоять — резерв на rollback
+5. Если в `green` проблема → переключаем обратно (**instant rollback**)
+6. После наблюдения N часов — `blue` можно гасить или превратить в следующий `green`
+
+**Плюсы:**
+
+- **Instant rollback** одним кликом
+- **Нет downtime**
+- Smoke-тесты на боевой среде до приёма трафика
+- Простой mental model
+
+**Минусы:**
+
+- **Двойные ресурсы** на время деплоя (× стоимость инфраструктуры)
+- **Миграции БД сложнее** — схема должна одновременно работать с обеими версиями (паттерн **Expand and Contract**)
+- Stateful компоненты (sessions, in-memory cache) теряются при переключении
+- Не ловит проблемы, проявляющиеся **только под полной нагрузкой** (для этого — canary)
+
+**vs canary:** blue-green переключает **100% разом**, canary — **постепенно по %**. Blue-green проще, canary безопаснее для рискованных изменений.',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое canary deployment?',
-                'answer' => 'Canary deploy - постепенный rollout: новая версия сначала получает 1% трафика, потом 5%, 25%, 100%. Простыми словами: канарейка в шахте - если что-то не так, потеряем малость. Метрики (ошибки, latency) на каждом этапе сравниваются с baseline - если ухудшение, автоматический rollback. Плюсы: маленький blast radius при ошибках. Минусы: нужна инфраструктура для маршрутизации (Istio, Linkerd, Argo Rollouts) и хороший observability.',
+                'answer' => '**Canary deploy** — **постепенный rollout**: новая версия получает **сначала 1% трафика**, потом 5%, 25%, 100%.
+
+Аналогия: **канарейка в шахте** — если что-то не так, потеряем малость, а не всё разом.
+
+**Как работает (типичный pipeline):**
+
+1. Деплоим новую версию рядом со старой (например, 1 pod vs 99)
+2. Маршрутизатор отправляет **1% трафика** в canary
+3. **Сравниваем метрики** с baseline (старой версией):
+   - error rate
+   - p95 / p99 latency
+   - бизнес-KPI (заказы / минуту)
+4. Если метрики ровные → увеличиваем долю (5% → 25% → 50% → 100%)
+5. Если ухудшение → **автоматический rollback**, трафик возвращается в старую версию
+
+**Плюсы:**
+
+- **Маленький blast radius** при ошибках — затронут только N% пользователей
+- Ловит проблемы, которые видны **только под реальной нагрузкой**
+- Можно совмещать с **A/B тестами**
+
+**Минусы:**
+
+- **Сложная инфраструктура маршрутизации:** Istio, Linkerd, Traefik, **Argo Rollouts**, Flagger
+- **Хороший observability обязателен** — без метрик canary бесполезен
+- **Сессии и stickiness** требуют внимания (пользователь, попавший в canary, не должен потом видеть старую версию — отсюда session affinity)
+- Долгий по времени (часы вместо минут blue-green)
+
+**vs blue-green:** blue-green — мгновенно 100%, canary — **процент за процентом**. Canary безопаснее для рискованных изменений и больших систем.',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое rolling deployment?',
-                'answer' => 'Rolling deploy - обновление подов по одному: убрали один старый, подняли один новый, проверили health, повторили. По умолчанию в Kubernetes Deployment. Простыми словами: меняем колёса на машине по одному, не останавливая её. Параметры: maxUnavailable (сколько может быть offline), maxSurge (сколько лишних можно поднять). Минус: во время деплоя одновременно работают обе версии - нужна обратная совместимость БД и API.',
+                'answer' => '**Rolling deploy** — **обновление подов по одному**: подняли новый → проверили health → убрали старый → повторили. **Стратегия по умолчанию в Kubernetes Deployment.**
+
+Аналогия: **меняем колёса на машине по одному**, не останавливая её.
+
+**Ключевые параметры (`spec.strategy.rollingUpdate`):**
+
+- **`maxUnavailable`** — сколько подов может быть **offline** во время выкатки (`25%` или абсолют)
+- **`maxSurge`** — сколько **лишних** можно поднять сверх `replicas` (`25%` или абсолют)
+
+При `replicas: 10`, `maxUnavailable: 1`, `maxSurge: 2` — в любой момент работает **9–12 подов**.
+
+**Контроль скорости:**
+
+- **Readiness probe** — k8s ждёт, пока новый под не станет ready, прежде чем убрать старый
+- `minReadySeconds` — подождать N секунд после ready (страховка от false-positive)
+- `progressDeadlineSeconds` — таймаут всей выкатки
+
+**Плюсы:**
+
+- **Без двойных ресурсов** (в отличие от blue-green)
+- Встроено в k8s, не нужна доп. инфраструктура
+- `kubectl rollout undo` — мгновенный откат
+
+**Минусы:**
+
+- **Во время деплоя одновременно работают обе версии** → нужна **обратная совместимость БД и API**:
+  - Не удалять колонки и роуты сразу — паттерн **Expand-and-Contract**
+  - JSON-схемы должны быть аддитивными
+- **Откат не мгновенный** — снова rolling, только в обратную сторону
+- Не ловит проблемы, видимые только при 100% (для этого — canary)',
+                'code_example' => '# k8s Deployment — rolling по умолчанию
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api }
+spec:
+  replicas: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1   # минимум 9 подов работают
+      maxSurge: 2         # максимум 12 подов
+  minReadySeconds: 10
+  progressDeadlineSeconds: 600
+  template:
+    spec:
+      containers:
+      - name: api
+        image: myapp:1.2
+        readinessProbe:
+          httpGet: { path: /healthz, port: 8000 }
+          initialDelaySeconds: 5
+
+# Команды
+kubectl rollout status deployment/api
+kubectl rollout undo deployment/api        # откатить
+kubectl rollout history deployment/api',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое feature flags и зачем нужны?',
-                'answer' => 'Feature flags (toggles) - условные блоки в коде, включающие/выключающие фичи без редеплоя. Простыми словами: рубильник на новую фичу - можно включить только для тестовых юзеров, потом 10%, потом всем. Плюсы: trunk-based development, A/B тесты, kill switch при проблеме, разделение деплоя и релиза. Минусы: код засоряется if-ами, надо чистить старые флаги. Инструменты: LaunchDarkly, Unleash, GrowthBook, или своя БД-таблица.',
+                'answer' => '**Feature flags (toggles)** — **условные блоки в коде**, включающие/выключающие фичи **без редеплоя**.
+
+Аналогия: **рубильник** на новую фичу — можно включить только для тестовых юзеров, потом 10%, потом всем.
+
+**Главная идея — разделение деплоя и релиза:**
+
+- **Деплой** — код уехал на прод (флаг OFF)
+- **Релиз** — фичу видят пользователи (флаг ON)
+
+**Зачем:**
+
+- **Trunk-based development** — мерджишь незавершённую фичу в `main` под выключенным флагом
+- **Постепенная раскатка** — 1% → 10% → 100% по user-id / региону / плану
+- **A/B тесты** — два варианта одновременно, метрики решают
+- **Kill switch** — мгновенно выключить сломавшуюся фичу без редеплоя
+- **Entitlements** — фича доступна по плану, ролям, beta-программе
+
+**Минусы:**
+
+- **Код засоряется `if`-ами** — растёт сложность
+- **Технический долг** — старые флаги нужно **активно чистить** после полного rollout
+- Тестировать нужно **обе ветки** (включён/выключен)
+- Долго живущие флаги усложняют отладку
+
+**Инструменты:**
+
+- **LaunchDarkly** — коммерческий лидер
+- **Unleash**, **GrowthBook**, **Flagsmith** — open-source
+- **Laravel Pennant** — встроено в Laravel 10+
+- Своя БД-таблица — для простых случаев',
                 'code_example' => '<?php
-if (Feature::active("new-checkout", $user)) {
-    return view("checkout.v2");
+// Laravel Pennant
+use Laravel\\Pennant\\Feature;
+
+// Определение
+Feature::define("new-checkout", fn (User $user) =>
+    $user->isInBetaProgram() || lottery(0.1)  // 10% юзеров
+);
+
+// Использование в контроллере
+public function checkout(Request $request)
+{
+    if (Feature::for($request->user())->active("new-checkout")) {
+        return view("checkout.v2");
+    }
+    return view("checkout.v1");
 }
-return view("checkout.v1");',
+
+// В Blade
+@feature("new-checkout")
+    <x-checkout-v2 />
+@else
+    <x-checkout-v1 />
+@endfeature
+
+// Kill switch при инциденте — без редеплоя
+Feature::deactivate("new-checkout");',
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
@@ -189,7 +430,35 @@ return view("checkout.v1");',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое 12-factor app?',
-                'answer' => '12-factor - методология Heroku для cloud-native приложений; запоминается не списком из 12, а четырьмя группами. 1) Код и зависимости: один codebase в git, явные зависимости (composer.json), конфиг в env-переменных, backing services (БД/Redis) как замыкаемые ресурсы по URL. 2) Сборка и запуск: чёткое разделение build/release/run, stateless-процессы, port binding (приложение само поднимает порт, не через Apache mod_php). 3) Эксплуатация: масштабирование через процессы (горизонталь), disposability (быстрый старт и graceful shutdown), dev/prod parity (одинаковые версии везде). 4) Поддержка: логи как stdout-поток, admin tasks как one-off процессы (artisan command). Итог: stateless, конфиг снаружи, всё одинаково на dev и prod - тогда приложение легко крутится в k8s/Docker/Heroku.',
+                'answer' => '**12-factor app** — методология **Heroku для cloud-native приложений** (2011). Запоминается не списком из 12, а **четырьмя группами**.
+
+**1. Код и зависимости:**
+
+- **Один codebase в git**, много deploy — никаких «прод-только» правок
+- **Явные зависимости** (`composer.json`, `package.json`, lock-файлы)
+- **Конфиг в env-переменных** — то же приложение работает на dev и prod, разница только в `.env`
+- **Backing services** (БД, Redis, S3) — **подключаемые ресурсы по URL**, заменяемые без правки кода
+
+**2. Сборка и запуск:**
+
+- Чёткое разделение **build / release / run** (артефакт собрали → склеили с конфигом → запускаем)
+- **Stateless-процессы** — никакого состояния в памяти между запросами (session/cache → внешнее хранилище)
+- **Port binding** — приложение само поднимает порт, **не через Apache `mod_php`**
+
+**3. Эксплуатация:**
+
+- **Масштабирование через процессы** — горизонтально, добавлением воркеров
+- **Disposability** — **быстрый старт** и **graceful shutdown** на `SIGTERM`
+- **Dev/prod parity** — одинаковые версии PHP, БД, Redis везде; никакого SQLite-на-dev и MySQL-на-prod
+
+**4. Поддержка:**
+
+- **Логи как stdout-поток** — приложение не пишет в файл, лог собирается оркестратором
+- **Admin tasks как one-off процессы** — `php artisan migrate`, `tinker`, не через UI
+
+**Итог:** **stateless, конфиг снаружи, всё одинаково на dev и prod** → приложение легко крутится в **k8s, Docker, Heroku, Fly.io, Railway**.
+
+**Laravel из коробки 12-factor-friendly:** `.env`, `php artisan`, лог в `stderr` через `daily`/`stderr` driver, миграции командой, сессии/кэш во внешний store.',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
@@ -225,12 +494,55 @@ return view("checkout.v1");',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Infrastructure as Code (IaC)?',
-                'answer' => 'IaC - описание инфраструктуры в коде вместо ручной настройки в UI. Простыми словами: вместо кликов в AWS-консоли пишешь файл, который их сделает за тебя - и его можно ревьюить, версионировать, переиспользовать. Декларативный (Terraform, CloudFormation) - описываешь желаемое состояние. Императивный (Ansible, Chef) - последовательность шагов. Плюсы: воспроизводимость, history через git, code review для инфраструктуры.',
-                'code_example' => 'resource "aws_instance" "api" {
+                'answer' => '**IaC** — **описание инфраструктуры в коде** вместо ручной настройки в UI.
+
+Аналогия: вместо **кликов в AWS-консоли** пишешь файл, который их сделает за тебя — и его можно **ревьюить, версионировать, переиспользовать**.
+
+**Два подхода:**
+
+| | Декларативный | Императивный |
+| --- | --- | --- |
+| **Что описываешь** | желаемое состояние | последовательность шагов |
+| **Кто считает diff** | сам инструмент | ты |
+| **Идемпотентность** | встроенная | сам обеспечиваешь |
+| **Инструменты** | **Terraform**, **OpenTofu**, **Pulumi**, AWS CloudFormation, k8s YAML | **Ansible**, Chef, Puppet, bash |
+
+**Плюсы:**
+
+- **Воспроизводимость** — поднять копию окружения = `terraform apply`
+- **History через git** — кто и когда что менял, видно в `git blame`
+- **Code review для инфраструктуры** — изменения проходят PR
+- **Drift detection** — `terraform plan` показывает расхождение между кодом и реальностью
+- **Disaster recovery** — после потери региона восстановили из кода
+
+**Подводные камни:**
+
+- **State-файл** в Terraform — критичен, хранится в S3 + DynamoDB lock или Terraform Cloud
+- **Секреты в state** — лежат в plain-text, нужен encryption-at-rest и ограниченный доступ
+- **Drift** — ручные правки через UI ломают idempotency
+- **Долгие apply** — изменение одной строчки может задеть кучу ресурсов
+
+**Часто комбинируют:** **Terraform** поднимает голую инфру (VPC, инстансы, k8s-кластер), **Ansible** настраивает софт на VM, **Helm** деплоит приложения в k8s.',
+                'code_example' => '# Terraform — декларативно
+resource "aws_instance" "api" {
   ami           = "ami-0c55b159"
   instance_type = "t3.medium"
   tags = { Name = "api-server" }
-}',
+}
+
+resource "aws_db_instance" "postgres" {
+  identifier        = "shop-prod"
+  engine            = "postgres"
+  engine_version    = "16.1"
+  instance_class    = "db.t3.medium"
+  allocated_storage = 100
+  multi_az          = true
+}
+
+# Применить
+$ terraform plan      # показать что изменится
+$ terraform apply     # применить
+$ terraform destroy   # снести всё',
                 'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
@@ -347,28 +659,267 @@ Schema::table("users", function (Blueprint $table) {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между ARG и ENV в Dockerfile?',
-                'answer' => 'ARG объявляет build-time переменную: она доступна только во время docker build, в готовом образе и runtime её нет. Передаётся через --build-arg и часто используется для версии базового образа или флагов сборки. ENV задаёт переменную окружения, которая попадает в layer образа и видна процессу внутри контейнера через getenv. Главный нюанс безопасности: секреты не стоит передавать через ARG — они остаются в истории слоёв (docker history покажет), и через ENV — они утекут в логи и docker inspect; для секретов есть BuildKit secrets и runtime-инъекция.',
+                'answer' => 'Обе директивы задают переменные, но **в разное время и с разной видимостью**.
+
+| | `ARG` | `ENV` |
+| --- | --- | --- |
+| **Время жизни** | **build-time** только | **runtime** контейнера |
+| **Видны процессу внутри?** | нет | **да** (`getenv()`) |
+| **Как передать снаружи** | `docker build --build-arg X=v` | `docker run -e X=v` |
+| **Попадает в image** | нет (только в `docker history`) | **да**, в каждый слой |
+| **Скоуп** | от объявления до конца stage | от объявления до конца stage |
+
+**Типичные применения:**
+
+**`ARG`** — версия базового образа, флаги сборки, target-окружение:
+
+```dockerfile
+ARG PHP_VERSION=8.3
+FROM php:${PHP_VERSION}-fpm
+ARG APP_ENV=production
+RUN if [ "$APP_ENV" = "production" ]; then composer install --no-dev; fi
+```
+
+**`ENV`** — runtime-конфиг для процесса:
+
+```dockerfile
+ENV APP_ENV=production
+ENV PHP_INI_DIR=/usr/local/etc/php
+```
+
+**Главный нюанс безопасности — никогда не передавайте секреты через ARG и ENV:**
+
+- **`ARG`**: остаётся в **истории слоёв** — `docker history myimage` покажет
+- **`ENV`**: утекает в **логи**, в **`docker inspect`** и виден любому процессу контейнера
+- **Решение** — **BuildKit secrets** (mount во время `RUN`, не сохраняется в слое) или **runtime-инъекция** через k8s Secret / Docker Swarm secret',
+                'code_example' => '# BuildKit secret для composer auth
+# syntax=docker/dockerfile:1.4
+FROM composer:2 as deps
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN --mount=type=secret,id=composer_auth,target=/root/.composer/auth.json \\
+    composer install --no-dev
+
+# Сборка с секретом — он НЕ попадает в image
+$ docker build --secret id=composer_auth,src=$HOME/.composer/auth.json -t app .
+
+# ARG с дефолтом
+ARG PHP_VERSION=8.3
+FROM php:${PHP_VERSION}-fpm
+
+# Runtime ENV — попадёт в getenv()
+ENV APP_ENV=production
+ENV PHP_INI_DIR=/usr/local/etc/php
+
+# ⚠️ НЕ ТАК:
+ARG DB_PASSWORD     # увидят в docker history
+ENV DB_PASSWORD=    # увидят в docker inspect',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Docker volumes и чем named volume отличается от bind mount?',
-                'answer' => 'Volume — механизм, при котором данные хранятся вне union-файловой системы контейнера и переживают его удаление. Named volume управляется Docker (лежит в /var/lib/docker/volumes), переносим между хостами и нужен для production-данных БД и загруженных пользователями файлов. Bind mount монтирует конкретную директорию хоста в контейнер — удобно в разработке, чтобы код перечитывался без ребилда, но привязывает контейнер к структуре хоста и даёт прямой доступ к ФС хозяина. Anonymous volume Docker создаёт сам без имени и его трудно переиспользовать.',
+                'answer' => '**Volume** — механизм, при котором данные **хранятся вне union-файловой системы контейнера и переживают его удаление**. Контейнер эфемерный, volume — нет.
+
+**Три типа:**
+
+| | Named volume | Bind mount | Anonymous volume |
+| --- | --- | --- | --- |
+| **Кто управляет** | Docker | вы (путь на хосте) | Docker |
+| **Где лежит** | `/var/lib/docker/volumes/<name>` | произвольный путь хоста | `/var/lib/docker/volumes/<sha>` |
+| **Имя** | задано (`mydata`) | путь хоста | случайный hash |
+| **Переносимость** | хорошая | привязан к структуре хоста | нет |
+| **Типичный use case** | **prod-данные** (БД, uploads) | **dev** (mount кода для hot-reload) | временный кэш |
+
+**Когда что:**
+
+- **Named volume** для production-данных:
+  - БД (MySQL, Postgres data dir)
+  - **Загруженные пользователями файлы**
+  - Долгоживущий кэш
+- **Bind mount** для разработки:
+  - `./src:/app/src` — код перечитывается без ребилда
+  - **Привязывает контейнер к структуре хоста** — даёт прямой доступ к ФС хозяина
+- **Anonymous volume** Docker создаёт сам без имени — **трудно переиспользовать**, обычно нежелателен
+
+**Подводные камни:**
+
+- **Bind mount затирает то, что было в контейнере** по этому пути (включая `node_modules` из image — отсюда `node_modules` volume поверх bind mount)
+- **Права доступа** — UID процесса в контейнере должен совпадать с владельцем на хосте (особенно болезненно на Linux + non-root user)
+- **macOS / Windows bind mount медленный** — VM-граница; для скорости используют `:delegated` или `:cached` (deprecated в новом Docker Desktop, теперь mutagen / VirtioFS)
+- **Backup volume**: `docker run --rm -v mydata:/data -v $(pwd):/backup alpine tar czf /backup/data.tar.gz -C /data .`',
+                'code_example' => '# Named volume
+docker volume create mysql-data
+docker run -d \\
+  -v mysql-data:/var/lib/mysql \\
+  -e MYSQL_ROOT_PASSWORD=secret \\
+  mysql:8
+
+# Bind mount для разработки
+docker run -v $(pwd):/var/www/html php:8.3-fpm
+
+# Inspect и backup
+docker volume ls
+docker volume inspect mysql-data
+docker run --rm \\
+  -v mysql-data:/data \\
+  -v $(pwd):/backup \\
+  alpine tar czf /backup/mysql.tar.gz -C /data .
+
+# docker-compose
+# services:
+#   db:
+#     image: mysql:8
+#     volumes:
+#       - db_data:/var/lib/mysql      # named
+#   app:
+#     volumes:
+#       - ./src:/var/www              # bind для dev
+# volumes:
+#   db_data:',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Зачем нужен multi-stage build в Dockerfile?',
-                'answer' => 'Multi-stage позволяет описать в одном Dockerfile несколько FROM-этапов и копировать артефакты из одного в другой через COPY --from. Типовая схема для PHP: первый stage с composer и dev-инструментами устанавливает зависимости и собирает фронт, второй — slim-образ php-fpm-alpine, в который через COPY --from=builder переносится только vendor и собранные ассеты. Финальный образ не содержит composer, npm, исходников тестов и build-tools, весит в разы меньше, имеет меньшую attack surface и быстрее тянется на ноды. Это де-факто стандарт для production-образов.',
+                'answer' => '**Multi-stage** позволяет описать в одном `Dockerfile` **несколько `FROM`-этапов** и копировать артефакты из одного в другой через **`COPY --from`**.
+
+**Типовая схема для PHP-приложения:**
+
+1. **Stage `composer`** — образ с composer ставит prod-зависимости
+2. **Stage `node`** — образ с node собирает фронт (vite build)
+3. **Stage `runtime`** — slim-образ `php-fpm-alpine`, в который через `COPY --from=...` переносится **только готовое**:
+   - `vendor/` из composer-stage
+   - `public/build/` из node-stage
+   - исходники приложения
+
+**Что даёт:**
+
+- **Финальный образ не содержит composer, npm, dev-инструментов, исходников тестов** — **в разы меньше** (200 МБ вместо 1 ГБ)
+- **Меньше attack surface** — нет лишних бинарей для эксплойтов
+- **Быстрее тянется на ноды** k8s при rolling update
+- **Один Dockerfile** вместо двух (build + runtime) — проще поддерживать
+- **Параллельная сборка** stages через BuildKit, если они не зависят
+
+**Полезные приёмы:**
+
+- `--target <stage>` в `docker build` — собрать только до нужного stage (например, отдельный `dev` stage с xdebug)
+- `FROM ... AS deps` — именованные stage для читаемости
+- В `COPY --from` можно указать **внешний image** (`COPY --from=composer:2 /usr/bin/composer /usr/bin/`)
+
+**Де-факто стандарт для production-образов.**',
+                'code_example' => '# Stage 1: composer dependencies
+FROM composer:2 AS deps
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --optimize-autoloader
+
+# Stage 2: frontend build
+FROM node:20-alpine AS frontend
+WORKDIR /app
+COPY package*.json vite.config.js ./
+RUN npm ci
+COPY resources/ resources/
+RUN npm run build
+
+# Stage 3: runtime (тонкий образ)
+FROM php:8.3-fpm-alpine AS runtime
+WORKDIR /var/www
+COPY --from=deps /app/vendor /var/www/vendor
+COPY --from=frontend /app/public/build /var/www/public/build
+COPY . .
+RUN php artisan optimize
+USER 1000:1000
+EXPOSE 9000
+CMD ["php-fpm"]
+
+# Опциональный dev-stage с xdebug
+FROM runtime AS dev
+RUN pecl install xdebug && docker-php-ext-enable xdebug
+
+# Сборка
+docker build --target runtime -t app:prod .
+docker build --target dev -t app:dev .',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как порядок инструкций в Dockerfile влияет на размер слоёв и скорость сборки?',
-                'answer' => 'Каждая инструкция (RUN, COPY, ADD) создаёт отдельный слой, который кешируется по контрольной сумме входов. Слои инвалидируются последовательно: если изменился слой N, все следующие пересобираются заново. Поэтому редко меняющиеся шаги (apt-get install, composer install при стабильном lock) ставят раньше, а COPY исходников — в конце, чтобы правка кода не запускала установку зависимостей. Также apt-get update и install объединяют в один RUN с rm -rf /var/lib/apt/lists/*, иначе кеш пакетов навсегда лежит в промежуточном слое и раздувает образ.',
+                'answer' => 'Каждая инструкция **`RUN`, `COPY`, `ADD`** создаёт **отдельный слой**, который кешируется по контрольной сумме входов.
+
+**Главное правило:** **слои инвалидируются последовательно** — если изменился слой N, **все следующие пересобираются заново**.
+
+**Правила оптимизации:**
+
+**1. От редко меняющегося к часто меняющемуся:**
+
+```dockerfile
+FROM php:8.3-fpm-alpine
+
+# 1) Системные пакеты — редко меняются
+RUN apk add --no-cache git zip libpng-dev
+
+# 2) Зависимости композера — меняются при правке composer.lock
+COPY composer.json composer.lock ./
+RUN composer install --no-dev
+
+# 3) Код — меняется на каждый коммит
+COPY . .
+```
+
+Правка одного PHP-файла **не запускает** установку пакетов или composer.
+
+**2. Объединять связанные `RUN` в один слой:**
+
+- `apt-get update && apt-get install -y X && rm -rf /var/lib/apt/lists/*` — **одной командой**
+- Иначе кеш пакетов навсегда лежит в промежуточном слое и **раздувает образ**
+
+**3. Минимизировать число слоёв** — каждый имеет метаданные и overhead, но не до фанатизма (читаемость важнее).
+
+**4. `.dockerignore`** до `COPY .` — иначе случайные изменения в `.git/` или `node_modules/` ломают cache.
+
+**5. Использовать BuildKit cache mounts** — `RUN --mount=type=cache,target=/root/.composer/cache composer install` — composer cache переживает rebuild.
+
+**Метрики качества:**
+
+- `docker history myimage --no-trunc` — какой слой сколько весит
+- `dive myimage` — TUI-инспектор слоёв с подсветкой избыточного
+- При оптимальной разбивке **повторная сборка после правки одного файла занимает секунды**',
+                'code_example' => '# ❌ ПЛОХО — каждый билд переустанавливает всё
+FROM php:8.3-fpm-alpine
+COPY . /var/www
+RUN apk add --no-cache git
+RUN composer install
+RUN apt-get update && apt-get install -y curl   # ⚠️ apt-кеш в слое
+
+# ✅ ХОРОШО — слои упорядочены по частоте изменений
+FROM php:8.3-fpm-alpine
+
+# 1. Системные зависимости — установка + cleanup в одном слое
+RUN apk add --no-cache \\
+        git zip libpng-dev libpq-dev \\
+    && docker-php-ext-install pdo_pgsql gd
+
+# 2. Composer-зависимости отдельным слоем
+WORKDIR /var/www
+COPY composer.json composer.lock ./
+RUN --mount=type=cache,target=/root/.composer/cache \\
+    composer install --no-dev --no-scripts --no-autoloader
+
+# 3. Код в конце
+COPY . .
+RUN composer dump-autoload --optimize
+
+# Посмотреть размер слоёв
+docker history myapp --no-trunc
+dive myapp',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
@@ -415,7 +966,68 @@ tests
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Зачем нужен docker-compose и где у него предел применимости?',
-                'answer' => 'docker-compose описывает в одном YAML-файле группу связанных сервисов (php-fpm, nginx, mysql, redis), их сети, тома и зависимости, чтобы поднять всё локально одной командой docker compose up. Хорошо подходит для dev-окружения и интеграционных тестов на CI. В production его обычно не используют: нет встроенного авто-рестарта по падению ноды, нет шедулинга по нескольким хостам, нет rolling update и health-based load balancing — это всё отдаёт Kubernetes, Nomad или Swarm. Compose — про single-host оркестрацию.',
+                'answer' => '**`docker-compose`** описывает в одном **YAML-файле группу связанных сервисов** (`php-fpm`, `nginx`, `mysql`, `redis`), их сети, тома и зависимости — чтобы поднять всё локально **одной командой `docker compose up`**.
+
+**Хорошо подходит для:**
+
+- **Dev-окружения** — клонировал репо, `docker compose up`, всё работает
+- **Интеграционные тесты на CI** — поднять стек, прогнать тесты, погасить
+- **Single-host production** для маленьких проектов или PoC
+
+**Предел применимости — production-кластер:**
+
+В compose **нет**:
+
+- **Шедулинга по нескольким хостам** — всё на одной машине
+- **Авто-рестарта** при падении ноды (есть только `restart: always` на уровне контейнера)
+- **Rolling update / blue-green** — нативной поддержки
+- **Health-based load balancing** между репликами
+- **Service mesh / mTLS** между сервисами
+- **Auto-scaling** под нагрузку
+- **Secrets management** уровня k8s Secret + Vault
+
+**Куда расти:** **Kubernetes**, Nomad, AWS ECS / Fargate. Compose — про **single-host оркестрацию**.
+
+**Конвертация compose → k8s:** **Kompose** (`kompose convert`) генерирует базовые k8s-манифесты из compose-файла — стартовая точка, не production-готовое.',
+                'code_example' => '# docker-compose.yml для Laravel dev
+services:
+  app:
+    build: .
+    volumes:
+      - ./:/var/www
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  nginx:
+    image: nginx:alpine
+    ports: ["8080:80"]
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf
+      - ./public:/var/www/public
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  db_data:
+
+# Команды
+docker compose up -d
+docker compose logs -f app
+docker compose exec app php artisan migrate
+docker compose down -v',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
@@ -471,7 +1083,64 @@ tests
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Почему PHP в production обычно ставят за nginx + php-fpm, а не запускают встроенный сервер?',
-                'answer' => 'Встроенный сервер php -S однопоточный, не поддерживает SSL/HTTP2, не отдаёт статику параллельно с PHP и официально предназначен только для разработки. Production-связка — nginx как reverse proxy + php-fpm как пул PHP-процессов, общающихся по FastCGI через unix-socket или tcp. nginx отдаёт статику, делает gzip, TLS termination, ограничивает размер запросов и держит keep-alive с клиентом, а в php-fpm проксирует только то, что попало под location ~ \\.php$. php-fpm сам управляет пулом воркеров (pm = dynamic/static/ondemand), перезапускает по pm.max_requests и изолирует утечки памяти.',
+                'answer' => '**Встроенный `php -S` — однопоточный**, не поддерживает SSL / HTTP/2, **не отдаёт статику параллельно с PHP** и официально **предназначен только для разработки**.
+
+**Production-связка: `nginx` (reverse proxy) + `php-fpm` (пул PHP-процессов)**, общающихся по **FastCGI** через unix-socket или TCP.
+
+**Разделение труда:**
+
+**`nginx` (легковесный, event-driven) делает:**
+
+- Отдаёт **статику** (`*.css`, `*.js`, images) напрямую — никакого PHP
+- **gzip / brotli** компрессия
+- **TLS termination** (HTTPS, HTTP/2, HTTP/3)
+- **Ограничение размера запроса** (`client_max_body_size`)
+- **Keep-alive с клиентом**
+- **Rate limiting**, basic auth, кэширование
+- Проксирует **только PHP-запросы** в `php-fpm` через `location ~ \\.php$`
+
+**`php-fpm` управляет пулом воркеров:**
+
+- `pm = static / dynamic / ondemand` — стратегия пула
+- **`pm.max_requests`** — рестарт воркера после N запросов (борьба с утечками памяти)
+- `request_terminate_timeout` — убить зависшие запросы
+- Изоляция между запросами (`reset_opcache`)
+
+**Альтернативы:**
+
+- **Octane / Swoole / RoadRunner / FrankenPHP** — long-lived процессы PHP, держат фреймворк в памяти между запросами (быстрее, но требует stateless-кода)
+- **Apache + mod_php** — старый stack, проще настроить, но nginx + fpm чаще быстрее и легче в k8s
+- **Caddy + FrankenPHP** — современная альтернатива, автоматический HTTPS',
+                'code_example' => '# nginx сайт-конфиг для Laravel
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/public;
+    index index.php;
+
+    # Статика — мимо PHP
+    location ~* \\.(css|js|jpg|png|svg|woff2)$ {
+        expires 30d;
+        access_log off;
+    }
+
+    # SPA-fallback
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # PHP — в php-fpm
+    location ~ \\.php$ {
+        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_read_timeout 60s;
+    }
+
+    client_max_body_size 20M;
+}',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],
@@ -506,7 +1175,63 @@ tests
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Зачем в CI отдельно кешировать composer и npm зависимости?',
-                'answer' => 'Чистый composer install на холодном раннере тянет сотни пакетов из packagist и собирает autoload — это десятки секунд на каждый pipeline. CI-системы (GitHub Actions cache, GitLab cache) умеют сохранять директорию vendor/ или ~/.composer/cache между запусками с ключом по хешу composer.lock. При неизменном lock зависимости разворачиваются за секунды, при изменении — кеш промахивается и пересобирается. Аналогично с node_modules по package-lock.json. Главное — ключ кеша должен включать lock-файл, иначе либо ничего не обновится, либо кеш будет неконсистентен.',
+                'answer' => '**Чистый `composer install`** на холодном раннере тянет сотни пакетов из packagist и собирает autoload — это **десятки секунд на каждый pipeline**. При 50 PR в день — это часы машинного времени и деньги за CI-минуты.
+
+**Решение** — CI-системы (**GitHub Actions cache**, **GitLab cache**, **CircleCI**) умеют **сохранять директорию между запусками**, ключуя её хешем lock-файла:
+
+- `vendor/` или `~/.composer/cache` — по `composer.lock`
+- `node_modules` или `~/.npm` — по `package-lock.json`
+
+**Что происходит:**
+
+- **Lock не изменился** → cache hit → зависимости разворачиваются **за секунды**
+- **Lock изменился** → cache miss → пересобираем и **сохраняем новый кеш** под новым ключом
+
+**Главное правило — ключ кеша должен включать lock-файл:**
+
+- Иначе **ничего не обновится** при правке `composer.json`
+- Или **кеш будет неконсистентен** (старый vendor с новым lock)
+
+**Дополнительные приёмы:**
+
+- **`restore-keys`** — fallback на «похожий» кеш (тот же `composer.json`, обновился только lock)
+- **OS / PHP version в ключе** — Linux/macOS vendor различны, PHP 8.2 / 8.3 — тоже
+- **Кешировать `~/.composer/cache`** удобнее `vendor/` — устойчиво к разным версиям PHP
+- **Docker layer cache** через **buildx + GHA cache** ускоряет образа',
+                'code_example' => '# GitHub Actions
+- name: Cache composer
+  uses: actions/cache@v4
+  with:
+    path: ~/.composer/cache
+    key: composer-${{ runner.os }}-${{ hashFiles(\'composer.lock\') }}
+    restore-keys: |
+      composer-${{ runner.os }}-
+
+- name: Install
+  run: composer install --no-progress --prefer-dist
+
+- name: Cache npm
+  uses: actions/cache@v4
+  with:
+    path: ~/.npm
+    key: npm-${{ hashFiles(\'package-lock.json\') }}
+
+- run: npm ci
+
+# Docker buildx с GHA cache
+- uses: docker/build-push-action@v5
+  with:
+    cache-from: type=gha
+    cache-to: type=gha,mode=max
+
+# GitLab CI
+# cache:
+#   key:
+#     files:
+#       - composer.lock
+#   paths:
+#     - vendor/',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.devops',
             ],

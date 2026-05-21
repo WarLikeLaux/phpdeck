@@ -46,7 +46,20 @@ test(\'user can register\', function () {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между RefreshDatabase и DatabaseTransactions?',
-                'answer' => 'RefreshDatabase - перед запуском всего тест-сьюта мигрирует БД с нуля, каждый тест оборачивается в транзакцию и откатывается. DatabaseTransactions - не мигрирует, просто оборачивает каждый тест в транзакцию (требует чтобы БД была уже мигрирована). RefreshDatabase надёжнее - всегда чистая БД. DatabaseMigrations - запускает миграции для каждого теста (медленно).',
+                'answer' => 'Три **trait-а изоляции БД** в Laravel — отличаются тем, **что они делают со схемой и данными**:
+
+| Trait | Что делает со схемой | Между тестами | Скорость |
+| --- | --- | --- | --- |
+| `RefreshDatabase` | Один раз на сьют `migrate:fresh` (в in-memory SQLite — заново каждый тест) | Транзакция вокруг каждого теста → откат | Быстро |
+| `DatabaseTransactions` | **Ничего** — схема должна быть уже мигрирована | Транзакция → откат | Быстро |
+| `DatabaseMigrations` | `migrate:fresh` **перед каждым** тестом | Полный сброс | Медленно |
+
+**Что важно:**
+
+- `RefreshDatabase` — **дефолт** для большинства проектов: чистая БД + транзакция на тест.
+- `DatabaseTransactions` подходит, когда **схема общая** для всех окружений (например, в CI БД мигрируется отдельным шагом) — экономит время на миграциях.
+- Транзакционные trait-ы **не работают для кода, использующего вложенные/чужие соединения** или `DB::commit()` — данные «утекут» между тестами. Тогда нужен `DatabaseMigrations` или ручной `truncate`.
+- В Laravel 11 есть свойство `$connectionsToTransact` — список соединений, которые нужно оборачивать (полезно при многобазных тестах).',
                 'code_example' => 'use Illuminate\Foundation\Testing\RefreshDatabase;
 
 class UserTest extends TestCase {
@@ -64,7 +77,30 @@ class UserTest extends TestCase {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое HTTP-тесты в Laravel?',
-                'answer' => 'HTTP-тесты позволяют делать "фейковые" запросы к приложению без реального HTTP. Методы: get, post, put, delete, json, getJson, postJson. Помощники для assert: assertOk, assertStatus, assertRedirect, assertSee, assertJson, assertJsonStructure. Можно работать с auth: actingAs($user).',
+                'answer' => '**HTTP-тесты** прогоняют запрос **через весь HTTP-стек приложения** (middleware, роутинг, контроллер, response) **без реальной сети** — Laravel внутри делает `Kernel::handle($request)` и возвращает `TestResponse` с десятками assert-методов.
+
+**Основные методы запроса:**
+
+- HTML-формы: `get`, `post`, `put`, `patch`, `delete`, `options`.
+- JSON: `getJson`, `postJson`, `putJson`, `deleteJson` — выставляют `Accept: application/json`.
+- Загрузка файлов: `$this->post(uri, [\'file\' => UploadedFile::fake()->image(\'a.jpg\')])`.
+
+**Популярные assert-ы:**
+
+- Статус: `assertOk`, `assertCreated`, `assertNoContent`, `assertStatus(422)`, `assertRedirect(\'/x\')`, `assertForbidden`, `assertUnauthorized`.
+- Содержимое: `assertSee`, `assertSeeText`, `assertDontSee`, `assertJson`, `assertJsonPath`, `assertJsonStructure`, `assertJsonFragment`, `assertJsonValidationErrors`.
+- Сессия и заголовки: `assertSessionHas`, `assertSessionHasErrors`, `assertHeader`, `assertCookie`.
+
+**Аутентификация и сессия:**
+
+- `actingAs($user)` или `actingAs($user, \'api\')` — логинит без реального запроса на `/login`.
+- `withSession([...])`, `withHeaders([...])`, `withCookie(...)`.
+- `withoutMiddleware()` / `withoutMiddleware(VerifyCsrfToken::class)` — выключить middleware на этом тесте.
+
+**Подводные камни:**
+
+- По умолчанию `Throw exceptions` включён — 500-ка падает наружу. Отключить точечно: `withoutExceptionHandling()` наоборот, **показывает** реальный stack-trace вместо JSON-ответа.
+- HTTP-тест **не запускает JavaScript** — для SPA/Livewire нужен `Dusk`.',
                 'code_example' => 'public function test_index_returns_users(): void {
     $user = User::factory()->create();
 
@@ -81,7 +117,32 @@ class UserTest extends TestCase {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое fakes в Laravel-тестах?',
-                'answer' => 'Fake - это подмена реального сервиса фейковым для тестов, чтобы проверить, что нужный код был вызван, без побочных эффектов. Fakes: Mail::fake(), Queue::fake(), Notification::fake(), Event::fake(), Bus::fake(), Storage::fake(), Http::fake().',
+                'answer' => '**Fake** — встроенная в Laravel **подмена сервиса заглушкой-«писцом»**: вместо реальной отправки/публикации/записи фейк **собирает то, что от него хотели**, и потом тест проверяет это через `assert*`-методы.
+
+**Зачем:**
+
+- **Нет побочных эффектов** — реальные письма/SMS/job-ы не уходят.
+- Тест становится **быстрым и детерминированным**.
+- Можно проверить **факт**, **количество**, **аргументы** вызовов.
+
+**Стандартный набор:**
+
+| Фасад | Что подменяет | Типовой assert |
+| --- | --- | --- |
+| `Mail::fake()` | отправку писем | `Mail::assertSent(Cls::class)` |
+| `Notification::fake()` | уведомления | `Notification::assertSentTo($u, Cls::class)` |
+| `Queue::fake()` | постановку job в очередь | `Queue::assertPushed(Cls::class)` |
+| `Bus::fake()` | dispatch через bus | `Bus::assertDispatched(Cls::class)` |
+| `Event::fake()` | события | `Event::assertDispatched(Cls::class)` |
+| `Storage::fake(\'public\')` | файловый диск (in-memory) | `Storage::disk(\'public\')->assertExists($path)` |
+| `Http::fake([...])` | внешние HTTP-запросы через `Http::` | `Http::assertSent(fn ($r) => ...)` |
+| `Process::fake()` | внешние процессы | `Process::assertRan(...)` |
+
+**Нюансы:**
+
+- `Event::fake()` **перехватывает все события**, поэтому `Mail::fake()` после `Event::fake()` не сработает — почта идёт через события. Используй `Event::fake([...])` со списком, либо `Event::fakeExcept`.
+- `Bus::fake()` отключает **выполнение** job-ов — если тест ожидает, что job что-то сделал в БД, нужен `Queue::fake()` + `Bus::dispatchSync()` или интеграционный прогон.
+- В Pest есть `Mail::fake()` точно так же — фасады работают одинаково.',
                 'code_example' => 'public function test_email_sent(): void {
     Mail::fake();
 
@@ -104,7 +165,30 @@ public function test_job_dispatched(): void {
             [
                 'category' => 'Laravel',
                 'question' => 'Как делать mocking в Laravel-тестах?',
-                'answer' => 'Через фасады (Cache::shouldReceive), через Mockery (mock(), partialMock()), либо через подмену в контейнере ($this->instance(...)). Фасады удобно мокать сразу - они изначально проксируют через контейнер.',
+                'answer' => 'В Laravel **три уровня** замоканья — выбор зависит от того, как зависимость попадает в код:
+
+**1) Фасады — `Cache::shouldReceive(...)`**
+
+Фасад это прокси к биндингу в контейнере; `shouldReceive` подменяет биндинг **Mockery-моком** на время теста. Между тестами Laravel сам чистит resolved-инстансы.
+
+**2) Класс через DI — `$this->mock(Class::class)`**
+
+Хелпер `mock()` создаёт Mockery-мок **и сразу регистрирует его в контейнере** — следующий `app(Class::class)` отдаст его. Аналог — `$this->instance(Class::class, $fake)`.
+
+**3) Частичный мок — `$this->partialMock(Class::class, fn ($m) => ...)`**
+
+Подменяет **только указанные методы**, остальные работают как у реального объекта. Удобно, когда нужен реальный сервис, но **один** метод дорого/нежелательно звать.
+
+**Полезные сравнения:**
+
+- `mock()` vs `instance()` — `mock()` сам ставит экспектации через замыкание; `instance()` принимает любой объект (например, готовый Fake-класс).
+- `Mockery::mock(Cls::class)` создаёт **strict mock** (любой не объявленный вызов — ошибка); `Mockery::spy(Cls::class)` принимает любые вызовы и пишет их.
+- Для фасадов есть `Cache::spy()` — собирает вызовы, потом `Cache::shouldHaveReceived(\'get\')`.
+
+**Подводные камни:**
+
+- Mockery **не работает с final-классами/методами** — мокать нельзя; либо `instance()` с реальным fake-классом, либо `mockery/mockery` с `--allow-mocking-non-existent-methods` (для типобезопасности — лучше interface).
+- После `$this->mock()` забудь про **typehints родителя**: контейнер отдаст мок, не реальный класс.',
                 'code_example' => '// Mock фасада
 Cache::shouldReceive(\'get\')->once()->with(\'key\')->andReturn(\'value\');
 
@@ -166,7 +250,23 @@ Event::fake();
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Data Providers в PHPUnit / Pest и зачем они нужны?',
-                'answer' => 'Data Provider - механизм запуска одного теста с разными наборами входных данных. Вместо копи-пасты теста под каждый случай (test_zero, test_negative, test_huge) пишется один тест, а данные подаются провайдером - PHPUnit выполнит тест по разу для каждого набора и в отчёте покажет каждый прогон отдельно. Если упал случай №3 - сразу видно какой именно. Типичные кейсы: проверка валидатора с десятками граничных значений, парсинг разных форматов строк, ассертится одна и та же логика на разных входах, табличные тесты (table-driven tests). PHPUnit: атрибут #[DataProvider("methodName")] на методе теста + статический метод-провайдер, возвращающий iterable массивов параметров. Можно key-by name каждого случая, чтобы в отчёте было читаемо. Можно использовать generator (yield) - удобно для больших или ленивых наборов. Pest: метод ->with([...]) на тесте, или ->with("dataset_name") + dataset("name", [...]) в Pest.php. Принимает массив, генератор, или замыкание. Senior-нюанс: data provider не имеет доступа к setUp() и контейнеру (его метод статический и вызывается ДО setUp), поэтому в нём нельзя создавать Eloquent-модели через factory - используйте closure-параметр в Pest или ленивый генератор в PHPUnit, чтобы создание объектов произошло уже в тесте. Тест с провайдером даёт параметризацию без потери читаемости и снижает дублирование.',
+                'answer' => '**Data Provider** — механизм запуска **одного теста** с **разными наборами входных данных**. Вместо копи-пасты `test_zero`, `test_negative`, `test_huge` — пишется **один** тест, а данные подаются провайдером. PHPUnit выполнит тест по разу для каждого набора и в отчёте покажет каждый прогон отдельно (например, упал «leading dot» — сразу видно какой случай).
+
+**Когда применять:**
+
+- Валидатор/парсер с десятками граничных входов.
+- Табличные тесты (table-driven tests).
+- Один и тот же ассерт на разных типах данных.
+
+**Синтаксис:**
+
+- **PHPUnit** — атрибут `#[DataProvider(\'methodName\')]` на тесте + **статический** метод, возвращающий `iterable`. Удобно ключить кейсы строками (`yield \'leading dot\' => [...]`) — попадут в имя теста.
+- **Pest** — `->with([...])` прямо на тесте, либо `->with(\'name\')` + глобальный `dataset(\'name\', [...])`.
+
+**Под капотом и ограничения:**
+
+- Метод-провайдер **статический** и вызывается **до `setUp()`** — поэтому в нём **нельзя создавать Eloquent-модели через factory** (БД ещё не готова). Решения: передавать **замыкание** (Pest), или **`yield`** ленивые значения, либо строить модель **внутри тела теста** по ключу из провайдера.
+- Тест с большим набором кейсов остаётся **читаемым** — параметризация без потери ясности и дублирования.',
                 'code_example' => '<?php
 // PHPUnit
 use PHPUnit\\Framework\\Attributes\\DataProvider;
@@ -214,7 +314,22 @@ test("validator", fn ($email, $valid) => expect(...))
             [
                 'category' => 'Laravel',
                 'question' => 'Как тестировать логику, зависящую от времени? (travel, freeze, setTestNow)',
-                'answer' => 'Когда логика зависит от now() / Carbon::now() (например, "токен живёт час", "напомнить через 3 дня", "запретить вход после 23:00") - в тесте нельзя ждать реальный час. Laravel даёт обёртки над Carbon::setTestNow() для управления временем. Основные хелперы (доступны в TestCase). 1) $this->travel(int $value)->{minutes()|hours()|days()|...} - сдвинуть текущее время на относительный интервал. 2) $this->travelTo(Carbon $instant) - перепрыгнуть на абсолютное время. 3) $this->travelBack() - вернуться к реальному времени (вызывается автоматически в tearDown, но можно явно для частичного теста). 4) $this->freezeTime() / $this->freezeSecond() - заморозить время (now() возвращает одно и то же значение между вызовами); удобно когда тест чувствителен к долям секунды. 5) В Pest - похожие методы, и есть expectation expect($carbon)->toBeBetween(...). Под капотом всё через Carbon::setTestNow($instant) - меняется глобально для всего приложения, включая Eloquent-таймстампы (created_at сохранится с этим временем). Подводные камни: 1) Если код использует time() или \\DateTime() напрямую - они НЕ подменятся, нужен Carbon. 2) При travel в БД-таймстампы попадает фейковое время - проверяйте, что это ОК для рассматриваемого теста. 3) В параллельных тестах travel влияет только на текущий процесс. Альтернатива более чистая - инжектить Clock-сервис в код (PSR-20 ClockInterface), и в тестах подавать FakeClock; но в Laravel-приложениях обычно используют travel.',
+                'answer' => 'Когда код смотрит на `now()` («токен живёт час», «напомнить через 3 дня», «не позднее 23:00») — в тесте **нельзя ждать реальное время**. Laravel даёт обёртки над `Carbon::setTestNow()`.
+
+**Основные хелперы (`Illuminate\\Foundation\\Testing\\Concerns\\InteractsWithTime`):**
+
+- `$this->travel(1)->hour()` / `->days()` / `->minutes()` — сдвинуть **относительно**.
+- `$this->travelTo(Carbon::parse(\'2026-01-01 09:00\'))` — прыжок на **абсолютное** время.
+- `$this->travelBack()` — вернуться к реальному времени (Laravel **сам зовёт** это в `tearDown`).
+- `$this->freezeTime(fn () => ...)` / `$this->freezeSecond(fn () => ...)` — **заморозить** время, чтобы `now()` возвращал одно значение между вызовами (полезно при сравнении timestamp-ов с точностью до мс).
+
+**Что важно понимать:**
+
+- Под капотом — `Carbon::setTestNow($instant)`. Это **глобально** для всего приложения: `created_at` у новых записей запишется с этим временем.
+- **`time()` и `new DateTime()` НЕ подменяются** — Laravel умеет двигать только `Carbon::now()` / `now()`. В коде нужно использовать Carbon.
+- В **параллельных** тестах (`php artisan test --parallel`) `travel` действует только в текущем процессе — никаких глобальных race-conditions нет.
+
+**Альтернатива чище:** инжектить `PSR-20 ClockInterface` (или собственный `Clock`-сервис) в код, в тестах биндить `FakeClock`. В типовом Laravel-проекте обычно достаточно `travel`.',
                 'code_example' => '<?php
 use Illuminate\\Foundation\\Testing\\TestCase;
 
@@ -265,7 +380,23 @@ class TokenTest extends TestCase
             [
                 'category' => 'Laravel',
                 'question' => 'Как замокать фасад в тесте и почему это вообще возможно?',
-                'answer' => 'Фасад - это прокси к биндингу в Service Container: статика Cache::get() через __callStatic уходит в Container::make("cache") и зовёт ->get() на реальном объекте. У базового класса Facade есть методы swap($mock) / shouldReceive(...) / expects(...), которые подменяют биндинг в контейнере на Mockery-мок. shouldReceive создаёт stub - "если позвали, верни значение"; expects - mock с явным ожиданием ("должны позвать ровно один раз"). После теста PHPUnit/Pest TestCase автоматически вызывает Facade::clearResolvedInstances(), поэтому моки не утекают между тестами. Альтернатива - подмена через $this->instance() (если зависимость пробрасывается через DI, а не через фасад). Партиал-мок: $this->partialMock(Service::class)->shouldReceive("only-this-method")->andReturn(...) - остальные методы работают как настоящие.',
+                'answer' => '**Фасад — это прокси к биндингу в Service Container**. Статический `Cache::get()` через `__callStatic` идёт в `Container::make(\'cache\')` и зовёт `->get()` на **реальном** объекте. Это значит: достаточно подменить **биндинг** — и весь код, ходящий через фасад, начнёт обращаться к моку.
+
+**API на базовом классе `Facade`:**
+
+- `Cache::shouldReceive(\'get\')->with(\'k\')->andReturn(\'v\')` — **stub**: «если позовут — верни».
+- `Cache::expects(\'put\')->once()->with(\'k\', \'v\', 60)` — **mock** с явным ожиданием (тест упадёт, если не позвали или позвали с другими аргументами).
+- `Cache::spy()` + `Cache::shouldHaveReceived(\'get\')` — пишет вызовы, проверяем **после** действия.
+- `Cache::swap($obj)` / `Cache::partialMock()` — подменить целиком / частично.
+
+**Почему моки не утекают:** в `tearDown` `TestCase` зовёт `Facade::clearResolvedInstances()` и `Mockery::close()`.
+
+**Когда не работает:**
+
+- Если код берёт сервис **через DI**, а не через фасад — фасадный мок не сработает. Используй `$this->mock(Class::class)` или `$this->instance(...)`.
+- Если фасад завязан на **синглтон, который уже разрезолвлен** до `shouldReceive` (редко, но в `boot()` бывает) — мок не подменит уже выданный инстанс.
+
+**Партиал-мок:** `$this->partialMock(PaymentService::class, fn ($m) => $m->shouldReceive(\'charge\')->andReturn(...))` — остальные методы остаются настоящими, удобно когда менять надо **только одну ветку**.',
                 'code_example' => '<?php
 public function test_cache_is_used(): void
 {
@@ -361,7 +492,22 @@ class LoginTest extends DuskTestCase {
             [
                 'category' => 'Laravel',
                 'question' => 'Сравните Laravel Telescope и Laravel Pulse.',
-                'answer' => 'Это разные инструменты под разные задачи. Telescope - детальный отладочный профайлер для dev/staging: для КАЖДОГО запроса пишет в БД отдельные записи по каждому SQL-запросу, исключению, job, mail, cache-операции, view-рендеру - почти распределённая трассировка. Полезно при разработке и расследовании incident-а на staging, но генерирует тонну записей: telescope_entries раздувается за дни, на проде даёт значимый overhead (доп. INSERT-ы на каждое событие). Pulse - агрегированный мониторинг для продакшена в реальном времени: не пишет отдельную строку на каждое событие, а собирает агрегаты в Redis/БД (top slow routes за последний час, slow queries, активные пользователи, нагрузка серверов через php artisan pulse:check на cron, cache hit rate, очереди). Дёшево по записи и месту, дашборд показывает агрегаты, а не построчные трассы. Правило: Telescope - локально и на staging для отладки, Pulse - на проде для real-time мониторинга. Часто стоят оба, но Telescope гасят через ENABLED-флаг.',
+                'answer' => '**Это два разных инструмента под две разные задачи.**
+
+| | `Telescope` | `Pulse` |
+| --- | --- | --- |
+| Назначение | **Детальный профайлер** для dev/staging | **Агрегированный мониторинг** для прода |
+| Что пишет | Каждый запрос/SQL/job/mail/cache/view **построчно** | **Агрегаты** за окно (top slow routes, slow queries, нагрузка) |
+| Хранилище | Таблицы `telescope_entries`, `telescope_entries_tags` | Redis + таблицы `pulse_*` (агрегированные счётчики) |
+| Overhead | **Значимый** — лишний INSERT на каждое событие | **Низкий** — буферизация через Redis ingest |
+| Дашборд | Развёрнутая трасса каждого события | Live-плитки с агрегатами |
+
+**Правило выбора:**
+
+- **Telescope** — локально и на staging, для отладки и расследования инцидентов «по горячим следам». На проде **гасить** через `TELESCOPE_ENABLED=false` и/или ограничивать gate-ом доступа.
+- **Pulse** — на проде в реальном времени: видно slow routes/queries, активных пользователей, hit-rate кэша, длину очередей, нагрузку воркеров.
+
+**Совместимость:** часто стоят оба пакета; Telescope включают по необходимости (через флаг), Pulse работает постоянно. Не забыть `telescope:prune` (раз в сутки) и `pulse:clean` — иначе таблицы пухнут.',
                 'code_example' => '# Telescope - dev only
 composer require laravel/telescope --dev
 php artisan telescope:install
@@ -400,7 +546,26 @@ Schedule::command("pulse:clean --before=\\"7 days ago\\"")->daily();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Debugbar и стоит ли использовать его в продакшене?',
-                'answer' => 'Debugbar (barryvdh/laravel-debugbar) - community-пакет, выводящий toolbar внизу страницы с временем выполнения, SQL-запросами и их EXPLAIN, route-инфой, view-данными, событиями, кешем, переменными окружения, dumper-ами. Очень удобен для отладки N+1 (видно дублирующиеся запросы) и понимания, какие данные передаются во view. Включать ТОЛЬКО локально - dev-зависимость в composer.json и app.debug=true в .env. На продакшене категорически нельзя: 1) Замедляет каждый запрос (собирает данные о каждом SQL/event/view). 2) Раздувает HTML ответа на десятки КБ. 3) Раскрывает структуру приложения: SQL-запросы, имена таблиц, пути файлов - готовая разведка для атакующего. 4) Может выдать значения переменных окружения наружу (включая ключи). По умолчанию активируется только если APP_DEBUG=true; на проде APP_DEBUG обязан быть false (это отдельная боль - debug-режим прода = утечка stack-trace через Whoops). Безопасная альтернатива для прода - Laravel Pulse (агрегаты, без построчного дампа).',
+                'answer' => '**`barryvdh/laravel-debugbar`** — community-пакет, выводящий **toolbar** внизу страницы со SQL-запросами (+ EXPLAIN), route-инфой, view-данными, событиями, кешем, переменными окружения, дамперами и таймингами.
+
+**Чем полезен в dev:**
+
+- Сразу видно **N+1** (дублирующиеся SELECT-ы).
+- Видно, какие **данные передаются во view**.
+- Помогает отлавливать тормоза по реальной картинке, а не по логам.
+
+**На продакшене — категорически нельзя:**
+
+- **Тормозит** каждый запрос (сбор всех SQL/event/view).
+- **Раздувает HTML** ответа на десятки КБ.
+- **Раскрывает внутренности**: имена таблиц, SQL, пути файлов — готовая разведка для атакующего.
+- Может **слить переменные окружения** наружу (ключи API, секреты).
+
+**Что делать правильно:**
+
+- Ставить как **dev-зависимость**: `composer require --dev barryvdh/laravel-debugbar`. На проде `composer install --no-dev` физически **не положит пакет**.
+- Toolbar активируется только при `APP_DEBUG=true` — на проде **должен быть `false`** (иначе ещё и Whoops отдаст stack-trace).
+- Для прода — `Laravel Pulse` (агрегаты без построчных дампов).',
                 'code_example' => '# Установка - ТОЛЬКО как dev-зависимость
 composer require barryvdh/laravel-debugbar --dev
 

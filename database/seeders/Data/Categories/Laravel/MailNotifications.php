@@ -13,7 +13,32 @@ class MailNotifications
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Notifications в Laravel?',
-                'answer' => 'Notifications - это унифицированный способ отправлять уведомления через разные каналы: mail, database, broadcast, slack, sms (vonage), и кастомные. Один класс уведомления, метод via() выбирает каналы.',
+                'answer' => '**Notifications** — унифицированный способ отправлять уведомления через **разные каналы** одним классом. **Один класс уведомления**, метод **`via()`** выбирает каналы для конкретного получателя.
+
+**Встроенные каналы:**
+
+| Канал | Метод формирования | Для чего |
+|---|---|---|
+| **`mail`** | `toMail($n)` → `MailMessage` | письмо |
+| **`database`** | `toArray($n)` | запись в таблицу `notifications` (in-app список) |
+| **`broadcast`** | `toBroadcast($n)` / `toArray($n)` | WebSocket (Reverb, Pusher) |
+| **`slack`** | `toSlack($n)` | Slack-сообщение |
+| **`vonage`** (бывш. `nexmo`) | `toVonage($n)` | SMS |
+| **`mail` (markdown)** | `view+markdown` | оформление через Blade-markdown |
+
+Канал может быть **кастомным** — обычный класс с методом `send(object $notifiable, Notification $notification)`.
+
+**Что даёт:**
+- **Унификация** — одно событие («счёт оплачен») → разные доставки **разным юзерам** (юзер только в email, админ — в Slack).
+- Различные **формат-методы** в одном файле — никаких параллельных классов «MailInvoicePaid», «SlackInvoicePaid».
+- **`ShouldQueue`** на классе → отправка идёт через **очередь**, не блокирует HTTP-запрос.
+
+**Получатели:**
+- Любая модель с trait **`Notifiable`** (по умолчанию у `User`): `$user->notify($notification)`.
+- **`Notification::send($users, ...)`** — массовая отправка коллекции.
+- **`Notification::route("mail", "x@y.com")`** — on-demand для адреса без модели.
+
+**Подвох:** канал `database` использует `morphs` колонки `notifiable_type/notifiable_id` — после `php artisan make:notifications-table` помнить про **миграцию**.',
                 'code_example' => 'class InvoicePaid extends Notification {
     public function via($notifiable): array {
         return [\'mail\', \'database\', \'broadcast\'];

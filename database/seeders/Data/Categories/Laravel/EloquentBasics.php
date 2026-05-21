@@ -159,7 +159,29 @@ protected $casts = [\'price\' => MoneyCast::class];',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Accessors и Mutators? Какой современный синтаксис?',
-                'answer' => 'Accessor - это метод, который преобразует значение при ЧТЕНИИ атрибута. Mutator - при ЗАПИСИ. Старый синтаксис: getNameAttribute / setNameAttribute. Новый синтаксис (Laravel 9+): метод возвращает Attribute с get и set.',
+                'answer' => '**Accessor** — преобразует значение **при чтении** атрибута модели (геттер с побочной логикой).
+
+**Mutator** — преобразует **при записи** (сеттер с нормализацией: trim, lowercase, hash).
+
+**Старый синтаксис (до Laravel 9):**
+
+- `getNameAttribute($value)` — accessor.
+- `setNameAttribute($value)` — mutator.
+- Имя метода соответствует **CamelCase** имени атрибута: `first_name` → `getFirstNameAttribute`.
+
+**Новый синтаксис (Laravel 9+) через `Attribute`:**
+
+- Один метод `name(): Attribute` с парой `get`/`set`.
+- Чище — accessor и mutator рядом, нет «двух методов на одно поле».
+- Поддерживает **caching** результата (для тяжёлых вычислений).
+- Поддерживает **`shouldCache()`** и **`withoutObjectCaching()`**.
+
+**Подводные камни:**
+
+- Метод **должен возвращать `Attribute::make(...)`**, не сам результат.
+- `Attribute::make(get: fn ($v) => ...)` принимает **второй аргумент** — массив всех атрибутов модели (нужно при composite-полях типа `full_name = first + last`).
+- **Mutator не вызывается при массовом UPDATE через query builder** (`User::where(...)->update([...])`) — он работает только при `save()` на инстансе. Это та же ловушка, что с events.
+- Для тяжёлых вычислений: `->shouldCache()` запоминает результат в инстансе модели до перезагрузки.',
                 'code_example' => '// Старый синтаксис
 public function getNameAttribute($value) {
     return ucfirst($value);
@@ -182,7 +204,29 @@ protected function name(): Attribute {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между firstOrCreate, updateOrCreate и upsert?',
-                'answer' => 'firstOrCreate - найти запись по условию или создать новую (если нет). updateOrCreate - найти и обновить, либо создать. Оба работают по 1 строке и срабатывают события модели. upsert - массовая операция: вставить/обновить много записей одним запросом, БЕЗ событий моделей.',
+                'answer' => 'Три метода с похожими именами, но **разной семантикой и стоимостью**.
+
+**Сравнение:**
+
+| Метод | Что делает | Запросов | Событие | Bulk? |
+|---|---|---|---|---|
+| **`firstOrCreate`** | Найти по атрибутам — если нет, создать | 1-2 | `creating/created` (если создал) | Нет |
+| **`firstOrNew`** | То же, но **не сохраняет** новую запись | 1 | — | Нет |
+| **`updateOrCreate`** | Найти и обновить **или** создать | 1-2 | `updating/updated` или `creating/created` | Нет |
+| **`upsert`** | Массово вставить/обновить **одним запросом** | 1 | **Не срабатывают** | Да |
+
+**Когда что выбирать:**
+
+- **`firstOrCreate`** — справочники, идемпотентная регистрация юзера по email.
+- **`updateOrCreate`** — sync настроек, импорт по уникальному ключу.
+- **`upsert`** — массовая загрузка из CSV/API, тысячи записей.
+
+**Подводные камни — race conditions:**
+
+- `firstOrCreate` делает **SELECT + INSERT** — между ними два процесса могут увидеть «нет записи» и оба сделать INSERT → дубликат. Защита — **UNIQUE-индекс на колонках поиска**, тогда второй INSERT упадёт с 23000/23505 и Laravel сделает retry-SELECT.
+- `upsert` атомарен на уровне БД (`ON DUPLICATE KEY UPDATE` в MySQL, `ON CONFLICT DO UPDATE` в Postgres) — **обязательно** требует UNIQUE/PK на колонках из `uniqueBy`.
+- `upsert` **не триггерит** наблюдателей и события модели — Scout-индекс не обновится, нужно вручную `searchable()`.
+- `updated_at` при `upsert` обновляется автоматически, `created_at` — только для **новых** строк.',
                 'code_example' => 'User::firstOrCreate(
     [\'email\' => \'a@b.c\'],
     [\'name\' => \'Anna\']
@@ -234,7 +278,35 @@ $users = DB::table(\'users\')
             [
                 'category' => 'Laravel',
                 'question' => 'Как делать joins в Query Builder?',
-                'answer' => 'Через методы join (INNER), leftJoin, rightJoin, crossJoin. Можно передавать closure для сложных условий. В Eloquent тоже работает.',
+                'answer' => 'Query Builder поддерживает все четыре типа SQL JOIN.
+
+**Типы:**
+
+| Метод | SQL | Когда применять |
+|---|---|---|
+| `join()` | `INNER JOIN` | Только записи с совпадением в обеих таблицах |
+| `leftJoin()` | `LEFT JOIN` | Все записи слева + матчи справа (NULL, если нет) |
+| `rightJoin()` | `RIGHT JOIN` | Зеркало leftJoin (используется редко) |
+| `crossJoin()` | `CROSS JOIN` | Декартово произведение, без `ON` |
+
+**Сложные условия — через closure:**
+
+```php
+DB::table(\'users\')
+    ->join(\'posts\', function ($join) {
+        $join->on(\'users.id\', \'=\', \'posts.user_id\')
+             ->where(\'posts.published\', true);
+    })
+    ->get();
+```
+
+**Подводные камни:**
+
+- **`select()` обязателен при JOIN** — иначе получите перемешанные поля и `id` будет последним совпадением.
+- При JOIN с Eloquent (`User::join(...)`) hydration работает корректно **только если выбраны колонки одной модели**: `->select(\'users.*\')`.
+- **JOIN ломает `with()` для отношений** — если делать `User::join(\'posts\', ...)->with(\'posts\')`, eager-load выполнит **отдельный** запрос; eager-load не использует JOIN.
+- **Дубликаты строк** при `JOIN` с one-to-many — используйте `groupBy(\'users.id\')` или `distinct()`.
+- Для отношений Eloquent чаще нужен **`whereHas`** + **`with`**, а не ручной JOIN.',
                 'code_example' => 'DB::table(\'users\')
     ->join(\'posts\', \'users.id\', \'=\', \'posts.user_id\')
     ->leftJoin(\'profiles\', \'users.id\', \'=\', \'profiles.user_id\')
@@ -247,7 +319,32 @@ $users = DB::table(\'users\')
             [
                 'category' => 'Laravel',
                 'question' => 'Как использовать сырые выражения (raw expressions) в Query Builder?',
-                'answer' => 'DB::raw() для сырого SQL внутри select/where. selectRaw, whereRaw, orderByRaw, havingRaw - для удобства. ВАЖНО: при использовании raw нельзя подставлять данные пользователя без bindings - это SQL-injection.',
+                'answer' => '**Raw expressions** — способ воткнуть произвольный SQL в запрос Query Builder/Eloquent.
+
+**Основные методы:**
+
+- **`DB::raw(\'COUNT(*)\')`** — вставка сырого SQL в `select`/`where`/любое место.
+- **`selectRaw(\'COUNT(*) as total, status\', $bindings)`** — короткая обёртка.
+- **`whereRaw(\'created_at > ?\', [now()->subMonth()])`** — RAW в `where`.
+- **`orderByRaw(\'FIELD(status, ?, ?, ?)\', [\'open\', \'pending\', \'closed\'])`** — кастомная сортировка.
+- **`havingRaw(\'SUM(price) > ?\', [1000])`** — RAW в `having`.
+
+**Зачем нужен:**
+
+- Оконные функции (`ROW_NUMBER()`, `LAG()`, `RANK() OVER (...)`).
+- Агрегаты со сложными выражениями.
+- Специфичные функции СУБД (`JSON_EXTRACT`, `ST_Distance`, `ts_rank`).
+
+**Критическое правило безопасности:**
+
+`DB::raw()` **вставляет строку напрямую в SQL без экранирования**. Если внутри окажется пользовательский ввод — это **SQL-инъекция**.
+
+| Плохо | Правильно |
+|---|---|
+| `whereRaw("status = \'{$request->status}\'")` | `whereRaw(\'status = ?\', [$request->status])` |
+| `orderByRaw(request(\'sort\'))` | Whitelist: `in_array($sort, [\'id\',\'name\'], true)` |
+
+**Bindings** проходят через PDO-плейсхолдеры и экранируются драйвером — это безопасно. Для **имён колонок и направления сортировки** bindings не работают (это часть синтаксиса) — нужен whitelist.',
                 'code_example' => 'DB::table(\'users\')
     ->selectRaw(\'COUNT(*) as total, status\')
     ->whereRaw(\'created_at > ?\', [now()->subMonth()])
@@ -260,7 +357,27 @@ $users = DB::table(\'users\')
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое DB::transaction и как работают вложенные транзакции?',
-                'answer' => 'DB::transaction оборачивает код в транзакцию: если внутри callback бросается исключение - rollback, иначе - commit. Поддерживаются deadlock-retries (второй аргумент). Альтернатива: DB::beginTransaction, DB::commit, DB::rollBack вручную. Важный нюанс про вложенные транзакции: в MySQL/Postgres настоящих nested transactions НЕ существует, Laravel эмулирует их через SAVEPOINT. Из этого вытекает несколько ловушек. 1) Если ВНЕШНЯЯ транзакция откатится, откатятся и все ранее "успешно закоммиченные" внутренние - они были лишь RELEASE SAVEPOINT, не самостоятельными коммитами. Поэтому события/уведомления, которые должны сработать только после фактического коммита, оборачивают в DB::afterCommit() или используют свойство $afterCommit. 2) PostgreSQL-специфика: после ЛЮБОЙ ошибки SQL внутри транзакции она переходит в состояние "current transaction is aborted" - все следующие запросы возвращают "current transaction is aborted, commands ignored until end of transaction block", пока не сделать ROLLBACK или ROLLBACK TO SAVEPOINT. Хорошая новость: DB::transaction(callable) АВТОМАТИЧЕСКИ ловит исключение, вызывает $this->rollBack() (= ROLLBACK TO SAVEPOINT для вложенных) и пробрасывает исключение наружу - выловив его во внешнем callback, можно безопасно продолжать (savepoint уже откачен). 3) Опасный паттерн возникает при РУЧНОМ DB::beginTransaction: если вы поймали исключение через try/catch и НЕ вызвали DB::rollBack() сами, в PG транзакция остаётся в aborted state, и все следующие запросы упадут. То же самое если ловить исключение НА УРОВНЕ savepoint, но не в обёртке DB::transaction. Правило: используйте DB::transaction(callable) и не глотайте исключения внутри без явного rollBack.',
+                'answer' => '**`DB::transaction($callback, $attempts)`** оборачивает код в транзакцию: исключение внутри → **rollback**, иначе → **commit**. Второй аргумент включает **retry при ошибках конкуренции** (deadlock).
+
+**Альтернатива** — ручное управление: `DB::beginTransaction()` / `DB::commit()` / `DB::rollBack()`.
+
+**Вложенные транзакции — это SAVEPOINT, не настоящие nested:**
+
+В MySQL/Postgres настоящих nested transactions **не существует**, Laravel эмулирует их через `SAVEPOINT`. Отсюда ловушки:
+
+**Ловушка 1 — внешний rollback отменяет внутренние:**
+
+«Закоммиченная» внутренняя транзакция — это всего лишь `RELEASE SAVEPOINT`. Если внешняя откатится, **откатится всё**, включая внутреннее. Поэтому для событий после фактического commit используйте **`DB::afterCommit()`** или `$afterCommit = true` на Job/Listener.
+
+**Ловушка 2 — Postgres aborted-state:**
+
+После **любой** SQL-ошибки в транзакции PG переходит в состояние «current transaction is aborted» — все следующие запросы возвращают `commands ignored until end of transaction block`. Хорошая новость: `DB::transaction(callable)` **автоматически** делает `rollBack()` (= `ROLLBACK TO SAVEPOINT` для вложенных) и пробрасывает исключение — выловив его во внешнем callback, можно безопасно продолжать.
+
+**Ловушка 3 — ручной `beginTransaction` + проглоченное исключение:**
+
+Если поймали исключение через `try/catch` и **не вызвали `DB::rollBack()`**, в PG транзакция остаётся в aborted state и все следующие запросы упадут.
+
+**Правило:** используйте `DB::transaction(callable)` и не глотайте исключения внутри без явного `rollBack()`. При retry для deadlock — `attempts: 3`.',
                 'code_example' => '<?php
 // ✅ Закрытая форма - Laravel сам ловит и rollback-ает (включая SAVEPOINT)
 DB::transaction(function () {
@@ -453,14 +570,64 @@ class UserObserver {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между ORM и сырыми SQL-запросами?',
-                'answer' => 'ORM (Object-Relational Mapper) — это слой, который маппит строки таблиц на объекты PHP и даёт работать с БД через объектный API: $user = User::find(1); $user->name = "Иван"; $user->save(). Eloquent (Laravel), Doctrine (Symfony), Yii AR — всё это ORM. Сырой SQL — текст запроса напрямую через PDO/DB::select/DB::statement, который ORM не интерпретирует. Ключевые отличия: 1) Уровень абстракции — ORM прячет SQL, диалект, кавычки, экранирование; raw — полный контроль над запросом. 2) Кросс-СУБД — ORM генерирует SQL под текущий драйвер (MySQL/PG/SQLite), raw нужно переписать при смене БД. 3) Безопасность — ORM по умолчанию использует bindings, raw легко уронить в SQL-injection, если конкатенировать ввод. 4) Производительность — ORM добавляет накладные расходы (hydration в объекты, события модели, ленивая загрузка → N+1); raw близок к нулевому overhead. 5) Удобство сложного SQL — оконные функции, CTE с UNION, hint-ы оптимизатора, экзотические агрегаты проще написать на raw. 6) Поддержка моделей — ORM даёт связи (hasMany, belongsTo), события, soft delete, casts, accessors; raw возвращает stdClass/array, всё это придётся писать руками.',
+                'answer' => '**ORM (Object-Relational Mapper)** — слой, маппящий строки таблиц на объекты PHP и дающий работать с БД через объектный API:
+
+```php
+$user = User::find(1);
+$user->name = \'Иван\';
+$user->save();
+```
+
+Eloquent (Laravel), Doctrine (Symfony), Yii AR — всё это ORM.
+
+**Сырой SQL** — текст запроса напрямую через `PDO`/`DB::select`/`DB::statement`, который ORM **не интерпретирует**.
+
+**Ключевые отличия:**
+
+| Параметр | **ORM (Eloquent)** | **Сырой SQL** |
+|---|---|---|
+| Уровень абстракции | Прячет SQL, диалект, кавычки, экранирование | Полный контроль над запросом |
+| Кросс-СУБД | Генерирует SQL под текущий драйвер | При смене БД переписывать |
+| Безопасность | Bindings из коробки | Легко уронить в SQL-injection при конкатенации |
+| Производительность | Hydration в объекты, события, lazy load → N+1 | Близко к нулевому overhead |
+| Сложный SQL | Оконные функции, CTE, hint-ы — неудобно | Естественный путь |
+| Поддержка моделей | Связи, события, soft delete, casts, accessors | Возвращает `stdClass`/`array` |
+| Тестируемость | Легко мокать модели, factory | Truncate + INSERT в setUp |
+
+**Когда что:** для CRUD и доменной логики — ORM. Для аналитики, отчётов, миграций данных и сложных оптимизаций — сырой SQL или Query Builder без модели.',
                 'difficulty' => 3,
                 'topic' => 'laravel.eloquent_basics',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Когда выгодно использовать ORM, а когда — сырые SQL-запросы?',
-                'answer' => 'Используй ORM (Eloquent), когда: 1) Обычный CRUD-код приложения — 90% запросов это find/where/save/delete, тут ORM даёт огромный выигрыш в скорости разработки и читаемости. 2) Доменная логика крутится вокруг моделей со связями, событиями, валидацией. 3) Команда большая и важна единообразность стиля — ORM дисциплинирует. 4) Нужны Resources/API — Eloquent отлично интегрируется с API Resources, Sanctum, policies. 5) Безопасность — bindings из коробки. Переходи на raw (DB::select, DB::statement, Query Builder с DB::raw) когда: 1) Тяжёлая аналитика — оконные функции, рекурсивные CTE, сложные GROUP BY с агрегатами, которые в ORM выглядят уродливо. 2) Bulk-операции — UPDATE/DELETE миллионов строк, COPY/LOAD DATA INFILE — ORM-events на каждую запись положат прод. 3) Узкие места по производительности после профилирования — конкретный hot path хочется иметь оптимальный план запроса с index hint-ами. 4) Миграции, ETL, отчёты, разовые скрипты — где модели только мешают. 5) Используешь специфичные фичи СУБД (PG: jsonb-операторы @>, GIN-индексы; MySQL: SQL_CALC_FOUND_ROWS; FULLTEXT MATCH AGAINST). Компромисс: Query Builder без модели ($db->table("users")->where(...)) — синтаксис ORM-стиля без overhead на hydration модели, часто лучшая золотая середина для read-heavy кода.',
+                'answer' => 'Выбор между ORM, Query Builder и сырым SQL — **прагматичный**: разные инструменты для разных задач.
+
+**Используй ORM (Eloquent), когда:**
+
+- **CRUD-код приложения** — 90% запросов это `find/where/save/delete`, ORM даёт большой выигрыш в скорости разработки.
+- **Доменная логика** крутится вокруг моделей со связями, событиями, валидацией.
+- **Команда большая** — ORM дисциплинирует и единообразит стиль.
+- **Нужны Resources/API** — Eloquent отлично интегрируется с API Resources, Sanctum, policies.
+- **Безопасность из коробки** — bindings.
+
+**Переходи на raw (`DB::select`, `DB::statement`, `DB::raw`) когда:**
+
+- **Тяжёлая аналитика** — оконные функции, рекурсивные CTE, сложные `GROUP BY` с агрегатами.
+- **Bulk-операции** — UPDATE/DELETE миллионов строк, `COPY`/`LOAD DATA INFILE`. ORM-events на каждую запись положат прод.
+- **Узкие места после профилирования** — нужны index hint-ы, конкретный план запроса.
+- **Миграции, ETL, отчёты, разовые скрипты** — где модели только мешают.
+- **Специфичные фичи СУБД**: PG `jsonb @>`, GIN-индексы; MySQL `SQL_CALC_FOUND_ROWS`, `FULLTEXT MATCH AGAINST`.
+
+**Золотая середина — Query Builder без модели:**
+
+```php
+DB::table(\'users\')->where(\'active\', true)->get();
+```
+
+Синтаксис ORM-стиля, **без overhead на hydration** модели. Часто лучший выбор для read-heavy кода и больших выборок.
+
+**Правило:** Eloquent — это **инструмент**, а не **догма**. В одном проекте могут спокойно жить и Eloquent в контроллерах, и raw SQL в репортах.',
                 'difficulty' => 3,
                 'topic' => 'laravel.eloquent_basics',
             ],

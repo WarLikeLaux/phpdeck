@@ -105,16 +105,59 @@ event(new OrderCreated($order));
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое идемпотентность простыми словами?',
-                'answer' => 'Идемпотентность - свойство операции, при котором её повторное выполнение даёт тот же результат что и первое. Простыми словами: нажать кнопку лифта 5 раз - то же что нажать 1 раз, лифт всё равно приедет один раз. В HTTP идемпотентны GET, PUT, DELETE; не идемпотентен POST. В очередях идемпотентность критична потому что at-least-once гарантирует возможные дубли - повторная обработка не должна списать деньги дважды.',
+                'answer' => '**Идемпотентность** — свойство операции, при котором её **повторное выполнение даёт тот же результат**, что и первое.
+
+Аналогия: **кнопка лифта** — нажми 1 раз или 5 раз, лифт всё равно приедет **один раз**.
+
+**Формально:** `f(f(x)) == f(x)`.
+
+**В HTTP** (RFC 9110):
+
+- **идемпотентные**: `GET`, `HEAD`, `PUT`, `DELETE`, `OPTIONS`
+- **не идемпотентен**: `POST` — каждый вызов создаёт новый ресурс
+- `PATCH` — **зависит от тела** (`{"status":"paid"}` — да; `{"qty":"+1"}` — нет)
+
+**Зачем критично в очередях:**
+
+- **at-least-once** доставка — стандарт у `Kafka`, `RabbitMQ` с ack, `SQS Standard`
+- **гарантирует дубли** при сбоях сети, перезапусках consumer-а, `visibility timeout` expiry
+- если handler **не идемпотентен** — повтор спишет деньги дважды, отправит две накладные, заминусует склад
+
+**Способы сделать handler идемпотентным:**
+
+1. **Уникальный ключ + INSERT с UNIQUE-constraint** — БД не даст вставить дубль (`idempotency_key`)
+2. **Дедупликация по `message_id`** — храним обработанные ID в Redis/таблице с TTL
+3. **Логически идемпотентный код** — `UPDATE status = "paid" WHERE id = ?` идемпотентен сам по себе, в отличие от `balance = balance + 100`
+4. **Условные операции** — `UPDATE ... WHERE status = "pending"` сработает один раз
+
+**Главное правило:** в распределённой системе **проектируй handler так, чтобы повтор был безопасен** — это всегда дешевле, чем гнаться за exactly-once.',
                 'code_example' => '<?php
-public function handle(PaymentMessage $msg): void {
+// Подход 1: уникальный ключ + транзакция
+public function handle(PaymentMessage $msg): void
+{
     if (Payment::where("idempotency_key", $msg->key)->exists()) {
-        return; // уже обработано
+        return; // уже обработано — выходим тихо
     }
+
     DB::transaction(function () use ($msg) {
-        Payment::create(["idempotency_key" => $msg->key, ...]);
+        Payment::create([
+            "idempotency_key" => $msg->key,   // UNIQUE constraint
+            "user_id" => $msg->userId,
+            "amount" => $msg->amount,
+        ]);
         $this->charge($msg);
     });
+}
+
+// Подход 2: условный UPDATE — идемпотентен сам по себе
+DB::update(
+    "UPDATE orders SET status = ? WHERE id = ? AND status = ?",
+    ["paid", $msg->orderId, "pending"]   // повтор не сработает: уже paid
+);
+
+// Подход 3: дедупликация по message_id в Redis
+if (!Redis::set("processed:{$msg->id}", 1, "EX", 86400, "NX")) {
+    return; // уже видели — пропускаем
 }',
                 'code_language' => 'php',
                 'difficulty' => 3,
@@ -139,49 +182,296 @@ return response()->json($result);',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между Pub/Sub и Message Queue?',
-                'answer' => 'Message Queue (work queue) - одно сообщение получает один консьюмер, после прочтения сообщение удаляется. Подходит для задач: одна джоба - один воркер. Pub/Sub - сообщение получают все подписчики, у каждого своя копия. Подходит для уведомлений: пользователь зарегистрировался → отправь email + создай профиль + начисли бонус. В Kafka реализуется через consumer groups, в RabbitMQ - через fanout exchange.',
+                'answer' => 'Два **способа доставки** сообщений с разной семантикой.
+
+| | **Message Queue** (work queue) | **Pub/Sub** (fanout) |
+|---|---|---|
+| **Кто получит сообщение** | **один** consumer из группы | **все** подписчики |
+| **Зачем нужно** | распределить **работу** | разослать **уведомление** |
+| **Метафора** | список задач, который разбирают исполнители | газета, на которую подписаны N читателей |
+| **Удаление** | после ack — пропадает | у каждого подписчика своя копия |
+| **Масштабирование** | добавил воркера — быстрее обработка | добавил подписчика — ещё один получатель |
+
+**Message Queue** — для **задач**: «отправить email», «сгенерить PDF», «обработать видео». Каждое задание должно выполниться **ровно один раз** (с учётом идемпотентности).
+
+**Pub/Sub** — для **событий**: «пользователь зарегистрировался» → одновременно `send_welcome_email`, `create_profile`, `add_bonus`, `notify_analytics`. Каждый подписчик делает **своё** независимо.
+
+**Реализации:**
+
+- **`Kafka`** — pub/sub через **разные `consumer group`** на одном топике. Внутри группы — work queue (партиции делятся между consumer-ами).
+- **`RabbitMQ`** — топология через `exchange`:
+  - `direct`/`topic` exchange → одна очередь → **work queue**
+  - `fanout` exchange → много очередей → **pub/sub**
+- **`Redis`** — `LPUSH/BRPOP` (queue) vs `PUBLISH/SUBSCRIBE` или `Streams` с consumer groups
+- **`SQS`** — только queue; для pub/sub комбинируется с **`SNS`** (SNS → N SQS)
+
+**В Laravel:** `Queue::push()` / `dispatch()` — work queue; **события + listeners** или `Broadcasting` (`Pusher`/`Reverb`) — pub/sub.',
+                'code_example' => '<?php
+// Work queue: несколько одинаковых воркеров делят сообщения
+SendInvoiceEmail::dispatch($order)->onQueue("emails");
+// supervisor запустил 4 копии: php artisan queue:work --queue=emails
+// → каждое сообщение получит ровно один воркер
+
+// Pub/sub через события: одно событие → много слушателей
+event(new OrderCreated($order));
+// → SendWelcomeEmailListener::handle()
+// → CreateInvoiceListener::handle()
+// → NotifyWarehouseListener::handle()
+// → TrackAnalyticsListener::handle()
+
+// RabbitMQ fanout
+// $channel->exchange_declare("order.events", "fanout");
+// $channel->basic_publish($msg, "order.events");
+// Все привязанные очереди получат копию
+
+// Kafka: разные consumer groups читают независимо
+// group.id=email-sender  → читает orders, шлёт письма
+// group.id=analytics     → читает те же orders, пишет в ClickHouse',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Dead Letter Queue?',
-                'answer' => 'Dead Letter Queue (DLQ) - очередь для сообщений, которые не получилось обработать после N попыток. Простыми словами: ящик "проблемные письма" куда идут те, что не смог разобрать почтальон. Зачем: не теряем сообщения, можно потом разобраться вручную или починить и повторить. В Laravel - failed_jobs таблица, в SQS/RabbitMQ - отдельная DLQ.',
+                'answer' => '**Dead Letter Queue** (`DLQ`) — отдельная очередь, куда **сбрасываются сообщения**, которые **не удалось обработать** после N попыток или которые «протухли» по времени.
+
+Аналогия: «**проблемные письма**» — на почте есть отдельный ящик для конвертов с нечитаемым адресом, чтобы они не блокировали сортировку остальных.
+
+**Когда сообщение попадает в DLQ:**
+
+- **превышен `max_attempts`** (обычно 3–5 retry)
+- истёк `message_ttl` (`x-message-ttl` в RabbitMQ)
+- очередь переполнилась (`x-max-length`)
+- consumer вернул `nack` без re-queue
+
+**Зачем нужна:**
+
+- **не теряем сообщения** — даже неудачные хранятся для разбора
+- **не блокируем pipeline** — «отравленное» сообщение (`poison message`) не крутится бесконечно, не съедает воркера
+- **дебаг** — видно, что именно ломалось, можно проиграть после фикса
+- **алертинг** — рост DLQ = инцидент, заводим алерт
+
+**Реализации:**
+
+- **`RabbitMQ`** — настраивается через `x-dead-letter-exchange`/`x-dead-letter-routing-key`
+- **`SQS`** — встроенное поле `Redrive Policy` со ссылкой на отдельную DLQ
+- **`Kafka`** — нет нативного DLQ, делают руками: при N сбоях продьюсят в топик `orders.DLT`
+- **`Laravel`** — таблица `failed_jobs` (`php artisan queue:retry all`, `queue:flush`)
+
+**Что обычно сохраняют в DLQ-сообщении:**
+
+- оригинальное тело
+- **последний exception** + stack trace
+- timestamp первой попытки и сбоя
+- счётчик попыток
+
+**Анти-паттерн:** автоматический бесконечный retry **в той же очереди** без backoff — `poison message` блокирует обработку всего остального.',
+                'code_example' => '<?php
+// Laravel — failed_jobs работает как DLQ из коробки
+class ProcessPayment implements ShouldQueue
+{
+    public int $tries = 3;                    // 3 попытки
+    public array $backoff = [10, 60, 300];    // exponential backoff
+
+    public function handle(): void
+    {
+        $this->gateway->charge($this->order);
+    }
+
+    public function failed(Throwable $e): void
+    {
+        // вызовется после $tries попыток — джоба ушла в failed_jobs
+        Log::error("payment failed", [
+            "order_id" => $this->order->id,
+            "error" => $e->getMessage(),
+        ]);
+        Alert::critical("Payment in DLQ: {$this->order->id}");
+    }
+}
+
+// Управление DLQ
+// php artisan queue:failed              — посмотреть
+// php artisan queue:retry {id}          — повторить
+// php artisan queue:flush               — очистить',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое backpressure?',
-                'answer' => 'Backpressure - механизм когда медленный консьюмер "тормозит" быстрого продюсера, чтобы не переполнить очередь и не уронить систему. Простыми словами: на конвейере работник не успевает - конвейер замедляется или останавливается. Реализуется через ограничение размера очереди (если полна - блокируем producer), throttling, reactive streams (RxJS, Project Reactor). Без backpressure система ломается под пиками.',
+                'answer' => '**Backpressure** (**обратное давление**) — механизм, при котором **медленный consumer заставляет producer-а замедлиться**, чтобы не переполнить очередь и не уронить систему.
+
+Аналогия: **конвейер на заводе** — если рабочий в конце не успевает, конвейер замедляется или останавливается. Если бы он гнал на той же скорости, детали падали бы на пол.
+
+**Зачем нужен:**
+
+- защита от **OOM**: очередь без ограничения вырастет до памяти/диска, **процесс упадёт**
+- защита от **каскадного отказа**: переполненная очередь → producer ждёт → API таймаутится → клиент ретраит → ещё хуже
+- адаптация к **пикам нагрузки** без необходимости масштабироваться мгновенно
+
+**Способы реализации:**
+
+- **bounded queue** — лимит на размер; при заполнении producer **блокируется** или получает ошибку
+- **`pause`/`resume`** на стороне consumer-а — в Kafka вызывается `consumer.pause(partitions)`, когда внутренний буфер обработки заполнен
+- **`prefetch` / QoS** — `RabbitMQ` `basic.qos(prefetch_count=10)` — не давать consumer-у больше 10 необработанных
+- **rate limiting на producer** — `token bucket` ограничивает RPS
+- **reactive streams** — `RxJS`, `Project Reactor`: subscriber **запрашивает** N элементов через `request(n)`, producer не шлёт больше
+- **TCP-style flow control** — окно подтверждений
+
+**Стратегии при переполнении** (`overflow policy`):
+
+- **block** — producer ждёт, пока освободится место
+- **drop newest / drop oldest** — терять данные сознательно (метрики, телеметрия)
+- **fail fast** — вернуть `503` клиенту с `Retry-After`
+- **spill to disk** — записать в файл, потом догнать
+
+**Без backpressure:** система ломается под пиками, ловите cascading failures и thundering herd при восстановлении.',
+                'code_example' => '<?php
+// RabbitMQ — QoS ограничивает количество unacknowledged сообщений
+$channel->basic_qos(
+    prefetch_size: 0,
+    prefetch_count: 10,   // не давать больше 10 in-flight
+    a_global: false,
+);
+
+// Kafka — pause/resume на партиции
+if ($buffer->size() > $maxBuffer) {
+    $consumer->pause($assignedPartitions);
+} elseif ($buffer->size() < $minBuffer) {
+    $consumer->resume($assignedPartitions);
+}
+
+// Bounded queue в приложении (PHP-ish псевдокод)
+if ($queue->size() >= $queue->capacity()) {
+    throw new QueueFullException("backpressure: producer must slow down");
+    // или вернуть 503 Retry-After: 5
+}
+
+// Laravel — throttle middleware на producer-стороне
+Route::post("/api/events", [EventController::class, "store"])
+    ->middleware("throttle:100,1");  // 100 req/min от клиента',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Apache Kafka простыми словами?',
-                'answer' => 'Kafka - распределённый лог сообщений с высокой пропускной способностью. Простыми словами: огромный журнал, куда непрерывно дописываются события, и любой может читать с любой позиции. Топик (topic) - категория событий. Партиция (partition) - часть топика, упорядоченная последовательность. Offset - позиция сообщения в партиции. Consumer запоминает свой offset и продолжает с него после рестарта. Используется для event streaming, аналитики, CDC.',
+                'answer' => '**`Kafka`** — **распределённый append-only лог** сообщений с высокой пропускной способностью (миллионы msg/s на брокер).
+
+В отличие от классических брокеров (`RabbitMQ`, `SQS`), Kafka **ничего не удаляет** при чтении. Сообщения хранятся **по retention** (часы/дни/forever), и consumer **сам держит offset** — может перечитать историю.
+
+Аналогия: огромный **журнал** — события дописываются в конец, любой подписчик читает **с любой позиции** в своём темпе.
+
+**Ключевые сущности:**
+
+- **Topic** — именованный поток событий (`orders`, `clicks`, `user-events`)
+- **Partition** — топик физически разбит на N **упорядоченных** append-only логов. Параллелизм = число партиций
+- **Offset** — позиция сообщения в партиции (монотонно растущий long)
+- **Broker** — узел кластера, хранит партиции
+- **Replica** — копия партиции на других брокерах для отказоустойчивости (обычно `replication.factor=3`)
+- **Producer** — пишет в топик
+- **Consumer** + **consumer group** — читает; партиции делятся между членами группы
+
+**Модель доставки:** **pull** (consumer сам опрашивает) vs push в RabbitMQ. Это даёт натуральный backpressure.
+
+**Где применяется:**
+
+- **event streaming** — `OrderCreated`, `PaymentProcessed` в реальном времени
+- **аналитика** — потоковая обработка (Kafka Streams, Flink, ClickHouse)
+- **CDC** (Change Data Capture) — `Debezium` тянет из WAL Postgres → Kafka
+- **log aggregation** — центральный лог-сервер от всех сервисов
+- **event sourcing** — топик как источник правды
+
+**Чем отличается от `RabbitMQ`:**
+
+| | **Kafka** | **RabbitMQ (classic/quorum)** |
+|---|---|---|
+| Модель | log + offset | queue + ack |
+| Удаление | по retention | после ack |
+| Routing | по partition (hash key) | через exchanges |
+| Replay | да | нет |
+| Throughput | миллионы msg/s | сотни тысяч |',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Event Sourcing простыми словами?',
-                'answer' => 'Event Sourcing - вместо хранения текущего состояния хранится последовательность событий, изменивших состояние. Простыми словами: банковский счёт - не хранится "баланс 1000", хранятся события "пополнили 500", "пополнили 700", "сняли 200". Текущий баланс получается проигрыванием событий. Плюсы: полный аудит, можно посмотреть состояние на любой момент, легко перестроить аналитику. Минусы: сложнее, миграции схемы событий тяжелы.',
-                'code_example' => '<?php
-// События
-class MoneyDeposited { public function __construct(public int $amount) {} }
-class MoneyWithdrawn { public function __construct(public int $amount) {} }
+                'answer' => '**Event Sourcing** — паттерн, при котором **состояние** сущности хранится **не как текущий снимок**, а как **последовательность событий**, которые к нему привели.
 
-// Восстановление состояния
-function getBalance(array $events): int {
-    $balance = 0;
-    foreach ($events as $event) {
-        if ($event instanceof MoneyDeposited) $balance += $event->amount;
-        if ($event instanceof MoneyWithdrawn) $balance -= $event->amount;
+**Классический CRUD:** `accounts(id, balance)` → `balance = 1000`. Видим только текущее значение, история теряется.
+
+**Event Sourcing:** `events(stream_id, version, type, payload, occurred_at)`:
+
+```
+account-42, v1, MoneyDeposited, {amount: 500}
+account-42, v2, MoneyDeposited, {amount: 700}
+account-42, v3, MoneyWithdrawn, {amount: 200}
+```
+
+Текущий баланс **вычисляется** проигрыванием событий: `0 + 500 + 700 - 200 = 1000`.
+
+**Плюсы:**
+
+- **полный аудит из коробки** — кто, когда, что изменил, без отдельной audit-таблицы
+- **time travel** — состояние на любой момент в прошлом
+- **легко перестроить read-модели** (`projections`) — изменил формат отчёта → переиграл события
+- хорошо ложится на **`Kafka`** (топик = event store)
+- **естественный fit** для финансов, бухгалтерии, любых доменов с строгой регуляторкой
+
+**Минусы:**
+
+- **сложнее CRUD** — кривая обучения для команды
+- **миграции схемы событий** болезненны: старые события нельзя «переписать», надо `upcasting`
+- **eventual consistency** в read-моделях
+- **производительность чтения** — проигрывание тысяч событий долгое (решается **snapshot-ами** через каждые N событий)
+- сложно с **`GDPR` right to erasure** — события «не удаляются»
+
+**Часто путают с CQRS:** это **разные паттерны**. Event Sourcing — *способ хранить* write-модель. CQRS — *разделение* модели чтения и записи. Можно делать CQRS без ES (write в Eloquent, read в Elasticsearch) и наоборот, но **связка ES+CQRS** — каноническая (без CQRS чтение текущего состояния через replay медленное).
+
+**Когда брать:** строгий аудит, сложный домен с временной семантикой (отмены, корректировки), нужны разные view одних данных. **Когда не брать:** простой CRUD — ES добавит сложность без выгоды.',
+                'code_example' => '<?php
+// События (immutable value objects)
+final class MoneyDeposited
+{
+    public function __construct(public readonly int $amount) {}
+}
+
+final class MoneyWithdrawn
+{
+    public function __construct(public readonly int $amount) {}
+}
+
+// Aggregate: восстанавливает state из истории событий
+final class Account
+{
+    private int $balance = 0;
+
+    public static function fromHistory(array $events): self
+    {
+        $account = new self();
+        foreach ($events as $event) {
+            $account->apply($event);
+        }
+        return $account;
     }
-    return $balance;
-}',
+
+    private function apply(object $event): void
+    {
+        match (true) {
+            $event instanceof MoneyDeposited => $this->balance += $event->amount,
+            $event instanceof MoneyWithdrawn => $this->balance -= $event->amount,
+        };
+    }
+
+    public function balance(): int { return $this->balance; }
+}
+
+// Snapshot каждые 100 событий — оптимизация
+// reconstruct: snapshot_v100 + events[101..current]',
                 'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
@@ -276,28 +566,236 @@ SELECT * FROM pg_replication_slots;
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое consumer group и как Kafka распределяет партиции между потребителями?',
-                'answer' => 'Consumer group — это группа потребителей с одним group.id, между которыми Kafka делит партиции топика: каждая партиция в момент времени читается только одним потребителем из группы. Если у топика 10 партиций и 2 потребителя в группе, каждому достанется по 5; если потребитель упадёт, оставшийся получит все 10. Это и есть механизм горизонтального масштабирования и отказоустойчивости. Разные consumer group читают независимо и каждая держит свой offset.',
+                'answer' => '**Consumer group** — группа потребителей с **одним `group.id`**, между которыми Kafka **делит партиции** топика.
+
+**Главное правило:** **каждая партиция** в момент времени читается **ровно одним** consumer-ом из группы.
+
+**Как делятся партиции** (assignment):
+
+- 10 партиций + 2 consumer-а → каждому **по 5**
+- 10 партиций + 10 consumer-ов → каждому **по 1** (максимальный параллелизм)
+- 10 партиций + 15 consumer-ов → 10 работают, **5 простаивают** (`partitions` — потолок параллелизма)
+- один consumer упал → оставшимся передаются его партиции (**rebalance**)
+
+**Зачем такая модель:**
+
+- **горизонтальное масштабирование** — добавил consumer → быстрее обработка
+- **отказоустойчивость** — падение consumer-а не теряет сообщения, их подхватит другой
+- **гарантия порядка по ключу** — все сообщения с одним `hash(key)` идут в одну партицию → к одному consumer-у → в порядке
+
+**Разные consumer groups читают НЕЗАВИСИМО:**
+
+- `group.id=email-sender` читает топик `orders` и шлёт письма
+- `group.id=analytics` читает **тот же топик** в свою сторону, **свой offset**
+- → это и есть **pub/sub поверх Kafka**
+
+**Assignment strategies:**
+
+- **`range`** (default) — партиции делятся диапазонами; неравномерно при разном числе топиков
+- **`round-robin`** — равномерно, но при rebalance все партиции переезжают
+- **`sticky`** — старается оставить партиции у тех же consumer-ов
+- **`cooperative-sticky`** — incremental rebalance, не stop-the-world (с Kafka 2.4+)
+
+**Подводный камень:** при rebalance группа **не потребляет вообще** (классический протокол) — поэтому большие группы и нестабильные сети больно.',
+                'code_example' => '<?php
+// php-rdkafka — consumer в группе
+$conf = new RdKafka\\Conf();
+$conf->set("group.id", "email-sender");           // имя группы
+$conf->set("bootstrap.servers", "kafka:9092");
+$conf->set("auto.offset.reset", "earliest");
+$conf->set("partition.assignment.strategy", "cooperative-sticky");
+
+$consumer = new RdKafka\\KafkaConsumer($conf);
+$consumer->subscribe(["orders"]);
+
+while (true) {
+    $message = $consumer->consume(1000);
+
+    if ($message->err === RD_KAFKA_RESP_ERR_NO_ERROR) {
+        processOrder($message->payload);
+        $consumer->commit($message);   // фиксируем offset для этой группы
+    }
+}
+
+// Запустили 4 копии — Kafka раздаст 10 партиций (по 2-3 на копию)
+// Параллельно другая группа "analytics" читает те же сообщения независимо',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое offset в Kafka и как он коммитится?',
-                'answer' => 'Offset — позиция сообщения внутри партиции, монотонно растущее число; consumer group хранит «последний обработанный offset» в специальном внутреннем топике __consumer_offsets. Три стратегии коммита. Autocommit (enable.auto.commit=true) — клиент периодически (auto.commit.interval.ms) сам фиксирует offsets уже выданных сообщений; если упасть после autocommit, но до обработки — потеря (at-most-once). Manual commit ПОСЛЕ обработки (commitSync/Async) — стандарт на проде: при падении посередине offset не зафиксирован и сообщение придёт ещё раз (at-least-once, нужна идемпотентность). Транзакционный commit вместе с записью результата в Kafka даёт exactly-once в рамках Kafka (read-process-write), но при выходе наружу (БД, HTTP) консистентность обеспечивает уже consumer.',
+                'answer' => '**Offset** — **позиция сообщения внутри партиции**, монотонно растущее число (long, 64 бита).
+
+Каждое сообщение в партиции имеет свой offset: 0, 1, 2, … Consumer group хранит **«последний обработанный offset»** в специальном внутреннем топике **`__consumer_offsets`**.
+
+**Три стратегии коммита** — главный выбор семантики доставки:
+
+| Стратегия | Что делает | Гарантия |
+|---|---|---|
+| **Autocommit** (`enable.auto.commit=true`) | клиент каждые `auto.commit.interval.ms` (5 сек по умолчанию) коммитит **уже выданные** сообщения | **at-most-once** — упал между autocommit и обработкой → **потеря** |
+| **Manual после обработки** (`commitSync`/`commitAsync`) | код **сам** фиксирует offset **после успешной обработки** | **at-least-once** — упал до commit → сообщение придёт **ещё раз** → нужна идемпотентность |
+| **Transactional** | offset + результат в **одной транзакции Kafka** | **exactly-once** *внутри Kafka* (read-process-write) |
+
+**Стандарт на проде:** manual commit **после** обработки + идемпотентный handler.
+
+**Подводный камень autocommit:**
+
+```
+1. poll() вернул 10 сообщений
+2. обработал первые 3
+3. сработал autocommit — закоммитил offset последнего из 10 (!)
+4. упал — оставшиеся 7 потеряны
+```
+
+**`commitSync` vs `commitAsync`:**
+
+- `commitSync` — блокирующий, гарантия, но снижает throughput
+- `commitAsync` — fire-and-forget, быстрее, но при сбое возможна **потеря** последнего commit (хотя сообщения переобработаются)
+- паттерн: `commitAsync` каждый poll + `commitSync` при штатном shutdown
+
+**Exactly-once вне Kafka** (БД, HTTP) транзакцией Kafka **не достичь** — там работает связка at-least-once + идемпотентный consumer (`effectively-once`).',
+                'code_example' => '<?php
+// php-rdkafka — manual commit после обработки
+$conf->set("enable.auto.commit", "false");      // отключаем autocommit
+$conf->set("auto.offset.reset", "earliest");
+
+while (true) {
+    $message = $consumer->consume(1000);
+    if ($message->err !== RD_KAFKA_RESP_ERR_NO_ERROR) continue;
+
+    try {
+        DB::transaction(function () use ($message) {
+            // 1. бизнес-логика (идемпотентная — по message key)
+            processOrder($message);
+
+            // 2. дедуп по offset+partition в той же транзакции
+            DB::table("processed_offsets")->insert([
+                "topic" => $message->topic_name,
+                "partition" => $message->partition,
+                "offset" => $message->offset,
+            ]);
+        });
+
+        // 3. только теперь — commit в Kafka
+        $consumer->commit($message);   // at-least-once + idempotent = effectively-once
+    } catch (Throwable $e) {
+        Log::error("failed offset {$message->offset}", ["e" => $e]);
+        // НЕ коммитим — сообщение придёт ещё раз
+    }
+}',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Зачем в Kafka партиционирование по ключу и как оно работает?',
-                'answer' => 'Когда у сообщения задан ключ, Kafka выбирает партицию по hash(key) % num_partitions (по умолчанию Murmur2). Все сообщения с одним ключом всегда попадают в одну и ту же партицию, а внутри партиции порядок строго сохраняется — это даёт глобальный порядок для конкретного ключа (например, по user_id все события одного пользователя обрабатываются последовательно). Без ключа сообщения распределяются round-robin или sticky-partitioner-ом, и порядок гарантируется только в рамках одной партиции.',
+                'answer' => '**Партиционирование по ключу** — главный инструмент для **гарантии порядка** обработки в Kafka.
+
+**Как выбирается партиция:**
+
+- **с ключом** → `partition = hash(key) % num_partitions` (default: `Murmur2`)
+- **без ключа** → round-robin или `sticky partitioner` (батчит в одну партицию, потом меняет)
+- **явная партиция** → можно указать прямо в producer
+
+**Свойства партиционирования по ключу:**
+
+- все сообщения с **одинаковым `key`** → **одна и та же партиция**
+- внутри партиции порядок **строго сохраняется** (append-only лог)
+- **глобальный порядок** для конкретного `key` через весь pipeline: producer → partition → consumer
+
+**Зачем это нужно — типичные кейсы:**
+
+- **порядок по сущности** — `key = order_id`: все события заказа (`OrderCreated` → `OrderPaid` → `OrderShipped`) обрабатываются **строго последовательно** одним consumer-ом
+- **session affinity** — `key = user_id`: события пользователя в правильном порядке
+- **денежные операции** — `key = account_id`: транзакции счёта без race conditions
+- **stateful processing** — Kafka Streams агрегирует по ключу локально, не пересылая по сети
+
+**Подводные камни:**
+
+- **изменение `num_partitions`** ломает раскладку: hash тех же ключей попадёт в другие партиции → **порядок ломается**. Партиции **только добавляют** в конце или через mirror в новый топик
+- **hot key** — `key = country_id`, в России много трафика → одна партиция перегружена. Решение: `key = user_id`, не `country`
+- **без ключа порядок** есть только **внутри одной партиции**, между партициями — нет
+- **гарантия порядка теряется при retry** producer-а, если не включён `enable.idempotence=true` и `max.in.flight.requests.per.connection > 1`',
+                'code_example' => '<?php
+// Producer с ключом — все события заказа идут в одну партицию
+$producer = new RdKafka\\Producer($conf);
+$topic = $producer->newTopic("orders");
+
+foreach ($events as $event) {
+    $topic->produce(
+        RD_KAFKA_PARTITION_UA,   // unassigned — Kafka выберет по hash(key)
+        0,
+        json_encode($event),
+        key: (string) $event[\'order_id\']   // ← ключ = order_id
+    );
+}
+
+// Producer без ключа — round-robin/sticky
+$topic->produce(RD_KAFKA_PARTITION_UA, 0, json_encode($telemetryEvent));
+// → распределится равномерно, но порядок только внутри партиции
+
+// Кастомный partitioner — например, по тенанту
+$conf->set("partitioner", "murmur2_random");
+
+// Гарантия порядка при ретраях
+$conf->set("enable.idempotence", "true");
+$conf->set("max.in.flight.requests.per.connection", "5");  // safe с idempotence',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что означают уровни acks=0, acks=1, acks=all у Kafka-продюсера?',
-                'answer' => 'acks=0 — продюсер не ждёт подтверждения вообще, максимальная скорость и потеря данных при сбое сети или брокера. acks=1 — лидер партиции записал сообщение и ответил, но если лидер упадёт до репликации, сообщение пропадёт. acks=all (или -1) — лидер ждёт, пока все ISR подтвердят запись, и только потом отвечает; это самый надёжный режим. Для durability acks=all комбинируют с min.insync.replicas>=2 и enable.idempotence=true.',
+                'answer' => '`acks` — настройка producer-а, задающая **компромисс между скоростью и надёжностью**. Какой ответ от брокера достаточен, чтобы считать запись успешной.
+
+| `acks` | Ждём | Гарантия | Латентность | Когда брать |
+|---|---|---|---|---|
+| **`0`** | ничего, fire-and-forget | **at-most-once** — теряем при любом сбое | минимальная | метрики, телеметрия, логи |
+| **`1`** (default до 3.0) | leader записал | **теряем при падении leader до репликации** | средняя | средний компромисс |
+| **`all`** / **`-1`** | leader + все **ISR** подтвердили | **at-least-once** — не теряем, пока жив хоть 1 ISR | максимальная | финансы, заказы, важные события |
+
+**Что такое `ISR` (In-Sync Replicas):** реплики партиции, которые **догнали leader-а** в пределах `replica.lag.time.max.ms` и считаются синхронными. Только из ISR может быть выбран новый leader.
+
+**Боевой набор для durability:**
+
+```
+acks=all
+min.insync.replicas=2          # требуем хотя бы 2 ISR
+enable.idempotence=true        # защита от дублей при ретраях
+retries=Integer.MAX_VALUE      # бесконечные ретраи
+replication.factor=3           # на топик
+```
+
+**Что значит `min.insync.replicas=2`** при `acks=all`: если ISR упал ниже 2 (один брокер отвалился) — producer получает `NotEnoughReplicasException` вместо тихой потери. Лучше **остановить запись**, чем потерять данные.
+
+**Подводный камень:** `acks=all` + `replication.factor=3` + `min.insync.replicas=1` — теоретически можно потерять данные после повышения отставшей реплики (нужно `min.insync.replicas=2`).
+
+**Изменение с Kafka 3.0:** дефолт `acks` поменяли на **`all`** (раньше был `1`) — сообщество признало, что надёжность важнее по умолчанию.',
+                'code_example' => '# Producer config для durability (financial events)
+acks=all
+enable.idempotence=true
+min.insync.replicas=2          # на стороне топика
+retries=2147483647             # MAX_INT
+max.in.flight.requests.per.connection=5
+delivery.timeout.ms=120000
+replication.factor=3
+
+# Producer config для throughput (metrics, logs)
+acks=1                          # или 0, если потеря допустима
+batch.size=65536
+linger.ms=20
+compression.type=lz4
+
+# Создание топика с правильной durability
+kafka-topics.sh --create --topic orders \\
+    --replication-factor 3 \\
+    --partitions 12 \\
+    --config min.insync.replicas=2',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],
@@ -346,7 +844,64 @@ SELECT * FROM pg_replication_slots;
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое consumer lag в Kafka и как с ним бороться?',
-                'answer' => 'Consumer lag — это разница между последним offset партиции и offset, до которого дочитала consumer group; растущий лаг означает, что потребитель не успевает за продюсером. Лечат масштабированием группы (но не больше числа партиций — лишние потребители простаивают), оптимизацией обработчика, batch-обработкой, асинхронной выгрузкой тяжёлых side-effects. Мониторят через kafka-consumer-groups.sh, JMX-метрику records-lag-max и инструменты вроде Burrow и Prometheus. Если лаг растёт даже при простаивающих CPU — часто виноваты «штормы» rebalance или паузы GC.',
+                'answer' => '**Consumer lag** — **разница между последним offset партиции и offset, до которого дочитал consumer group**.
+
+`lag = log-end-offset - committed-offset`
+
+Растущий лаг означает: **producer пишет быстрее, чем consumer успевает обрабатывать**. Это самая важная метрика здоровья Kafka-пайплайна.
+
+**Чем грозит:**
+
+- **задержка обработки** — сообщения в Kafka, но обработка ещё впереди (события заказа применятся через час)
+- **переполнение retention** — если лаг растёт быстрее `retention.ms`, **сообщения удалятся** до обработки → потеря
+- **каскадные эффекты** — downstream не получает данные вовремя
+
+**Как лечить (по порядку):**
+
+1. **Масштабирование группы** — добавить consumer-ов, но **не больше числа партиций** (лишние простаивают). Если упёрлись — увеличить **число партиций топика**.
+2. **Оптимизация handler-а** — медленный SQL, синхронный HTTP-вызов в обработке → профилировать, оптимизировать
+3. **Batch processing** — обрабатывать пачкой, не по одному (`max.poll.records=500`)
+4. **Асинхронная выгрузка** тяжёлых side-effects — сложил в БД, ответ снаружи делает отдельный воркер
+5. **Уменьшить размер сообщений** или **сжимать** (`compression.type=lz4`)
+6. **Параллелизм внутри consumer-а** — отдельный thread pool на обработку при синхронной poll
+
+**Мониторинг:**
+
+- **`kafka-consumer-groups.sh --describe --group <id>`** — текущий лаг по партициям
+- **JMX-метрика `records-lag-max`** (consumer-side)
+- **`Burrow`** (LinkedIn) — мониторинг лага со status-логикой (OK/WARNING/ERROR)
+- **`kafka-exporter` + Prometheus + Grafana** — алерты по тренду
+
+**Если лаг растёт при простаивающих CPU:**
+
+- **rebalance storms** — нестабильные сети, GC-паузы → `session.timeout.ms` increase, `cooperative-sticky` assignor
+- **slow poll** — превышение `max.poll.interval.ms` (default 5 мин) → consumer выкидывается из группы
+- **slow downstream** — БД упёрлась, HTTP-апстрим тормозит
+- **hot partition** — все сообщения с одним ключом → одна партиция → один consumer перегружен',
+                'code_example' => '# Посмотреть лаг по группе
+kafka-consumer-groups.sh --bootstrap-server kafka:9092 \\
+    --describe --group order-processor
+
+# GROUP            TOPIC   PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG
+# order-processor  orders  0          1500            1500            0
+# order-processor  orders  1          800             4500            3700   ← проблема
+# order-processor  orders  2          1200            1250            50
+
+# Алерт в Prometheus
+# alert: HighKafkaConsumerLag
+# expr: kafka_consumergroup_lag > 10000
+# for: 5m
+# annotations:
+#   summary: "Consumer group {{ $labels.consumergroup }} lag = {{ $value }}"
+
+# Лечение: больше consumer-ов
+# Текущее: 3 consumer-а, 12 партиций → каждый по 4
+# Увеличиваем до 12 consumer-ов → каждый по 1 → max parallelism
+# Если всё ещё лагает — увеличиваем партиции до 24, потом до 48
+
+# Профилировать handler
+# php artisan queue:work --memory=128 --timeout=60 -vv',
+                'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.messaging_queues',
             ],

@@ -95,7 +95,33 @@ abort(404, \'Не найдено\');',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое FormRequest и зачем он нужен?',
-                'answer' => 'FormRequest - это специальный класс для валидации входящих данных, отдельно от контроллера. Когда вы указываете FormRequest в типе параметра контроллера, Laravel автоматически запустит валидацию ДО выполнения метода. Если валидация не прошла - вернётся ошибка 422 (или редирект с ошибками).',
+                'answer' => '**`FormRequest`** — специальный класс-наследник `Illuminate\\Foundation\\Http\\FormRequest`, инкапсулирующий **валидацию и авторизацию** входящих данных **отдельно от контроллера**.
+
+**Как подключается:** type-hint в параметре метода контроллера — Laravel сам резолвит его через DI, **до** выполнения метода запускает `authorize()` и `rules()`.
+
+**Что внутри:**
+
+| Метод | Что делает |
+| --- | --- |
+| `rules()` | Массив правил валидации |
+| `authorize()` | `true`/`false` — можно ли пользователю выполнить запрос (если `false` → **`403`**) |
+| `messages()` | Кастомные сообщения для конкретных ошибок |
+| `attributes()` | Человекочитаемые имена полей |
+| `prepareForValidation()` | Нормализация **до** валидации (`$this->merge([...])`) |
+| `withValidator($v)` | After-callback с кастомными правилами |
+| `passedValidation()` / `failedValidation()` | Хуки после успеха/провала |
+
+**Что даёт:**
+
+- **Тонкий контроллер** — он берёт уже валидные данные через `$request->validated()`.
+- **Переиспользование** — `StoreUserRequest` работает в `store`/`update`/импортах.
+- **Тестируется отдельно** — можно гонять unit-тесты на правилах без HTTP.
+- **Безопасный mass assignment** — `validated()` отдаёт только описанные в `rules()` поля.
+
+**Поведение при провале:**
+
+- HTML-запрос → **редирект назад** с ошибками в сессии и `old()` для полей.
+- JSON-запрос → ответ **`422 Unprocessable Entity`** с массивом ошибок.',
                 'code_example' => 'class StoreUserRequest extends FormRequest {
     public function authorize(): bool {
         return true;
@@ -115,7 +141,26 @@ abort(404, \'Не найдено\');',
             [
                 'category' => 'Laravel',
                 'question' => 'Какие методы есть у FormRequest для кастомизации валидации?',
-                'answer' => 'rules() - правила. messages() - кастомные сообщения. attributes() - читаемые имена полей. authorize() - проверка прав. prepareForValidation() - изменить данные ПЕРЕД валидацией. withValidator() - добавить кастомные правила/after-callback. passedValidation() - после успешной валидации. failedValidation() - переопределить поведение при ошибке.',
+                'answer' => 'Полный набор хуков жизненного цикла FormRequest:
+
+| Метод | Когда зовётся | Зачем |
+| --- | --- | --- |
+| `prepareForValidation()` | **До** валидации | Нормализовать вход — `merge`, `replace`, тримминг, `Str::slug` |
+| `authorize()` | После prepare | Вернуть `true`/`false` — можно ли запросить |
+| `rules()` | Перед валидацией | Правила; могут зависеть от `$this->route(\'id\')` |
+| `messages()` | При формировании ошибок | Тексты под конкретные правила |
+| `attributes()` | При формировании ошибок | Имена полей по-человечески (`:attribute` в сообщениях) |
+| `withValidator($v)` | После создания валидатора | Кастомные **after-rules**, кросс-полевые проверки |
+| `passedValidation()` | После успеха | Доп. обработка (например, поднять данные в DTO) |
+| `failedValidation($v)` | При провале | Переопределить ответ (часто — для API) |
+| `failedAuthorization()` | При `authorize() === false` | Кастомный 403 |
+
+**Важные тонкости:**
+
+- `prepareForValidation()` выполняется **до `authorize()`** — поэтому `authorize()` уже видит нормализованные данные.
+- В `rules()` можно делать **разные** правила под `POST`/`PUT`: `match ($this->method()) { ... }` или ветка по `$this->route(\'user\')`.
+- Кросс-полевые правила (`title !== body`) удобнее в `withValidator()->after(...)` — там доступен полный массив значений.
+- Для API можно переопределить `failedValidation()`, чтобы всегда отдавать единый JSON-формат ошибок.',
                 'code_example' => 'public function prepareForValidation(): void {
     $this->merge([\'slug\' => Str::slug($this->title)]);
 }
@@ -134,7 +179,35 @@ public function withValidator($validator): void {
             [
                 'category' => 'Laravel',
                 'question' => 'Как создать кастомное правило валидации?',
-                'answer' => 'Через artisan make:rule создать класс, реализующий ValidationRule (Laravel 10+) с методом validate. Также можно использовать closure-правило прямо в массиве rules. Класс Rule предоставляет готовые сложные правила: Rule::unique, Rule::exists, Rule::in, Rule::enum(EnumClass::class), Rule::dimensions(), Rule::array([...]). Rule::when($condition, $rules, $defaultRules) - условно подключить набор правил.',
+                'answer' => 'Три способа, по возрастанию переиспользуемости:
+
+**1) Class-based (рекомендуется в L10+):**
+
+- `php artisan make:rule Uppercase` — класс, реализующий **`Illuminate\\Contracts\\Validation\\ValidationRule`** с методом `validate($attribute, $value, Closure $fail)`.
+- При нарушении — звать `$fail(\'сообщение\')` (можно `->translate()` для i18n).
+- Доступ к другим значениям формы — через **`DataAwareRule`** (`setData`) и **`ValidatorAwareRule`** (`setValidator`).
+
+**2) Closure прямо в массиве `rules()`:**
+
+```php
+\'token\' => [\'required\', function ($attr, $value, $fail) {
+    if (! str_starts_with($value, \'tok_\')) $fail(\'Неверный формат.\');
+}]
+```
+
+**3) Готовые сложные правила из `Illuminate\\Validation\\Rule`:**
+
+| Хелпер | Что делает |
+| --- | --- |
+| `Rule::unique(\'users\', \'email\')->ignore($id)` | Уникальность с исключением своей записи (важно для `update`) |
+| `Rule::exists(\'users\', \'id\')->where(\'active\', 1)` | Существование + доп. условия |
+| `Rule::in([...])`, `Rule::notIn([...])` | Перечисления |
+| `Rule::enum(Status::class)` | Бэк-энам |
+| `Rule::dimensions()->minWidth(100)` | Размеры изображения |
+| `Rule::array([...])` | Только указанные ключи |
+| `Rule::when($cond, $rules, $else)` | Условный набор правил |
+
+**Когда выбирать что:** разовый чек — closure; повторяющаяся бизнес-логика — отдельный класс; чисто библиотечная валидация — `Rule::*`.',
                 'code_example' => 'class Uppercase implements ValidationRule {
     public function validate(string $attribute, mixed $value, Closure $fail): void {
         if (strtoupper($value) !== $value) {
@@ -170,7 +243,34 @@ class StoreUserRequest extends FormRequest {
             [
                 'category' => 'Laravel',
                 'question' => 'Как валидировать вложенные массивы и поля внутри них в Laravel (items.*.id, items.*.qty)?',
-                'answer' => 'Laravel поддерживает dot-нотацию для вложенных полей и звёздочку * как универсальный матчер по индексам массива. Базовое: "items" => "required|array|min:1" - сам массив непустой; "items.*.id" => "required|integer|exists:products,id" - КАЖДЫЙ элемент массива должен иметь поле id, существующее в products.id; "items.*.qty" => "required|integer|min:1" - количество позиций. Проверка существования через exists делается ОДНИМ запросом для всех значений (Laravel под капотом делает WHERE id IN (...)). Это критично: наивный foreach с проверкой по одному превратит ~N запросов в БД. Для unique аналогично: "emails.*" => "unique:users,email". Для кастомных messages используется такой же паттерн ключей: "items.*.id.exists" => "продукта :input не существует". Подводный камень: при правиле required_with на вложенном уровне писать "items.*.qty" => "required_with:items.*.id" - синтаксис тот же. Для условной валидации зависящей от родителя - withValidator + after callback.',
+                'answer' => 'Laravel поддерживает **dot-нотацию** для вложенных полей и **`*`** как универсальный матчер по индексам массива.
+
+**Базовый шаблон валидации списка позиций:**
+
+| Ключ | Что проверяет |
+| --- | --- |
+| `items` | `required\|array\|min:1\|max:100` — сам массив непустой и ограничен |
+| `items.*.id` | `required\|integer\|exists:products,id` — каждый элемент содержит существующий товар |
+| `items.*.qty` | `required\|integer\|min:1` — количество |
+| `items.*.note` | `nullable\|string\|max:255` |
+| `tags.*` | `string\|distinct` — `distinct` запрещает повторы в массиве |
+
+**Важная оптимизация — `exists`/`unique` с `*`:**
+
+- Laravel под капотом склеивает значения в **`WHERE id IN (...)`** — **один SQL** на всю проверку.
+- Наивный `foreach` с `exists` по одному превратит проверку в N запросов — это распространённая ошибка.
+
+**Кастомные сообщения для вложенных полей** — ключи тоже идут с `*`:
+
+```php
+\'items.*.id.exists\' => \'Товар :input не найден\',
+\'items.*.qty.min\'   => \'Минимум 1 шт. в позиции\',
+```
+
+**Кросс-полевые правила:**
+
+- `required_with:items.*.id` — `qty` обязателен, если в этой же позиции есть `id`.
+- Сложнее «количество позиций уникальны по product_id» — выносится в `withValidator()->after(...)`, потому что декларативно не выразить.',
                 'code_example' => '<?php
 class StoreOrderRequest extends FormRequest {
     public function rules(): array {

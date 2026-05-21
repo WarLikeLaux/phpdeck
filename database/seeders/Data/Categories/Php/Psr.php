@@ -43,14 +43,67 @@ class Psr
             [
                 'category' => 'PHP',
                 'question' => 'Чем PSR-4 отличается от устаревшего PSR-0?',
-                'answer' => 'PSR-4 — современный стандарт автозагрузки, заменивший PSR-0 и более гибкий: он позволяет привязывать префикс пространства имён к произвольной базовой директории, не требуя полного отражения namespace в структуре каталогов. PSR-0, напротив, требовал точного соответствия всего пути неймспейсу и трактовал подчёркивания в имени класса как разделители каталогов, что было наследием PHP 5.2 и до-namespace эпохи. На практике PSR-0 в Composer уже считается deprecated.',
+                'answer' => '**PSR-4** — современный стандарт автозагрузки. Заменил устаревший **PSR-0**.
+
+| Свойство | **PSR-4** | **PSR-0** (deprecated) |
+|---|---|---|
+| Маппинг префикса | префикс **`App\\`** → произвольная папка `app/` | **весь** путь должен отражать namespace |
+| Подчёркивания в имени | как обычные символы | трактовались как **разделители каталогов** |
+| Vendor namespace | требуется (`Vendor\\Package\\...`) | требуется |
+| Подходит для PSR-0 совместимых классов из PHP <5.3 | нет | да |
+
+**Пример PSR-4:**
+```json
+"autoload": { "psr-4": { "App\\\\": "app/" } }
+```
+- класс `App\\Http\\Controllers\\UserController` → файл `app/Http/Controllers/UserController.php`
+- префикс **`App\\`** маппится в **`app/`**, дальше структура повторяет namespace
+
+**Пример PSR-0** (старый):
+- класс `Vendor_Package_Module_Class` → файл `Vendor/Package/Module/Class.php` (подчёркивания → слеши)
+- это **наследие PHP 5.2** и до-namespace эпохи
+
+**Что использовать:**
+- **новый код** — **только PSR-4**
+- PSR-0 в `composer.json` Composer всё ещё поддерживает, но **deprecated**
+- composer dump-autoload генерирует **карту классов** для PSR-4 — оптимизация поиска',
                 'difficulty' => 3,
                 'topic' => 'php.psr',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что описывает PSR-3 и зачем нужен LoggerInterface?',
-                'answer' => 'PSR-3 — общий интерфейс для библиотек логирования, определяющий LoggerInterface с восемью уровнями (debug, info, notice, warning, error, critical, alert, emergency) и методом log(). Он позволяет приложениям и библиотекам зависеть от абстракции, а не от конкретной реализации вроде Monolog: достаточно принять Psr\\Log\\LoggerInterface в конструкторе, и пользователь подставит любой совместимый логгер. Также стандартизирован формат плейсхолдеров в сообщениях через фигурные скобки.',
+                'answer' => '**PSR-3** — общий интерфейс для библиотек логирования. Определяет **`Psr\\Log\\LoggerInterface`**.
+
+**Восемь уровней** (от RFC 5424, syslog):
+
+| Уровень | Когда |
+|---|---|
+| **`debug`** | детальная отладка |
+| **`info`** | обычные события (запрос, регистрация) |
+| **`notice`** | необычное, но не ошибка |
+| **`warning`** | потенциальная проблема |
+| **`error`** | ошибка, требует внимания, но не критично |
+| **`critical`** | критично — БД упала, компонент сломан |
+| **`alert`** | срочно — нужно реагировать сразу |
+| **`emergency`** | система непригодна |
+
+Плюс универсальный `log($level, $message, $context)`.
+
+**Зачем нужен:** приложения и библиотеки **зависят от абстракции**, а не от Monolog/Laravel Log:
+```php
+public function __construct(private LoggerInterface $logger) {}
+```
+Пользователь подставит **любой** совместимый: Monolog, Laravel `Log`, Symfony Logger, `NullLogger`.
+
+**Стандартизированы плейсхолдеры** в фигурных скобках `{name}`:
+```php
+$logger->info("User {email} registered", ["email" => $email]);
+```
+- бэкенд **сам подставит** значение из `context`
+- структурированные данные (JSON-логи, ELK, Loki) — `context` идёт **отдельным полем**
+
+**Дополнительно:** `Psr\\Log\\LoggerAwareInterface` для опциональной инъекции через setter, `NullLogger` — заглушка для тестов и default-инициализации.',
                 'code_example' => '<?php
 use Psr\\Log\\LoggerInterface;
 
@@ -73,7 +126,38 @@ class UserService
             [
                 'category' => 'PHP',
                 'question' => 'Что описывает PSR-7 и почему его объекты неизменяемы?',
-                'answer' => 'PSR-7 определяет общие интерфейсы для HTTP-сообщений: запросов, ответов, URI, потоков и загруженных файлов. Все объекты иммутабельны — методы вроде withHeader() возвращают новый экземпляр вместо изменения текущего, что делает их безопасными в многопоточном или middleware-окружении и упрощает рассуждения о состоянии запроса. Это даёт интероперабельность между фреймворками: один HTTP-клиент или middleware-стек работает поверх любого PSR-7 совместимого ядра.',
+                'answer' => '**PSR-7** определяет общие интерфейсы для **HTTP-сообщений**:
+
+| Интерфейс | Что моделирует |
+|---|---|
+| `MessageInterface` | базовое — заголовки, тело, версия HTTP |
+| `RequestInterface` | исходящий HTTP-запрос (метод, URI) |
+| `ServerRequestInterface` | входящий запрос на сервер (`$_GET`, `$_POST`, `$_FILES`, `$_COOKIE`, `$_SERVER`) |
+| `ResponseInterface` | HTTP-ответ (статус, тело) |
+| `UriInterface` | URI |
+| `StreamInterface` | поток тела (file-stream, in-memory) |
+| `UploadedFileInterface` | загруженный файл |
+
+**Главная особенность — иммутабельность:**
+
+Все методы-модификаторы называются **`with*()`** и **возвращают новый экземпляр** вместо изменения текущего:
+```php
+$new = $response->withHeader("X-Foo", "bar")->withStatus(201);
+// $response не изменился
+```
+
+**Зачем иммутабельность:**
+- **безопасно** передавать объект между слоями middleware — никто не «подкрутит» его незаметно
+- **проще рассуждать** о состоянии запроса
+- работает в **многопоточных** runtime-ах (Octane, Swoole) без synchronization
+- даёт **time-travel debugging** — каждый шаг возвращает новый объект
+
+**Интероперабельность:** один HTTP-клиент или middleware-стек работает поверх **любого** PSR-7 ядра (Guzzle PSR-7, nyholm/psr7, laminas-diactoros).
+
+**Подводные камни:**
+- забыть, что `withHeader` возвращает **новый** объект — частая ошибка, оригинал не меняется
+- **stream позиции** — `$body->rewind()` нужен перед повторным чтением
+- цепочки `with*` мутируют **много** памяти, на горячем пути дорого',
                 'code_example' => '<?php
 use Psr\\Http\\Message\\ResponseInterface;
 
@@ -92,7 +176,35 @@ function addCors(ResponseInterface $response): ResponseInterface
             [
                 'category' => 'PHP',
                 'question' => 'Что описывает PSR-15 и как он связан с PSR-7?',
-                'answer' => 'PSR-15 стандартизирует серверные HTTP-компоненты и определяет два интерфейса: RequestHandlerInterface и MiddlewareInterface. Middleware принимает PSR-7 запрос и следующий обработчик, а возвращает PSR-7 ответ, что позволяет выстраивать конвейер слоёв (аутентификация, логирование, CORS, кэш) поверх любой совместимой реализации. Стандарт целиком построен на PSR-7 и заменил старую модель double-pass middleware более явной и типобезопасной single-pass моделью.',
+                'answer' => '**PSR-15** стандартизирует **серверные HTTP-компоненты** на базе **PSR-7**.
+
+**Два интерфейса:**
+
+| Интерфейс | Метод | Что делает |
+|---|---|---|
+| `RequestHandlerInterface` | `handle(ServerRequestInterface): ResponseInterface` | конечный обработчик (контроллер, экшен) |
+| `MiddlewareInterface` | `process(ServerRequestInterface, RequestHandlerInterface): ResponseInterface` | слой, обёртывающий обработчик |
+
+**Поток:**
+1. Middleware получает **запрос** и **следующий обработчик** (`$handler`)
+2. Может **изменить запрос** перед передачей: `$request->withAttribute("user", $user)`
+3. Вызывает `$handler->handle($request)` — **либо нет** (короткое замыкание, например auth)
+4. Может **изменить ответ** после: `$response->withHeader(...)`
+
+**Что строится поверх:**
+- цепочки **auth, logging, CORS, rate-limit, cache** на любом фреймворке
+- переносимые middleware-пакеты (`middlewares/*`)
+
+**Single-pass vs double-pass:**
+
+| Модель | Сигнатура | Статус |
+|---|---|---|
+| **Single-pass** (PSR-15) | `process($req, $handler)` | **актуальный** стандарт |
+| **Double-pass** (старая) | `__invoke($req, $res, $next)` | устарело — `$res` приходил пустой, неоднозначно |
+
+**Single-pass** более явный, **типобезопасный**, не плодит «пустой ответ для модификации».
+
+**Подводный камень:** middleware-цепочка — это **рекурсия** через `$handler->handle()`. Глубокие цепочки могут заметно нагрузить стек на больших нагрузках. Большинство фреймворков (Slim, Mezzio, Laravel pipeline) разруливают через `array_reduce` или построение цепочки заранее.',
                 'code_example' => '<?php
 use Psr\\Http\\Message\\{ServerRequestInterface, ResponseInterface};
 use Psr\\Http\\Server\\{MiddlewareInterface, RequestHandlerInterface};
@@ -116,7 +228,39 @@ class AuthMiddleware implements MiddlewareInterface
             [
                 'category' => 'PHP',
                 'question' => 'Что описывает PSR-11 и какие методы у ContainerInterface?',
-                'answer' => 'PSR-11 — общий интерфейс контейнеров внедрения зависимостей, описывающий ContainerInterface с двумя методами: get($id) для получения записи по идентификатору и has($id) для проверки её наличия. Стандарт делает библиотеки контейнеро-агностичными: пакет может принять любой PSR-11 контейнер и работать с ним, не зная, Symfony это, Laravel или PHP-DI. Также определены исключения NotFoundExceptionInterface и ContainerExceptionInterface для единообразной обработки ошибок.',
+                'answer' => '**PSR-11** — общий интерфейс **DI-контейнеров**. Определяет **`Psr\\Container\\ContainerInterface`** с двумя методами:
+
+| Метод | Что делает |
+|---|---|
+| **`get(string $id): mixed`** | получить запись по идентификатору; бросает `NotFoundExceptionInterface`, если нет |
+| **`has(string $id): bool`** | проверка наличия записи |
+
+**Зачем нужен:** библиотека/пакет может принять **любой** PSR-11 контейнер и работать с ним, не зная, **Symfony**, **Laravel** или **PHP-DI**.
+
+```php
+public function __construct(private ContainerInterface $container) {}
+```
+
+**Стандартизированные исключения:**
+
+| Интерфейс | Когда |
+|---|---|
+| `ContainerExceptionInterface` | базовая ошибка контейнера |
+| `NotFoundExceptionInterface` extends ContainerExceptionInterface | запись не найдена |
+
+Поэтому код может писать:
+```php
+try { $svc = $container->get("logger"); }
+catch (NotFoundExceptionInterface $e) { /* нет */ }
+catch (ContainerExceptionInterface $e) { /* ошибка контейнера */ }
+```
+
+**Что PSR-11 НЕ определяет:**
+- **как** биндить сервисы (`bind`, `singleton`, фабрики, autowiring) — это **дело реализации**
+- область видимости (scoped, singleton, transient)
+- **PSR-11 — read-only** контракт для **потребителя**, не для конфигурации
+
+**Подводный камень:** использование `$container->get()` напрямую в коде сервиса — это **Service Locator antipattern**. Контейнер должен **сам внедрять** зависимости через конструктор (DI), `get()` — только в **корневом composition root** (роутер, фабрика).',
                 'difficulty' => 3,
                 'topic' => 'php.psr',
             ],
@@ -181,7 +325,29 @@ class AuthMiddleware implements MiddlewareInterface
             [
                 'category' => 'PHP',
                 'question' => 'Какой статус у PSR-0, PSR-2 и PSR-12 сегодня?',
-                'answer' => 'PSR-0 (старая автозагрузка) объявлен deprecated в пользу PSR-4 — он менее гибкий и тащит подчёркивания как разделители каталогов из эпохи PHP 5.2. PSR-2 (старый стиль кодирования) заменён PSR-12, который, в свою очередь, формально заменён «живым» документом PER Coding Style. На практике PSR-12 ещё широко используется как стабильный snapshot, но новые правила для современного синтаксиса (enums, readonly, promotion) идут уже в PER, поэтому новые проекты обычно ориентируются на него.',
+                'answer' => '| PSR | Статус | Чем заменён |
+|---|---|---|
+| **PSR-0** (автозагрузка) | **deprecated** | **PSR-4** |
+| **PSR-2** (стиль кодирования) | заменён | **PSR-12** |
+| **PSR-12** (расширенный стиль) | формально заменён | **PER Coding Style** (живой документ) |
+
+**PSR-0 → PSR-4:**
+- PSR-0 трактовал **подчёркивания** в имени класса как разделители каталогов (наследие до-namespace PHP 5.2)
+- PSR-0 требовал **полного** отражения namespace в структуре папок
+- PSR-4 даёт **гибкий маппинг** префикса на произвольную базовую директорию
+
+**PSR-2 → PSR-12 → PER:**
+- PSR-2 — фиксированный документ от 2012 года, синтаксис PHP того времени
+- **PSR-12** расширил его (PHP 7-эра): typed properties, return types, intersection-типы
+- **PER (PHP Evolved Recommendation)** — «живой» документ, обновляется под современный синтаксис: **enums, readonly, property promotion, first-class callable, named arguments**
+
+**На практике:**
+- PSR-12 ещё **широко используется** как стабильный snapshot
+- новые правила (PHP 8.1+ синтаксис) идут в **PER**
+- инструменты — **php-cs-fixer**, **PHP_CodeSniffer** — постепенно переключаются на PER
+- новые проекты обычно ориентируются на **PER**
+
+**Что выбрать в проекте:** PER (если CI готов), иначе PSR-12 — оба совместимы по базе.',
                 'difficulty' => 3,
                 'topic' => 'php.psr',
             ],

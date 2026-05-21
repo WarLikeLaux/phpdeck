@@ -156,7 +156,31 @@ class Tls
             [
                 'category' => 'Сети',
                 'question' => 'Как проверить TLS-сертификат сайта руками и на что смотреть?',
-                'answer' => 'Базовый инструмент — openssl s_client: открывает TLS-соединение и показывает, что прислал сервер. Обязательно передавать -servername (флаг SNI) — без него на multi-site хостинге вернётся не тот сертификат, или вообще default. Что смотреть в выводе: 1) Subject / SAN (Subject Alternative Name) — список доменов, на которые сертификат валиден; современные браузеры игнорируют CN и смотрят только SAN. 2) Issuer — кто подписал (обычно intermediate CA, например «Let\'s Encrypt R3»). 3) Validity (notBefore / notAfter) — сроки. 4) Verify return code: 0 (ok) — цепочка валидна, ненулевые коды значат проблему (21 = unable to verify the first certificate — забыт intermediate, 10 = expired, 18 = self-signed). 5) Цепочка (-showcerts) — leaf + все intermediates до root. Браузер: значок замка → «Details» → можно увидеть то же самое в GUI. Онлайн: ssllabs.com/ssltest даёт grade A/B/C/F с разбором cipher suites, поддержки версий TLS, OCSP-stapling, HSTS. Типовые ошибки: certificate verify failed — нет intermediate в bundle или просрочен; hostname mismatch — нет нужного SAN; unable to get local issuer — устарел системный CA-store на старом сервере.',
+                'answer' => 'Базовый инструмент — **`openssl s_client`**: открывает TLS-соединение и показывает, что прислал сервер.
+
+**Важно:** обязательно передавать **`-servername`** (флаг **`SNI`**) — без него на multi-site хостинге вернётся не тот сертификат или вообще default.
+
+**На что смотреть в выводе:**
+
+- **`Subject` / `SAN`** (Subject Alternative Name) — список доменов, на которые сертификат валиден. Современные браузеры **игнорируют `CN`** и смотрят только `SAN`.
+- **`Issuer`** — кто подписал (обычно intermediate `CA`, например `Let\'s Encrypt R3`).
+- **Validity** (`notBefore` / `notAfter`) — сроки.
+- **`Verify return code`** — `0 (ok)` значит цепочка валидна. Ненулевые:
+    - `21` — unable to verify the first certificate (забыт intermediate в bundle).
+    - `10` — expired.
+    - `18` — self-signed.
+- **Цепочка** через `-showcerts` — leaf + все intermediates до root.
+
+**Альтернативы:**
+
+- **Браузер:** значок замка → «Details» — то же самое в GUI.
+- **Онлайн:** `ssllabs.com/ssltest` — grade `A`-`F` с разбором cipher suites, версий `TLS`, `OCSP`-stapling, `HSTS`.
+
+**Типовые ошибки:**
+
+- `certificate verify failed` — нет intermediate в bundle или просрочен.
+- `hostname mismatch` — в `SAN` нет нужного домена.
+- `unable to get local issuer` — устарел системный CA-store (старый сервер).',
                 'code_example' => "openssl s_client -connect example.com:443 -servername example.com < /dev/null\n# Verify return code: 0 (ok)  ← цепочка валидна\nopenssl s_client -connect example.com:443 -servername example.com < /dev/null 2>/dev/null \\\n  | openssl x509 -noout -subject -issuer -dates -ext subjectAltName\n# subject= /CN=example.com\n# issuer=  /C=US/O=Let's Encrypt/CN=R3\n# notBefore=... notAfter=...\n# X509v3 Subject Alternative Name: DNS:example.com, DNS:www.example.com",
                 'code_language' => 'bash',
                 'difficulty' => 3,

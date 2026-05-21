@@ -10,7 +10,33 @@ class StdLib
             [
                 'category' => 'PHP',
                 'question' => 'Как работать с DateTime и DateTimeImmutable?',
-                'answer' => 'DateTime - изменяемый объект даты, методы modify/add/sub МУТИРУЮТ объект. DateTimeImmutable - неизменяемый, методы возвращают НОВЫЙ объект. Всегда предпочитай Immutable - мутабельность дат причина множества багов. Форматирование через format(). Парсинг через createFromFormat. Разница через diff(). Часовые пояса через DateTimeZone.',
+                'answer' => '**`DateTime` vs `DateTimeImmutable`:**
+
+| Аспект | **`DateTime`** | **`DateTimeImmutable`** |
+|---|---|---|
+| `modify` / `add` / `sub` | **мутирует объект** | **возвращает новый** |
+| `setDate` / `setTime` / `setTimezone` | мутирует | возвращает новый |
+| Безопасно передавать в функцию | нет (могут изменить) | **да** |
+| Когда брать | почти **никогда** | **по умолчанию** |
+
+**Правило:** **всегда `DateTimeImmutable`** — мутабельные даты типичный источник багов (передал в функцию, она `modify("+1 day")`, у тебя «время улетело»).
+
+**Базовое API (общее для обоих):**
+- **`format("Y-m-d H:i:s")`** — форматирование, символы как в `date()`.
+- **`createFromFormat($fmt, $str)`** — парсинг строки по шаблону.
+- **`diff($other)`** — возвращает `DateInterval` с `days`, `h`, `i`, `invert`.
+- **`getTimestamp()`** / **`setTimestamp()`** — Unix-секунды.
+
+**Часовые пояса:**
+- `new DateTimeZone("Europe/Moscow")` → передать в конструктор.
+- `setTimezone($tz)` — конвертация **без сдвига точки на оси времени** (то же мгновение в другом TZ).
+- Для **`timestamp`** часовой пояс не важен — он всегда **UTC**.
+
+**Подводные камни:**
+- `format("u")` — микросекунды, требует ввода с микросекундами (иначе всегда `000000`).
+- В PHP 8.4+ — **`DateTime::createFromTimestamp()`** прямой статический фабричный метод.
+- Сравнение через `<=>` работает корректно для обоих типов.
+- **В Laravel** — `Carbon` (наследник `DateTime`), `CarbonImmutable` — обёртка с fluent-API.',
                 'code_example' => '<?php
 $dt = new DateTime("2026-05-01");
 $dt->modify("+1 day");

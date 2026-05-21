@@ -13,7 +13,34 @@ class EloquentAdvanced
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Eager Loading и зачем он нужен?',
-                'answer' => 'Eager loading - это предварительная загрузка связей одним или несколькими запросами вместо ленивой загрузки на каждом обращении. Простыми словами: вместо N+1 запросов делается всего 2. Используется метод with() при запросе или load() уже после получения коллекции.',
+                'answer' => '**Eager loading** — предварительная загрузка связей **дополнительным пакетным запросом** вместо ленивой подгрузки на каждом обращении.
+
+**Что лечит:** проблему **N+1** — когда `Post::all()` делает 1 запрос, а в цикле `$post->user` делает ещё N запросов.
+
+**Два способа:**
+
+- **`with(\'user\')`** — при **построении запроса**, до выполнения.
+- **`load(\'user\')`** — на уже **полученной** коллекции/модели.
+
+**Что Laravel делает под капотом:**
+
+- `SELECT * FROM posts WHERE ...` — основная выборка.
+- `SELECT * FROM users WHERE id IN (1, 5, 12, ...)` — все связанные users одним запросом.
+- Laravel сшивает результаты по FK в памяти.
+
+Итого: **2 запроса вместо N+1**, независимо от размера выборки.
+
+**Возможности:**
+
+- **Несколько связей** — `with([\'user\', \'comments\'])`.
+- **Вложенные** — `with(\'comments.author.profile\')`.
+- **С условием** — `with([\'comments\' => fn ($q) => $q->where(\'approved\', true)])`.
+- **Только нужные колонки** — `with(\'user:id,name,email\')` (обязательно включить FK, иначе сшивка сломается).
+
+**Подводный камень `limit` внутри `with`:**
+
+- **Laravel 11+** — это **per-parent** limit (5 комментов на каждый пост).
+- **Laravel ≤10** — лимит на **общую** выборку (5 комментов всего, не на каждого) — классическая ловушка. Решение — `hasOne()->latestOfMany()`.',
                 'code_example' => '// плохо (N+1)
 foreach (Post::all() as $post) {
     echo $post->user->name; // запрос к БД на каждом посте
@@ -58,7 +85,36 @@ Post::preventLazyLoading();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает Model::shouldBeStrict() и зачем он нужен?',
-                'answer' => 'shouldBeStrict() (Laravel 9.3+) - один вызов, включающий три защитных режима для Eloquent: 1) preventLazyLoading() - бросает LazyLoadingViolationException при попытке lazy load связи (ловит N+1 на этапе разработки). 2) preventSilentlyDiscardingAttributes() - бросает MassAssignmentException, если в fill() / create() передан атрибут, не указанный в $fillable, вместо тихого игнорирования. 3) preventAccessingMissingAttributes() - бросает MissingAttributeException при обращении к полю, которого нет в загруженной модели (например, забыли select() нужное поле). Стандартная практика: вызывать в AppServiceProvider::boot() с условием !isProduction(), чтобы не уронить прод неожиданным исключением.',
+                'answer' => '**`Model::shouldBeStrict()`** (Laravel 9.3+) — один вызов, включающий **три защитных режима** для Eloquent. Цель: ловить классические баги на этапе разработки, а не в проде.
+
+**Три включаемых режима:**
+
+| Режим | Что ловит | Исключение |
+|---|---|---|
+| **`preventLazyLoading()`** | Попытку lazy-load связи (N+1) | `LazyLoadingViolationException` |
+| **`preventSilentlyDiscardingAttributes()`** | Передан атрибут не из `$fillable` | `MassAssignmentException` |
+| **`preventAccessingMissingAttributes()`** | Обращение к полю, которого нет в выборке (забыли `select`) | `MissingAttributeException` |
+
+**Стандартная практика — включать только в dev:**
+
+```php
+// AppServiceProvider::boot()
+Model::shouldBeStrict(! $this->app->isProduction());
+```
+
+**Почему так:**
+
+- В проде неожиданное исключение «забыл eager-load на одной редкой ветке» уронит запрос юзеру.
+- В dev/staging — наоборот, **должно** падать, чтобы баг поймали до релиза.
+
+**Альтернатива — гранулярно:**
+
+- `Model::preventLazyLoading()` — только N+1 защита.
+- `Model::handleLazyLoadingViolationUsing(fn (...) => Log::warning(...))` — не падать, а **логировать** lazy-load в проде.
+
+**Что не включается:**
+
+- `Model::preventAccessingMissingRelations()` — отдельный режим, в `shouldBeStrict` не входит до недавнего времени; проверяйте версию.',
                 'code_example' => '<?php
 // AppServiceProvider::boot()
 use Illuminate\\Database\\Eloquent\\Model;
@@ -85,7 +141,39 @@ User::create([\'name\' => \'Tom\', \'admin\' => true]); // MassAssignmentExcepti
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое withCount?',
-                'answer' => 'withCount - подсчитывает количество связанных записей одним SQL-запросом без их загрузки. Возвращает атрибут вида posts_count. Также есть withSum, withAvg, withMin, withMax.',
+                'answer' => '**`withCount()`** — подсчитывает количество связанных записей **одним SQL-запросом**, без их загрузки в память.
+
+Решает классическую задачу: показать в списке юзеров «сколько у них постов» без загрузки всех постов и без N+1 на `$user->posts->count()`.
+
+**Что Laravel делает под капотом:**
+
+```sql
+SELECT users.*, (
+  SELECT COUNT(*) FROM posts WHERE posts.user_id = users.id
+) AS posts_count
+FROM users
+```
+
+Результат — атрибут `posts_count` на каждой модели.
+
+**Семейство методов** (Laravel 8+):
+
+| Метод | Что считает |
+|---|---|
+| **`withCount(\'posts\')`** | `COUNT(*)` |
+| **`withSum(\'orders\', \'amount\')`** | `SUM(amount)` |
+| **`withAvg(\'reviews\', \'rating\')`** | `AVG(rating)` |
+| **`withMin(\'reviews\', \'rating\')`** | `MIN(rating)` |
+| **`withMax(\'logins\', \'created_at\')`** | `MAX(created_at)` |
+| **`withExists(\'unread\')`** | Boolean: есть ли связь |
+
+**Возможности:**
+
+- **С условием** — `withCount([\'posts as published_count\' => fn ($q) => $q->where(\'published\', true)])`.
+- **Несколько сразу** — `withCount([\'posts\', \'comments\'])`.
+- **Сортировка по агрегату** — `->orderByDesc(\'posts_count\')`.
+
+**Альтернатива:** если нужно сразу несколько полей связанной модели (а не только агрегат), используйте **subquery select через `addSelect`**.',
                 'code_example' => '$users = User::withCount(\'posts\', \'comments\')->get();
 foreach ($users as $user) {
     echo $user->posts_count;
@@ -101,7 +189,33 @@ User::withCount([\'posts as published_posts_count\' => fn($q) => $q->where(\'pub
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Local и Global scopes в Eloquent?',
-                'answer' => 'Local scope - метод модели с префиксом scope, добавляющий условие к запросу (вызывается опционально). Global scope - класс, реализующий Scope, который автоматически применяется ко ВСЕМ запросам модели. Полезно для soft delete или multi-tenancy.',
+                'answer' => 'Два механизма инкапсуляции query-условий **с принципиально разной семантикой**.
+
+**Сравнение:**
+
+| Параметр | **Local scope** | **Global scope** |
+|---|---|---|
+| Применение | **Явное** — `User::active()->get()` | **Автоматическое** ко всем запросам модели |
+| Объявление | Метод `scopeActive(Builder $q)` или `#[Scope]` (L11+) | Класс с `Scope` или замыкание в `booted()` |
+| Можно отключить | Не нужно — он не активен по умолчанию | `withoutGlobalScope(\'tenant\')` / `withoutGlobalScopes()` |
+| Типичный use case | Часто используемые `where` (active, published, recent) | Soft delete, multi-tenancy, скрытие черновиков |
+
+**Local scope:**
+
+- Метод `scopePopular(Builder $q, int $minViews)` → вызывается как `Post::popular(1000)` (префикс отбрасывается, первая буква — в нижний регистр).
+- В Laravel 11+ — атрибут `#[Scope]` на методе без префикса.
+
+**Global scope:**
+
+- Класс с `Scope` интерфейсом и методом `apply(Builder $b, Model $m)`.
+- Регистрируется в `booted()` модели: `static::addGlobalScope(new TenantScope)`.
+- **Уже встроен**: `SoftDeletes` использует global scope `SoftDeletingScope`.
+
+**Подводные камни global scope:**
+
+- **Невидимая магия** — новичок не понимает, куда делись записи. Документируйте обязательно.
+- **Утечка контекста в job-ах** — если scope зависит от `auth()->user()`, при сериализации job юзер уже не тот. Решение — фиксировать tenant_id явно в job или вычислять в момент применения.
+- **Снятие в админке/импортах** — `Model::withoutGlobalScope(\'tenant\')->...` обязательно для системных задач.',
                 'code_example' => '// Local
 public function scopeActive($query) {
     return $query->where(\'active\', true);
@@ -127,7 +241,35 @@ class Post extends Model {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Observers в Laravel?',
-                'answer' => 'Observer - это класс, который слушает события модели (creating, created, updating, updated, deleting, deleted, restoring, restored). Простыми словами: когда что-то происходит с моделью, observer выполняет код. Способы регистрации: 1) Атрибут #[ObservedBy(UserObserver::class)] над классом модели (Laravel 11+, рекомендуется - регистрация рядом с моделью). 2) Вручную через User::observe(UserObserver::class) - в Laravel 10 и старше это делалось в EventServiceProvider::boot(); в Laravel 11 EventServiceProvider удалён из дефолтного скелета, поэтому регистрация перенесена в AppServiceProvider::boot() (или в любой другой service provider). При желании EventServiceProvider можно вернуть и зарегистрировать в bootstrap/providers.php.',
+                'answer' => '**Observer** — класс с методами-обработчиками событий жизненного цикла модели: `creating`, `created`, `updating`, `updated`, `saving`, `saved`, `deleting`, `deleted`, `restoring`, `restored`.
+
+**Идея:** «когда что-то происходит с моделью — выполнить код». Удобно вынести из модели в отдельный класс.
+
+**Способы регистрации:**
+
+| Способ | Где |
+|---|---|
+| **`#[ObservedBy(UserObserver::class)]`** на модели | Laravel 11+, рекомендуется — регистрация рядом с моделью |
+| **`User::observe(UserObserver::class)`** | В service provider (см. ниже) |
+
+**Где зовём `observe()` в зависимости от версии:**
+
+- **Laravel 10 и старше** — `EventServiceProvider::boot()`.
+- **Laravel 11** — `EventServiceProvider` **удалён** из дефолтного скелета. Регистрация в `AppServiceProvider::boot()` (или в любом другом провайдере). Можно вернуть `EventServiceProvider`, добавив его в `bootstrap/providers.php`.
+
+**Какие события полезные:**
+
+- **`creating`** — установить дефолты, slug, UUID **до** INSERT.
+- **`created`** — отправить welcome-mail, создать связанные записи.
+- **`updating`** — валидация изменений, audit-log diff.
+- **`deleting`** — каскадно удалить детей, заархивировать.
+- **`saved`** — общее для create/update (например, инвалидация кеша).
+
+**Подводные камни:**
+
+- **Observer не срабатывает на bulk-операции** `Model::where(...)->update(...)` — это прямой SQL без hydration.
+- **`saving`/`creating` могут отменить операцию** через `return false` — `save()` вернёт `false` без исключения. Используйте `saveOrFail()`.
+- В job/закешированных скриптах — observer регистрируется при загрузке провайдера, проверяйте `php artisan config:cache`.',
                 'code_example' => '#[ObservedBy(UserObserver::class)]
 class User extends Model {}
 
@@ -146,7 +288,37 @@ class UserObserver {
             [
                 'category' => 'Laravel',
                 'question' => 'Какие события генерируют Eloquent-модели?',
-                'answer' => 'retrieved, creating, created, updating, updated, saving, saved, deleting, deleted, restoring, restored, replicating, trashed, forceDeleting, forceDeleted. saving и saved срабатывают и при create, и при update.',
+                'answer' => 'Eloquent-модели генерируют события на каждом этапе жизненного цикла. На них можно подписаться через **Observer**, **`booted()`** или статические listeners.
+
+**Полный список событий:**
+
+| Событие | Когда срабатывает |
+|---|---|
+| **`retrieved`** | Модель извлечена из БД (после `find`/`get`/`first`) |
+| **`creating`** | Перед INSERT — можно отменить через `return false` |
+| **`created`** | После INSERT |
+| **`updating`** | Перед UPDATE — можно отменить |
+| **`updated`** | После UPDATE |
+| **`saving`** | Перед `creating` или `updating` — общий обработчик |
+| **`saved`** | После `created` или `updated` |
+| **`deleting`** | Перед DELETE |
+| **`deleted`** | После DELETE |
+| **`restoring`** | Перед `restore()` (soft delete) |
+| **`restored`** | После `restore()` |
+| **`replicating`** | При `$model->replicate()` |
+| **`trashed`** | После soft delete (Laravel 11+) |
+| **`forceDeleting`** / **`forceDeleted`** | При `forceDelete()` (soft delete) |
+
+**Порядок при `save()`:**
+
+- **Новая запись:** `saving` → `creating` → INSERT → `created` → `saved`.
+- **Существующая:** `saving` → `updating` → UPDATE → `updated` → `saved`.
+
+**Подводные камни:**
+
+- **Bulk через query builder** (`User::where(...)->update(...)`) — события **не срабатывают**.
+- **`saving`/`creating`/`updating`/`deleting`** могут вернуть `false` и **отменить** операцию без исключения. `$model->save()` вернёт `false` тихо.
+- **`saveQuietly()`/`updateQuietly()`/`deleteQuietly()`** — выполнить без срабатывания событий.',
                 'code_example' => 'protected static function booted(): void {
     static::creating(function (User $user) {
         $user->uuid = Str::uuid();
@@ -300,7 +472,33 @@ foreach (User::where("active", true)->cursor() as $user) { /* ... */ }',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое whereHas и whereDoesntHave?',
-                'answer' => 'whereHas фильтрует основные записи по наличию связи с условием. whereDoesntHave - наоборот, по отсутствию. Например: пользователи, у которых есть посты с определённым заголовком.',
+                'answer' => '**`whereHas`** — фильтрует основные записи по **наличию** связанных записей с условием. **`whereDoesntHave`** — наоборот, по **отсутствию**.
+
+**Пример:** «юзеры, у которых есть хотя бы один опубликованный пост»:
+
+```php
+User::whereHas(\'posts\', fn ($q) => $q->where(\'published\', true))->get();
+```
+
+Под капотом — `WHERE EXISTS (SELECT 1 FROM posts WHERE user_id = users.id AND published = 1)`.
+
+**Семейство методов:**
+
+| Метод | SQL | Когда |
+|---|---|---|
+| **`has(\'posts\')`** | `EXISTS (...)` | Просто наличие хотя бы одной связи |
+| **`has(\'posts\', \'>=\', 3)`** | `(SELECT COUNT ...) >= 3` | По количеству |
+| **`whereHas(\'posts\', $closure)`** | `EXISTS (... WHERE ...)` | С условием на связь |
+| **`whereDoesntHave(\'posts\', $closure)`** | `NOT EXISTS (... WHERE ...)` | Без связи (с условием) |
+| **`orWhereHas(\'posts\', $closure)`** | `OR EXISTS (...)` | Логическое OR |
+| **`whereRelation(\'posts\', \'published\', true)`** | Шорткат для одного `where` | Лаконичнее `whereHas` для простых условий |
+
+**Подводные камни:**
+
+- **Производительность** — `whereHas` использует `EXISTS`, который обычно быстрее `IN (subquery)` на больших таблицах, **но** требует индекс на FK связанной таблицы.
+- **`whereHas` ≠ `with`** — `whereHas` **фильтрует** основной запрос, **не загружает** связи. Часто их используют вместе: `User::whereHas(\'posts\', ...)->with(\'posts\')`.
+- **`whereDoesntHave` без условия** — `whereDoesntHave(\'posts\')` = «юзеры без постов вообще».
+- **Глубокая вложенность** — `whereHas(\'posts.comments\', ...)` работает, но генерит вложенные EXISTS — смотрите EXPLAIN.',
                 'code_example' => 'User::whereHas(\'posts\', function ($q) {
     $q->where(\'published\', true);
 })->get();
@@ -341,7 +539,37 @@ User::whereDoesntHave(\'posts\')->get(); // без постов',
             [
                 'category' => 'Laravel',
                 'question' => 'Как делать пагинацию в Laravel?',
-                'answer' => 'У Eloquent и Query Builder есть paginate($perPage), simplePaginate (только prev/next, без подсчёта total), cursorPaginate (быстрый, по cursor вместо offset, не показывает номера страниц). В Blade можно вывести ссылки через {{ $items->links() }}. Для API используется ->toArray() или JsonResource.',
+                'answer' => 'У Eloquent и Query Builder есть **три варианта пагинации** с разной семантикой и стоимостью.
+
+**Сравнение:**
+
+| Метод | Что возвращает | Доп. запрос на `total` | Когда выбирать |
+|---|---|---|---|
+| **`paginate(15)`** | `LengthAwarePaginator` | **Да** (`COUNT(*)`) | Стандартная веб-пагинация с номерами страниц |
+| **`simplePaginate(15)`** | `Paginator` | Нет — берёт 16 и проверяет «есть ли ещё» | Когда total не нужен (мобильный список) |
+| **`cursorPaginate(15)`** | `CursorPaginator` | Нет — keyset-пагинация | Большие таблицы, infinite scroll, нет «прыжков» на изменение данных |
+
+**Чем `cursorPaginate` принципиально отличается:**
+
+- Использует **WHERE id > $lastId** вместо `OFFSET` → быстро даже на миллионах записей.
+- **Невосприимчив к вставкам/удалениям** — нет «дубликатов на следующей странице».
+- Требует **уникальный, монотонный** order column (обычно PK или `created_at` + tiebreaker).
+- **Нельзя прыгнуть на страницу N** — только next/prev (это особенность keyset-пагинации).
+
+**Дополнительные методы:**
+
+- `appends($request->query())` — сохранить GET-параметры в links.
+- `withQueryString()` — то же, короче.
+- `onEachSide(2)` — сколько кнопок страниц показывать вокруг текущей.
+
+**Для API:**
+
+- `UserResource::collection(User::paginate(15))` — корректно формирует `data`/`meta`/`links`.
+- Resource-collection автоматически добавляет meta пагинации.
+
+**Подводный камень `paginate`:**
+
+- `COUNT(*)` на больших таблицах с JOIN-ами может быть **дороже** основной выборки. На таблицах 100M+ — переходить на `simplePaginate`/`cursorPaginate`.',
                 'code_example' => '$users = User::paginate(15);
 $users = User::simplePaginate(15);
 $users = User::cursorPaginate(15);
@@ -358,7 +586,37 @@ return UserResource::collection(User::paginate(15));
             [
                 'category' => 'Laravel',
                 'question' => 'Как реализовать поиск с фильтрами в Eloquent?',
-                'answer' => 'Через условные методы when() Query Builder. Также популярно использовать пакет Spatie Query Builder. Идея: для каждого фильтра проверяем, передан ли он, и добавляем where.',
+                'answer' => 'Стандартный паттерн — **условные методы `when()`** Query Builder, которые применяют callback **только если условие truthy**.
+
+**Идея:** для каждого фильтра проверяем, передан ли он, и добавляем нужный `where` без ifs.
+
+**Базовый пример:**
+
+```php
+Post::query()
+    ->when($r->search, fn ($q, $s) => $q->where(\'title\', \'like\', "%$s%"))
+    ->when($r->category, fn ($q, $c) => $q->where(\'category_id\', $c))
+    ->when($r->author, fn ($q, $a) => $q->whereHas(\'author\', fn ($qa) => $qa->where(\'id\', $a)))
+    ->orderBy(\'created_at\', \'desc\')
+    ->paginate(15);
+```
+
+**Преимущества `when()` над `if`:**
+
+- **Цепочка не разрывается** — читается как декларативный набор фильтров.
+- **Лямбда получает значение как второй аргумент** — нет повторной проверки.
+- **Есть `unless()`** — обратное условие.
+
+**Популярные альтернативы:**
+
+- **`spatie/laravel-query-builder`** — декларативные фильтры, сортировки, includes через query-параметры (`?filter[status]=published&sort=-created_at`). Хорошо для API.
+- **Pipeline-паттерн** — каждый фильтр в отдельном классе, что упрощает тестирование.
+
+**Подводные камни:**
+
+- **`like \'%query%\'`** — full table scan на больших таблицах. Для серьёзного поиска нужен **полнотекстовый индекс** (MySQL `FULLTEXT`, PG `tsvector`) или **Laravel Scout** с MeiliSearch/Algolia.
+- **SQL-injection при сортировке** — `orderBy($request->sort)` опасен, нужен **whitelist** разрешённых колонок.
+- **Двойной запрос на `paginate`** — `COUNT(*)` + основной. На сложных фильтрах с `whereHas` стоимость растёт.',
                 'code_example' => 'public function index(Request $request) {
     return Post::query()
         ->when($request->search, fn($q, $s) =>
@@ -426,7 +684,38 @@ Post::withoutGlobalScopes()->get();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что произойдёт, если вызвать $user->posts во foreach без with("posts")?',
-                'answer' => 'Это классический N+1: для каждого юзера выполнится отдельный SELECT по posts. with("posts") делает eager loading: один SELECT users + один WHERE user_id IN (...). При большом наборе данных N+1 даёт сотни запросов и убивает latency. Полезно включить Model::preventLazyLoading() в локальной среде - оно бросает исключение при ленивой загрузке и сразу ловит баг. ⚠️ ВАЖНО про limit() внутри with(): в Laravel 11+ это работает как per-parent limit (5 постов на КАЖДОГО юзера) - в ядре реализован собственный per-parent limit (раньше нужен был сторонний пакет staudenmeir/eloquent-eager-limit). В Laravel ≤10 такой limit применяется к ОБЩЕЙ eager-load выборке (вы получите 5 постов суммарно на ВСЕХ юзеров) - классическая ловушка. На <=10 правильные альтернативы: hasOne+latestOfMany() для "последнего", subquery с ROW_NUMBER(), отдельный запрос с группировкой, или сторонний пакет.',
+                'answer' => 'Это классический **N+1**: для каждого юзера выполнится отдельный `SELECT * FROM posts WHERE user_id = ?`.
+
+**Math:** 100 юзеров → 1 (`users`) + 100 (`posts`) = **101 запрос** вместо 2.
+
+**Решение — `with(\'posts\')`:**
+
+- `SELECT * FROM users` — основная выборка.
+- `SELECT * FROM posts WHERE user_id IN (1, 2, ...)` — все связи одним запросом.
+- Итого **2 запроса** независимо от размера выборки.
+
+**Защита на этапе разработки:**
+
+```php
+// AppServiceProvider::boot()
+Model::preventLazyLoading(! app()->isProduction());
+```
+
+При попытке lazy-load в dev упадёт `LazyLoadingViolationException` — баг ловится сразу, а не в проде по логам.
+
+**Подводный камень `limit()` внутри `with`:**
+
+| Версия | Поведение |
+|---|---|
+| **Laravel 11+** | **Per-parent limit** — 5 постов на КАЖДОГО юзера. В ядре реализован свой механизм. |
+| **Laravel ≤10** | Лимит на **общую** eager-load выборку — 5 постов суммарно на ВСЕХ юзеров. Классическая ловушка. |
+
+**Альтернативы для L≤10 или для «одного последнего»:**
+
+- **`hasOne()->latestOfMany()`** — встроенная связь «hasOne по последней записи».
+- **Subquery через `addSelect`** — одно поле из связанной таблицы без полного `with`.
+- **`staudenmeir/eloquent-eager-limit`** — пакет для per-parent limit в старых версиях.
+- **Window functions с `ROW_NUMBER() OVER (PARTITION BY ...)`** — для top-N связей.',
                 'code_example' => '<?php
 // AppServiceProvider::boot
 Model::preventLazyLoading(! app()->isProduction());
@@ -669,7 +958,37 @@ foreach (User::query()->where(...)->toBase()->cursor() as $row) {
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает withTrashed, onlyTrashed и restore при использовании SoftDeletes?',
-                'answer' => 'Трейт SoftDeletes регистрирует глобальный scope SoftDeletingScope, который автоматически добавляет WHERE deleted_at IS NULL ко всем запросам - удалённые записи скрыты. withTrashed() отключает этот scope и возвращает и живые, и удалённые. onlyTrashed() инвертирует условие - WHERE deleted_at IS NOT NULL, только удалённые. restore() сбрасывает deleted_at в null и стреляет событиями restoring/restored - можно слушать в Observer. forceDelete() игнорирует SoftDeletes и физически удаляет строку из таблицы, выпуская событие forceDeleted. Удобно для админок ("корзина") и для гарантированной очистки PII (GDPR).',
+                'answer' => 'Трейт **`SoftDeletes`** регистрирует **глобальный scope** `SoftDeletingScope`, который **автоматически добавляет** `WHERE deleted_at IS NULL` ко всем запросам — удалённые записи скрыты по умолчанию.
+
+**Три способа «увидеть» удалённое + два способа удаления:**
+
+| Метод | Что делает | SQL |
+|---|---|---|
+| **`Post::all()`** (дефолт) | Только живые | `WHERE deleted_at IS NULL` |
+| **`Post::withTrashed()`** | **Все** — живые + удалённые | scope отключен |
+| **`Post::onlyTrashed()`** | **Только** удалённые («корзина») | `WHERE deleted_at IS NOT NULL` |
+| **`$post->delete()`** | Soft delete | `UPDATE ... SET deleted_at = NOW()` |
+| **`$post->forceDelete()`** | **Физическое** удаление | `DELETE FROM ...` |
+| **`$post->restore()`** | Восстановить | `UPDATE ... SET deleted_at = NULL` |
+
+**События жизненного цикла:**
+
+- `deleting` / `deleted` — на soft delete.
+- `restoring` / `restored` — при `restore()`.
+- `forceDeleting` / `forceDeleted` — при `forceDelete()`.
+- `trashed` (L11+) — после soft delete.
+
+**Типичные use cases:**
+
+- **«Корзина» в админке** — `Post::onlyTrashed()` показывает удалённые, кнопка `restore`.
+- **Аудит/история** — данные не теряются физически.
+- **GDPR-удаление** — `forceDelete()` гарантированно убирает PII.
+
+**Подводные камни:**
+
+- **UNIQUE-индекс ломается** — `users.email` UNIQUE, юзер удалён, регистрируется снова с тем же email → duplicate. Решение: partial unique index (PG) или анонимизация email при soft-delete.
+- **FK с ON DELETE CASCADE** — soft delete родителя **не каскадит**, нужно вручную обрабатывать в Observer.
+- **`onlyTrashed` + `restore()`** в админке — частый паттерн.',
                 'code_example' => '<?php
 class Post extends Model {
     use SoftDeletes;
@@ -700,7 +1019,31 @@ Post::withTrashed()->where("user_id", $id)->restore();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что нужно учитывать при выборе движка Scout: database, MeiliSearch, Algolia, Typesense?',
-                'answer' => 'database-драйвер - LIKE-поиск по индексным колонкам той же БД, ноль инфраструктуры, но без релевантности и морфологии; норм для прототипа и до ~100k записей. collection - такой же LIKE, но в памяти (для тестов). MeiliSearch - self-hosted на Rust, простой API, поддерживает typo-tolerance и фасеты; популярный дефолт для middle-проектов. Typesense - self-hosted на C++, быстрее MeiliSearch на больших корпусах, отличный геопоиск. Algolia - SaaS с лучшим ранжированием на рынке, но платный (плюс данные у внешнего вендора - вопросы PII/GDPR). Критерии: 1) объём индекса (database до 100k, Meili/Typesense до миллионов, Algolia на любой); 2) бюджет (Meili/Typesense - бесплатно + сервер, Algolia - $$$); 3) compliance (можно ли отдавать данные наружу); 4) языки (морфология русского лучше всего у Meili 1.x+ и Typesense). Переключение между драйверами - один конфиг, SCOUT_DRIVER=meilisearch.',
+                'answer' => '**Laravel Scout** — абстракция над поисковыми движками. Драйвер меняется одной строкой в `.env` (`SCOUT_DRIVER=...`), API запросов одинаковый: `Product::search(\'ноутбук\')->paginate(15)`.
+
+**Сравнение драйверов:**
+
+| Драйвер | Тип | Цена | Производительность | Когда выбирать |
+|---|---|---|---|---|
+| **`database`** | LIKE по индексам той же БД | 0 | До ~100k записей | Прототип, MVP, ноль инфраструктуры |
+| **`collection`** | LIKE в памяти | 0 | — | Тестовый окружение |
+| **MeiliSearch** | Self-hosted на Rust | Бесплатно + сервер | Миллионы записей | Дефолт для middle-проектов |
+| **Typesense** | Self-hosted на C++ | Бесплатно + сервер | Миллионы записей | Большие корпуса, геопоиск |
+| **Algolia** | SaaS | $$$ | Любой объём | Лучшее ранжирование, готовое решение |
+
+**Критерии выбора:**
+
+- **Объём индекса** — `database` до 100k, Meili/Typesense до миллионов, Algolia на любой размер.
+- **Бюджет** — self-hosted (Meili/Typesense) бесплатные, но требуют сервер и обслуживание; Algolia платный, но managed.
+- **Compliance** — можно ли отдавать данные внешнему вендору? Если нет (PII, GDPR-чувствительные) — только self-hosted.
+- **Языковая поддержка** — морфология русского лучше всего у Meili 1.x+ и Typesense.
+- **Фичи** — typo-tolerance, фасеты, синонимы, geo есть у всех кроме `database`.
+
+**Что общего:**
+
+- Все драйверы умеют `Model::search()->where()->orderBy()->paginate()`.
+- Все поддерживают `php artisan scout:import` для bulk-индексации с chunk.
+- `Searchable` trait автоматически синхронизирует индекс на `save`/`delete` (опционально через очередь — `SCOUT_QUEUE=true`).',
                 'code_example' => '<?php
 // .env
 // SCOUT_DRIVER=meilisearch

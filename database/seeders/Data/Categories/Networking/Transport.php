@@ -31,7 +31,30 @@ class Transport
             [
                 'category' => 'Сети',
                 'question' => 'Как работает three-way handshake в TCP и что в нём обсуждается?',
-                'answer' => 'Открытие TCP-соединения через 3 пакета: 1) Клиент → сервер: SYN (synchronize), с начальным sequence number клиента (ISN_c) и опциями (MSS, window scaling, SACK permitted, timestamps). Сокет переходит в SYN_SENT. 2) Сервер → клиент: SYN-ACK, со своим ISN_s и подтверждением ACK = ISN_c + 1. Сокет на сервере в SYN_RECEIVED. 3) Клиент → сервер: ACK с ACK = ISN_s + 1. Оба сокета теперь ESTABLISHED, начинается обмен данными. Что согласуется в handshake: 1) Начальные sequence numbers (случайные, чтобы защитить от подделки пакетов). 2) MSS (Maximum Segment Size) — макс. размер TCP-сегмента (обычно MTU − 40 = 1460 байт для Ethernet). 3) Window scaling — расширение окна с 16 бит до 30 бит (для гигабитных сетей с большим BDP). 4) SACK (Selective ACK) — возможность подтверждать «дырки» в потоке. 5) Timestamps — для измерения RTT и защиты от wrap-around sequence numbers (PAWS). Стоимость: 1 RTT — это бутылочное горлышко для коротких HTTP-запросов (поэтому keepalive и HTTP/2 multiplexing). TLS поверх добавляет ещё 1-2 RTT (1 в TLS 1.3, 2 в TLS 1.2). QUIC объединяет TCP+TLS handshake в 1 RTT или 0 RTT при повторном подключении. Атака SYN flood: атакующий шлёт много SYN с поддельного IP, заполняет очередь полуоткрытых соединений; защита — SYN cookies (Linux net.ipv4.tcp_syncookies=1).',
+                'answer' => 'Открытие TCP-соединения проходит за **3 пакета**.
+
+**Шаги:**
+
+1. **Клиент → сервер: `SYN`** с начальным sequence number клиента (**ISN_c**) и опциями. Клиентский сокет в `SYN_SENT`.
+2. **Сервер → клиент: `SYN-ACK`** со своим `ISN_s` и `ACK = ISN_c + 1`. Сокет сервера в `SYN_RECEIVED`.
+3. **Клиент → сервер: `ACK`** с `ACK = ISN_s + 1`. Оба сокета в `ESTABLISHED`, поехали данные.
+
+**Что согласуется в опциях:**
+
+- **`ISN`** — случайные начальные sequence numbers (защита от подделки пакетов).
+- **`MSS`** (Maximum Segment Size) — макс. размер TCP-сегмента, обычно `MTU − 40 = 1460` для Ethernet.
+- **Window scaling** — расширение окна с 16 до 30 бит (для гигабитных сетей с большим BDP).
+- **`SACK`** (Selective ACK) — подтверждать «дырки» в потоке.
+- **Timestamps** — для измерения RTT и защиты от wrap-around sequence numbers (`PAWS`).
+
+**Стоимость:** ровно **1 RTT** до начала отправки данных. На коротких HTTP-запросах это бутылочное горлышко — отсюда `keepalive` и `HTTP/2` multiplexing.
+
+**Что поверх:**
+
+- `TLS 1.2` добавляет ещё **2 RTT** на handshake, `TLS 1.3` — **1 RTT** (с **0-RTT** на повторе).
+- **`QUIC`** объединяет TCP+TLS в **1 RTT**, а на повторе соединения — **0 RTT**.
+
+**Атака `SYN flood`:** атакующий шлёт много `SYN` с поддельных IP, заполняет очередь полуоткрытых соединений. Защита — **`SYN cookies`** (`net.ipv4.tcp_syncookies=1` в Linux).',
                 'difficulty' => 3,
                 'topic' => 'networking.transport',
             ],

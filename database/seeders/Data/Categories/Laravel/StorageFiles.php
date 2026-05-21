@@ -45,7 +45,25 @@ php artisan storage:link',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Spatie Media Library и какие её возможности?',
-                'answer' => 'spatie/laravel-medialibrary - пакет для прикрепления файлов и изображений к Eloquent-моделям. Модель использует трейт InteractsWithMedia, файлы заливаются через $model->addMedia($path)->toMediaCollection("avatars"), хранятся на любом filesystem disk (local, s3, gcs). Возможности: 1) Media collections - группировки файлов по логике (avatars, gallery, documents), с правилами singleFile/multiple. 2) Image conversions - автоматическая генерация thumbnails/превью при загрузке через GD/Imagick (->width(300)->height(300)->sharpen(10)). 3) Responsive images - набор разных размеров для srcset. 4) URL-генератор - $media->getUrl(), getUrl("thumb"), getResponsiveImages(). 5) Custom-properties (мета-данные) на каждом media-объекте. 6) Streaming download - не грузит весь файл в память. Снимает с разработчика ручную работу с file-storage и таблицей media. Pro-версия добавляет UI для админок и Eloquent-relations через morphMany.',
+                'answer' => '**`spatie/laravel-medialibrary`** — пакет для прикрепления файлов и изображений **к Eloquent-моделям**. Модель использует трейт `InteractsWithMedia`, файлы заливаются через `$model->addMedia($path)->toMediaCollection(\'avatars\')`, хранятся на любом filesystem disk (`local`, `s3`, `gcs`).
+
+**Ключевые возможности:**
+
+| Фича | Что даёт |
+| --- | --- |
+| **Media collections** | Группировки файлов (`avatar`, `gallery`, `documents`); правила `singleFile()` / multiple |
+| **Image conversions** | Автоматические thumbnails/превью при загрузке через GD/Imagick (`->width(300)->sharpen(10)`) |
+| **Responsive images** | Набор разных размеров для `srcset` |
+| **URL-генератор** | `$media->getUrl()`, `getUrl(\'thumb\')`, `getResponsiveImages()` |
+| **Custom properties** | Метаданные на каждом media-объекте |
+| **Streaming download** | Не грузит весь файл в память |
+| **Очереди** | Конверсии можно генерировать в фоне (`Queueable` по умолчанию) — или `->nonQueued()` для синхронных |
+
+**Связи с Eloquent:** под капотом `morphMany` к таблице `media`. Можно фильтровать, сортировать, eager-load.
+
+**Когда брать:** нужен **готовый аплоадер** с превью, без ручной работы с `Storage::put` + таблицами + ресайзом. Pro-версия добавляет UI-компоненты для админок.
+
+**Альтернатива для простых кейсов:** связка `Intervention/Image` + `Storage::put()` + миграция `media` своими руками — меньше абстракций, но больше кода.',
                 'code_example' => '<?php
 // composer require spatie/laravel-medialibrary
 // php artisan vendor:publish --provider="Spatie\\MediaLibrary\\MediaLibraryServiceProvider" --tag="migrations"
@@ -93,7 +111,34 @@ $user->clearMediaCollection("gallery");',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Spatie Laravel-Backup и для чего он применяется?',
-                'answer' => 'spatie/laravel-backup - пакет для регулярных бэкапов Laravel-приложения. Что делает: 1) Дампит указанные БД через нативные утилиты (mysqldump, pg_dump, sqlite3 .dump) - быстрее и надёжнее, чем выгрузка через Eloquent. 2) Архивирует выбранные директории (storage/app, public, и любые другие) в zip. 3) Заливает архив на любые filesystem-disks (s3, dropbox, gcs, ftp; обычно настраивают несколько - один локальный + один off-site для DR). 4) Поддерживает шифрование архива (CRYPTO=password). 5) Cleanup-стратегия по возрасту и max размеру (DefaultStrategy: daily/weekly/monthly buckets). 6) Health-check уведомления в почту/Slack/Discord, если бэкапы перестали успешно выполняться. 7) Monitoring: backup:monitor проверяет, что свежий бэкап существует и не сломан. Запускается php artisan backup:run, обычно ставится в schedule.',
+                'answer' => '**`spatie/laravel-backup`** — пакет для **регулярных бэкапов** Laravel-приложения.
+
+**Что делает:**
+
+- **Дампит БД** через **нативные утилиты** (`mysqldump`, `pg_dump`, `sqlite3 .dump`) — быстрее и надёжнее, чем выгрузка через Eloquent.
+- **Архивирует директории** (`storage/app`, `.env`, любые свои) в **zip**.
+- **Заливает архив** на любые filesystem disks (`s3`, `gcs`, `ftp`, `dropbox`). Типовая схема — **локальный** + **off-site** диск для disaster recovery.
+- **Шифрует** архив паролем (`CRYPTO`).
+
+**Cleanup-стратегия** (`DefaultStrategy`):
+
+- Возрастные **«корзины»** — daily / weekly / monthly / yearly.
+- Хранит свежие, прорежает старые: «все за 7 дней, ежедневные за 16, еженедельные за 8 недель…».
+- Лимит по объёму — «удалять старое, если суммарный размер > N МБ».
+
+**Мониторинг и алерты:**
+
+- **`backup:monitor`** проверяет, что свежий бэкап **существует и не сломан**.
+- **Notifications** в почту/Slack/Discord при `BackupHasFailed`, `BackupHasMissed`, `UnhealthyBackupWasFound`.
+
+**Команды:**
+
+- `php artisan backup:run` — сделать бэкап.
+- `php artisan backup:clean` — почистить старые.
+- `php artisan backup:monitor` — проверить здоровье.
+- `php artisan backup:list` — что лежит на дисках.
+
+**В `routes/console.php`** ставят все три на расписание — `daily()` с разными часами.',
                 'code_example' => '<?php
 // composer require spatie/laravel-backup
 // php artisan vendor:publish --provider="Spatie\\Backup\\BackupServiceProvider"

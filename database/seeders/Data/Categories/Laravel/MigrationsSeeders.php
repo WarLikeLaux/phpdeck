@@ -75,7 +75,45 @@ php artisan migrate:status',
             [
                 'category' => 'Laravel',
                 'question' => 'Как объявить foreign key и индексы в миграции?',
-                'answer' => 'foreign() с references()->on() - старый способ. foreignId()->constrained() - короткий вариант, который сам определяет таблицу. cascadeOnDelete, nullOnDelete, restrictOnDelete - поведение при удалении. Индексы: ->index(), ->unique(), ->primary(), составные индексы передаются массивом.',
+                'answer' => 'В Laravel есть два способа объявить **foreign key**, плюс набор методов для **индексов**.
+
+**Длинная форма** (когда имя FK / таблицы не соответствует конвенции):
+
+```php
+$t->unsignedBigInteger(\'user_id\');
+$t->foreign(\'user_id\')->references(\'id\')->on(\'users\')->cascadeOnDelete();
+```
+
+**Короткая форма** (рекомендуется):
+
+```php
+$t->foreignId(\'user_id\')->constrained()->cascadeOnDelete();
+```
+
+`foreignId()` создаёт `BIGINT UNSIGNED`, `constrained()` сам определяет таблицу из имени колонки (`user_id` → `users`).
+
+**Поведение при удалении/обновлении:**
+
+| Метод | SQL | Когда применять |
+|---|---|---|
+| `cascadeOnDelete()` | `ON DELETE CASCADE` | Удалить ребёнка вместе с родителем |
+| `nullOnDelete()` | `ON DELETE SET NULL` | Сохранить ребёнка, обнулив FK (колонка должна быть `nullable`) |
+| `restrictOnDelete()` | `ON DELETE RESTRICT` | Запретить удаление родителя при наличии детей |
+| `noActionOnDelete()` | `ON DELETE NO ACTION` | Аналогично restrict в большинстве СУБД |
+
+**Индексы:**
+
+- `->index()` — обычный.
+- `->unique()` — уникальный.
+- `->primary()` — PK (обычно даёт `$t->id()`).
+- **Составной** — отдельным вызовом: `$t->index([\'tenant_id\', \'status\'])`.
+- **Имя индекса** — второй аргумент: `->index([\'a\', \'b\'], \'my_idx\')`. По умолчанию Laravel генерирует `<table>_<column>_<type>`, что в MySQL упирается в лимит 64 символа на длинных именах.
+
+**Подводные камни:**
+
+- В MySQL InnoDB FK требует **тот же тип и signedness** на обеих сторонах — `unsignedBigInteger` на FK к `id()`.
+- На SQLite FK по умолчанию **выключены** — нужно `PRAGMA foreign_keys=ON` (Laravel включает при тестах).
+- `dropForeign([\'user_id\'])` принимает **массив** (или имя FK строкой).',
                 'code_example' => 'Schema::create(\'posts\', function (Blueprint $t) {
     $t->id();
     $t->foreignId(\'user_id\')->constrained()->cascadeOnDelete();
@@ -124,7 +162,39 @@ public function run(): void {
             [
                 'category' => 'Laravel',
                 'question' => 'Как в фабрике создать модель с дочерними записями и пивотом, не вызывая save вручную?',
-                'answer' => 'Фабрики Laravel умеют автоматически создавать связи через has(), for() и hasAttached(). 1) has(Factory $factory) - для hasMany/hasOne: создаёт родителя, потом дочерние записи с правильным FK. 2) for(Factory $factory) - для belongsTo: сначала создаёт родителя, потом записывает его id в текущую модель. 3) hasAttached(Factory $factory, array $pivotData) - для belongsToMany: создаёт связанные модели и записи в pivot-таблице с дополнительными колонками. 4) Магические методы по имени отношения: ->hasPosts(3), ->forAuthor() - alias к has()/for() с авто-распознаванием класса фабрики. Так фабрика сама разруливает FK и pivot - в seeder/тесте не нужно сохранять руками.',
+                'answer' => 'Фабрики Laravel умеют автоматически создавать связи — без ручных `save()` и подстановки FK.
+
+**Три основных метода:**
+
+| Метод | Для какой связи | Что делает |
+|---|---|---|
+| **`has(Factory $f)`** | `hasOne` / `hasMany` | Создаёт родителя, потом детей с правильным FK |
+| **`for(Factory $f)`** | `belongsTo` | Сначала создаёт родителя, потом ребёнка с его id |
+| **`hasAttached(Factory $f, array $pivot)`** | `belongsToMany` | Создаёт связанные модели + запись в pivot с дополнительными колонками |
+
+**Магические методы по имени отношения:**
+
+- `->hasPosts(3)` ≡ `->has(Post::factory()->count(3))` — Laravel ищет фабрику по имени отношения `posts()`.
+- `->forAuthor()` ≡ `->for(User::factory(), \'author\')`.
+
+**Sequences для разных значений в наборе:**
+
+```php
+User::factory()
+    ->count(10)
+    ->sequence(
+        [\'role\' => \'admin\'],
+        [\'role\' => \'editor\'],
+    )
+    ->create();
+```
+
+**Подводные камни:**
+
+- **`make()` vs `create()`** — `make()` не сохраняет в БД (модель только в памяти), для связей через `has()` нужно именно `create()`.
+- **Кастомный FK** — `->has(Post::factory()->count(3), \'publishedPosts\')` (имя отношения вторым аргументом).
+- **`for()` принимает уже созданную модель** — `->for($existingUser)`, не только фабрику.
+- В **тестах** используйте `RefreshDatabase` — иначе сидинг фабрикой засоряет БД между прогонами.',
                 'code_example' => '<?php
 // hasMany - юзер с 3 постами
 $user = User::factory()
@@ -165,7 +235,37 @@ User::factory()
             [
                 'category' => 'Laravel',
                 'question' => 'Чем команда artisan migrate:status отличается от migrate:rollback и зачем нужен squash?',
-                'answer' => 'migrate:status показывает таблицу пройденных и непройденных миграций со столбцом batch (номер пакета, в котором миграция была применена); ничего не меняет в БД, чисто read-only - полезно для debug в CI и проверке состояния прода. migrate:rollback откатывает миграции последнего batch через метод down(); с --step=N - последние N batch-ей; с --pretend - показывает SQL без выполнения. migrate:reset - откатывает все, migrate:refresh - откат + повтор, migrate:fresh - drop всех таблиц + migrate (быстрее refresh, но без down()). Зачем squash (schema:dump --prune): за годы накапливаются сотни миграций, и новый разработчик тратит минуты на их прогон с нуля. schema:dump компилирует ТЕКУЩУЮ структуру БД в один SQL-снапшот в database/schema/{driver}-schema.sql; --prune ещё и удаляет сами файлы старых миграций. При следующем migrate (на пустой БД) Laravel сначала залит снапшот, потом применит миграции, добавленные ПОСЛЕ снапшота. Откат старых миграций после squash, разумеется, невозможен.',
+                'answer' => 'Это команды разных «жанров» — справочная, откатывающая и оптимизирующая.
+
+**`migrate:status`** — **read-only** список миграций:
+
+- Колонки: `Migration`, `Batch` (номер пакета применения), `Ran?` (Yes/Pending).
+- Ничего в БД не меняет.
+- Полезна в CI для проверки состояния прода и для диагностики «эта миграция точно прошла?».
+
+**`migrate:rollback`** — **откатывает** миграции:
+
+- По умолчанию — **последний batch** через метод `down()`.
+- `--step=N` — последние N batch-ей.
+- `--pretend` — показывает SQL без выполнения.
+- Семейство: `migrate:reset` (всё), `migrate:refresh` (откат + повтор), `migrate:fresh` (DROP таблиц + migrate, **без** `down()`, быстрее).
+
+**`schema:dump` (squash)** — **сворачивает накопленные миграции в SQL-снапшот**:
+
+- За годы накапливаются сотни миграций, новый dev тратит минуты на их прогон с нуля.
+- `schema:dump` создаёт `database/schema/{driver}-schema.sql` со **снимком текущей схемы**.
+- `schema:dump --prune` ещё и **удаляет файлы** старых миграций.
+- На пустой БД Laravel: сначала **заливает снапшот**, потом применяет миграции, **добавленные после** снапшота.
+- **Откат миграций, попавших в снапшот, невозможен** — это сознательный trade-off ради скорости.
+
+**Что выбрать:**
+
+| Цель | Команда |
+|---|---|
+| Проверить «что в продакшене» | `migrate:status` |
+| Отменить только последний релиз миграций | `migrate:rollback --step=1` |
+| Полностью пересобрать dev-БД | `migrate:fresh --seed` |
+| Ускорить миграции на свежей машине | `schema:dump --prune` |',
                 'code_example' => '# Состояние миграций - где какой batch
 php artisan migrate:status
 

@@ -30,7 +30,30 @@ class Assemble
             [
                 'category' => 'Laravel',
                 'question' => 'Собери eager load с ограничением relations.',
-                'answer' => 'with принимает имя relation или массив. Замыкание доращивает запрос на загружаемом отношении.',
+                'answer' => '**`with()`** — eager loading: подтягивает связанные модели **двумя запросами** вместо N+1.
+
+**Формы вызова:**
+
+- **Строка** — `with(\'comments\')`.
+- **Массив** — `with([\'comments\', \'author\'])`.
+- **С условием** — `with([\'comments\' => fn ($q) => $q->latest()])`.
+- **Только нужные колонки** — `with(\'comments:id,post_id,body\')` (обязательно включить FK!).
+- **Вложенные** — `with(\'comments.author.profile\')`.
+
+**Что произойдёт без `with`:**
+
+- `Post::paginate(20)` → 1 запрос на посты.
+- В Blade `{{ $post->comments->count() }}` → ещё 20 запросов (N+1).
+
+**С `with(\'comments\')`:**
+
+- `SELECT * FROM posts ... LIMIT 20`.
+- `SELECT * FROM comments WHERE post_id IN (1,...,20)`.
+
+**Подводный камень `limit` внутри `with`:**
+
+- В **Laravel 11+** — это **per-parent limit** (по 5 комментов на каждый пост).
+- В **Laravel ≤10** — лимит на **общую** выборку (5 комментов на ВСЕ посты вместе) — классическая ловушка.',
                 'assemble_chunks' => [
                     'Post::',
                     "with(['comments' => fn(\$q) => \$q->latest()])",
@@ -57,7 +80,25 @@ class Assemble
             [
                 'category' => 'Laravel',
                 'question' => 'Собери диспатч джобы в очередь high с задержкой 30 секунд.',
-                'answer' => 'onQueue выбирает очередь, delay - отложенный запуск.',
+                'answer' => 'Цепочка модификаторов перед отправкой job в очередь.
+
+**Основные методы:**
+
+- **`onQueue(\'high\')`** — выбрать очередь. Воркеры обычно слушают несколько с приоритетом: `php artisan queue:work --queue=high,default,low`.
+- **`onConnection(\'redis\')`** — конкретный driver, если их несколько в `config/queue.php`.
+- **`delay(now()->addSeconds(30))`** — отложенный запуск.
+- **`afterCommit()`** — диспатчить **только после успешного commit** текущей транзакции (страхует от «job в очереди есть, а строки в БД ещё нет»).
+
+**Альтернатива через статику:**
+
+- `ProcessOrder::dispatch($order)->onQueue(\'high\')->delay(30)`.
+- `ProcessOrder::dispatchAfterResponse($order)` — выполнить **после** HTTP-ответа (sync, но не блокирует клиента).
+
+**Подводные камни:**
+
+- **Очередь должна быть указана у воркера** — иначе job будет лежать вечно.
+- **`delay` для `sync`-драйвера игнорируется** — job выполнится мгновенно.
+- На Redis-драйвере `delayed` job-ы лежат в `ZSET`, и `queue:work` забирает их в момент дедлайна.',
                 'assemble_chunks' => [
                     'ProcessOrder::',
                     'dispatch($order)',
@@ -72,7 +113,37 @@ class Assemble
             [
                 'category' => 'Laravel',
                 'question' => 'Собери rate-limited маршрут в группе.',
-                'answer' => 'middleware throttle принимает имя именованного limiter или формат N,M.',
+                'answer' => '**`throttle`** — middleware Laravel для **rate limiting**. Поддерживает два формата:
+
+- **`throttle:60,1`** — короткая запись: **60 запросов в 1 минуту** на ключ.
+- **`throttle:api`** — **именованный limiter**, определённый в `RouteServiceProvider::configureRateLimiting()` (или в `AppServiceProvider::boot` в L11).
+
+**Ключ по умолчанию:**
+
+- Аутентифицирован — `auth_id` пользователя.
+- Гость — IP-адрес.
+
+**Заголовки ответа:**
+
+- `X-RateLimit-Limit`, `X-RateLimit-Remaining` — текущее состояние.
+- При исчерпании — `429 Too Many Requests` + `Retry-After`.
+
+**Именованные limiter-ы — гибче:**
+
+```php
+RateLimiter::for(\'api\', fn (Request $r) =>
+    $r->user()
+        ? Limit::perMinute(120)->by($r->user()->id)
+        : Limit::perMinute(30)->by($r->ip())
+);
+```
+
+**В Laravel 11+ есть `perSecond()`** — для критичных эндпоинтов (login, OTP).
+
+**Подводные камни:**
+
+- За балансером **IP — это IP балансера**: нужен `TrustProxies` middleware, иначе один IP уронит всех.
+- Хранилище limiter-а — кеш (`config/cache.php`); на серверном кластере должен быть **общий** (Redis), иначе лимит будет per-server.',
                 'assemble_chunks' => [
                     'Route::',
                     "middleware(['auth', 'throttle:60,1'])",

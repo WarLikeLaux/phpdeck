@@ -150,7 +150,32 @@ public function show(Invoice \$invoice) {
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое Insecure Design и чем он отличается от Misconfiguration?',
-                'answer' => 'Пункт №4 в OWASP Top 10 2021 — уязвимости, заложенные на этапе ПРОЕКТИРОВАНИЯ бизнес-логики, а не в коде или настройках. Идеальная реализация плохой идеи всё равно небезопасна. Отличие от Security Misconfiguration: misconfig — это «забыли включить флаг»/«дефолтный пароль», insecure design — «фича изначально позволяет атаку». Классические примеры: восстановление пароля по дате рождения (легко угадать через соцсети), 4-6 цифр в reset-коде без rate limit (брутится за минуты), купон на скидку без проверки one-time-use, race condition в переводе денег (TOCTOU), отсутствие лимита попыток ввода 2FA, бизнес-flow «верификация по SMS» как единственный фактор для крупных операций. Защита: threat modeling до старта (STRIDE, abuser stories наряду с user stories), security review дизайна, явные требования к rate limit / lockout / идемпотентности на уровне спецификации, «secure by default» — фича сначала закрыта, потом открывается.',
+                'answer' => '**№4** в `OWASP Top 10 2021` — уязвимости, заложенные на этапе **проектирования** бизнес-логики, а не в коде или настройках. **Идеальная реализация плохой идеи всё равно небезопасна.**
+
+**Разница с Security Misconfiguration**:
+
+| Insecure Design | Security Misconfiguration |
+| --- | --- |
+| «**фича изначально** позволяет атаку» | «**забыли включить** флаг» |
+| лечится перепроектированием | лечится правкой конфига |
+| 6-значный reset-код без rate limit | `APP_DEBUG=true` на проде |
+| reset по дате рождения | дефолтный пароль `admin/admin` |
+
+**Классические примеры**:
+
+- **восстановление пароля по дате рождения** — легко угадать через соцсети;
+- **4-6 цифр в reset-коде без rate limit** — брутится за минуты;
+- купон на скидку без проверки **one-time-use**;
+- **race condition** в переводе денег (`TOCTOU`);
+- отсутствие лимита попыток ввода `2FA`;
+- «верификация по SMS» как **единственный** фактор для крупных операций.
+
+**Защита**:
+
+- **threat modeling** до старта (`STRIDE`, abuser stories рядом с user stories);
+- **security review** дизайна, не только кода;
+- явные требования к `rate limit` / `lockout` / **идемпотентности** на уровне спецификации;
+- **secure by default** — фича сначала закрыта, потом открывается.',
                 'code_example' => "<?php
 // Плохой дизайн — 6-значный код без лимита попыток
 public function verifyReset(Request \$r) {
@@ -247,7 +272,30 @@ npm audit fix",
             [
                 'category' => 'Безопасность',
                 'question' => 'Что такое Software and Data Integrity Failures и причём тут unserialize?',
-                'answer' => 'Пункт №8 в OWASP Top 10 2021 — доверие коду или данным без проверки целостности. Примеры: CI/CD ставит npm/composer-пакет без integrity-чека (supply chain атака — atomicfoo, event-stream), автообновление ПО без проверки подписи, CDN-скрипт без SRI-хеша, десериализация недоверенных данных. Последнее — самое опасное в PHP: unserialize() с пользовательским вводом — путь к RCE через POP-чейн (PHP Object Property-Oriented Programming): атакующий конструирует строку, которая при unserialize создаёт цепочку объектов, у которых __destruct/__wakeup/__toString делают вредоносное (file_put_contents, exec). Аналог в Java — Apache Commons Collections gadget. Защита: 1) lock-файлы (composer.lock, package-lock.json) и composer/npm audit в CI. 2) SRI-атрибут integrity= у внешних <script>. 3) Подписи артефактов релизов (cosign, GPG). 4) Для внешних данных — json_decode, никогда unserialize. 5) Если unserialize неизбежен — second-аргумент allowed_classes с явным whitelist.',
+                'answer' => '**№8** в `OWASP Top 10 2021` — доверие коду или данным **без проверки целостности**.
+
+**Типичные дыры**:
+
+- `CI/CD` ставит `npm`/`composer`-пакет **без integrity-чека** (supply chain — `event-stream`, `atomicfoo`);
+- автообновление ПО **без проверки подписи**;
+- `CDN`-скрипт **без `SRI`-хеша** (`<script integrity="sha384-...">`);
+- **десериализация** недоверенных данных.
+
+**Опаснее всего в PHP** — `unserialize()` с пользовательским вводом → путь к `RCE` через **POP-chain** (`PHP Object Property-Oriented Programming`):
+
+1. Атакующий конструирует строку с цепочкой объектов.
+2. При `unserialize` объекты создаются.
+3. `__destruct` / `__wakeup` / `__toString` дёргают опасное: `file_put_contents`, `exec`, чтение файла.
+
+Аналог в Java — `Apache Commons Collections gadget`.
+
+**Защита**:
+
+1. **Lock-файлы** (`composer.lock`, `package-lock.json`) + `composer audit` / `npm audit` в `CI`.
+2. `SRI`-атрибут `integrity=` у внешних `<script>`.
+3. **Подписи** артефактов релизов (`cosign`, `GPG`).
+4. Для внешних данных — **`json_decode`**, никогда `unserialize`.
+5. Если `unserialize` неизбежен (legacy) — второй аргумент `allowed_classes` с **явным whitelist**.',
                 'code_example' => "<?php
 // ОЧЕНЬ ПЛОХО — RCE через POP-chain
 \$data = unserialize(\$_COOKIE['state']);
@@ -292,7 +340,25 @@ npm audit fix",
             [
                 'category' => 'Безопасность',
                 'question' => 'Почему SSRF попал в OWASP Top 10 отдельным пунктом и как защититься в архитектуре?',
-                'answer' => 'SSRF (Server-Side Request Forgery) — атакующий заставляет твой сервер сходить по нужному ему URL. В OWASP Top 10 2021 SSRF выделен в отдельный №10 (раньше шёл внутри Broken Access Control), потому что взрывной рост микросервисов и облаков сделал его одной из ведущих причин крупных утечек (Capital One 2019 — через SSRF получили AWS IAM credentials из metadata-эндпоинта). Опасность не только в чтении внутренних API, но и в side-effects: внутренний Redis принимает команды по HTTP-протоколу, внутренние админки часто без auth. Защита по слоям (defense-in-depth): 1) В коде — whitelist разрешённых доменов вместо blacklist. 2) Резолвить DNS заранее и блочить приватные IP-диапазоны (включая 169.254.169.254, ::1, IPv4-mapped IPv6). 3) Запрет редиректов или проверка каждого hop. 4) Архитектурно — отдельная сетевая зона для исходящего трафика (egress proxy типа Squid с whitelist). 5) Для AWS — IMDSv2 (требует токена, защищён). 6) Запуск сервиса с минимальным IAM-ролем, чтобы даже при SSRF метадата была бесполезна.',
+                'answer' => '**`SSRF`** (`Server-Side Request Forgery`) — атакующий заставляет **твой сервер** сходить по нужному ему URL. В `OWASP Top 10 2021` выделен в отдельный **№10** (раньше — внутри `Broken Access Control`), потому что взрывной рост микросервисов и облаков сделал его одной из ведущих причин крупных утечек.
+
+**Хрестоматийный случай** — **Capital One 2019**: через `SSRF` достали `AWS IAM credentials` из metadata-эндпоинта `169.254.169.254` → доступ к S3 со 100M записями.
+
+**Чем опасен**:
+
+- чтение **внутренних API**, не выставленных наружу;
+- внутренние **админки** часто без auth;
+- внутренний `Redis` принимает команды по HTTP-протоколу — `SSRF` → `RCE`;
+- **облачная metadata** раздаёт `IAM`-токены инстансу.
+
+**Защита по слоям (defense-in-depth)**:
+
+1. **Whitelist** разрешённых доменов вместо blacklist.
+2. Резолвить `DNS` заранее через `gethostbynamel` и блочить **приватные диапазоны**: `127.0.0.0/8`, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `::1`, `fc00::/7`, IPv4-mapped IPv6.
+3. **Запрет редиректов** или проверка каждого hop отдельно.
+4. **Архитектурно** — отдельная сетевая зона для исходящего трафика (egress proxy типа `Squid` с whitelist).
+5. На `AWS` — **`IMDSv2`** (требует токена, защищён от `SSRF`).
+6. Запуск сервиса с **минимальным `IAM`-ролем** — даже при `SSRF` metadata бесполезна.',
                 'code_example' => "<?php
 // В контроллере — резолвим и проверяем все IP домена
 function fetchExternal(string \$url): string {

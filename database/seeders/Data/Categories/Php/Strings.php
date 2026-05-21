@@ -48,7 +48,29 @@ echo strtr("test", ["t" => "T", "e" => "3"]);
             [
                 'category' => 'PHP',
                 'question' => 'Чем mb_strlen отличается от strlen?',
-                'answer' => 'strlen возвращает количество БАЙТ в строке, а не символов. Для ASCII это одно и то же. Для UTF-8 кириллический символ занимает 2 байта, простой эмодзи - 4. mb_strlen возвращает количество СИМВОЛОВ (точнее - Unicode codepoint-ов) с учётом кодировки. Если работаешь с многобайтными строками - всегда используй mb_* функции (mb_substr, mb_strtolower, mb_str_split, mb_strpos). ВАЖНО: mb_strlen считает codepoint-ы, а не визуальные символы (графемы). Эмодзи семьи "👨‍👩‍👧‍👦" - это последовательность из 4 человечков, склеенных тремя ZWJ (U+200D), всего 7 codepoint-ов; mb_strlen вернёт 7, а не 1. Эмодзи с модификатором цвета кожи "👍🏽" - 2 codepoint-а. Чтобы получить визуальную длину, используй grapheme_strlen() / grapheme_substr() из ext-intl - они работают с расширенными кластерами графем по UAX #29.',
+                'answer' => '**Три разных уровня «длины»:**
+
+| Функция | Что считает | Пример: `"Привет"` |
+|---|---|---|
+| **`strlen`** | **байты** | `12` |
+| **`mb_strlen`** | **codepoint-ы** Unicode | `6` |
+| **`grapheme_strlen`** (`ext-intl`) | **видимые графемы** (UAX #29) | `6` |
+
+**Правила в UTF-8:**
+- латиница/цифры → **1 байт = 1 codepoint = 1 графема**
+- кириллица → **2 байта = 1 codepoint**
+- простой эмодзи → **4 байта = 1 codepoint = 1 графема**
+- **составной эмодзи** (семья `👨‍👩‍👧‍👦` через ZWJ) → много codepoint-ов, **1 графема**.
+
+**Когда что использовать:**
+- лимит TEXT-колонки в БД → **`strlen`** (байты).
+- ограничение «логин не длиннее 20 символов» → **`mb_strlen`** (codepoint-ы).
+- «отображаемая ширина» для UI / диалогов → **`grapheme_strlen`**.
+
+**Сопутствующие правила:**
+- `substr`, `strtolower`, `strpos`, `str_split` работают **по байтам** → ломают UTF-8.
+- Их `mb_*`-аналоги: `mb_substr`, `mb_strtolower`, `mb_strpos`, `mb_str_split`.
+- Дефолтная кодировка: **`mb_internal_encoding("UTF-8")`** в bootstrap **или** `ini` `default_charset=UTF-8`. Старая `mbstring.internal_encoding` — **deprecated** с PHP 5.6.',
                 'code_example' => '<?php
 $str = "Привет";
 
@@ -237,7 +259,31 @@ if (strpos($s, "World") !== false)         { /* вхождение */ }',
             [
                 'category' => 'PHP',
                 'question' => 'Чем mb_* функции отличаются от обычных строковых и когда это критично?',
-                'answer' => 'strlen, substr, strtolower работают побайтово. Для UTF-8 один кириллический символ - 2 байта, эмодзи - 4. mb_* функции учитывают кодировку и возвращают длину/срез в символах. Использование strlen для валидации длины пароля или substr для превью текста - частый источник багов и mojibake. Дефолтную кодировку для mb_* функций задают через ini default_charset=UTF-8 (актуальная общая настройка кодировки PHP, которой следуют mbstring/htmlspecialchars/etc) или явно вызовом mb_internal_encoding("UTF-8") в bootstrap. Старая ini mbstring.internal_encoding deprecated с PHP 5.6 - не используйте её в новых проектах.',
+                'answer' => '**Главное:** обычные `strlen` / `substr` / `strtolower` / `strpos` / `str_split` работают **побайтово**. Для UTF-8 это даёт мусор на кириллице, эмодзи, диакритике.
+
+**Пары обычная → mb-функция:**
+
+| Обычная (байты) | `mb_*` (codepoint-ы) |
+|---|---|
+| `strlen` | **`mb_strlen`** |
+| `substr` | **`mb_substr`** |
+| `strtolower` / `strtoupper` | **`mb_strtolower`** / **`mb_strtoupper`** |
+| `strpos` / `stripos` | **`mb_strpos`** / **`mb_stripos`** |
+| `str_split` | **`mb_str_split`** |
+| `ucfirst` / `ucwords` | **`mb_convert_case($s, MB_CASE_TITLE)`** |
+
+**Когда это критично:**
+- **Валидация длины** пароля/логина: `strlen($pass) >= 8` пропустит «1234» из 4 кириллических букв (8 байт), `mb_strlen` — нет.
+- **Превью текста**: `substr($text, 0, 100)` обрежет в середине символа → mojibake (`?`, тильды).
+- **Регистр** для нелатиницы: `strtolower("ПРИВЕТ")` ничего не меняет.
+- **Поиск подстроки** с кириллицей: `strpos` найдёт по байтовому смещению, что иногда даёт «битый» индекс при дальнейших операциях.
+
+**Настройка кодировки по умолчанию:**
+- **ini** `default_charset=UTF-8` — глобальная настройка (mbstring, htmlspecialchars и прочие её уважают).
+- **`mb_internal_encoding("UTF-8")`** в bootstrap проекта — явно.
+- Старая `mbstring.internal_encoding` — **deprecated** с PHP 5.6.
+
+**Подвох:** `mb_*` функции **медленнее** на ~10-30%. Для горячего ASCII-only кода это иногда заметно — там можно осознанно оставить `strlen`/`substr`.',
                 'code_example' => '<?php
 $s = "Привет";
 

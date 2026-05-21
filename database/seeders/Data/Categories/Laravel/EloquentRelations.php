@@ -39,7 +39,38 @@ class Post extends Model {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое hasManyThrough и hasOneThrough?',
-                'answer' => 'hasManyThrough - связь "через" промежуточную таблицу, когда две модели соединены не напрямую, а через третью. Канонический пример: Country имеет много User (users.country_id), User имеет много Post (posts.user_id) - Country хочет ВСЕ Post-ы своих юзеров одним запросом: $country->posts. Без hasManyThrough пришлось бы делать $country->users()->with("posts") и собирать вручную. Сигнатура: hasManyThrough(FinalModel, IntermediateModel, foreignKeyOnIntermediate, foreignKeyOnFinal, localKey, secondLocalKey). По умолчанию Laravel угадывает имена FK (country_id, user_id) и PK (id) - если соглашение соблюдено, аргументы можно опустить. hasOneThrough - то же самое, но возвращает ОДНУ модель. ⚠️ Ограничение: through работает только для прямой цепочки belongsTo→hasMany. Для many-to-many через pivot нужен пакет staudenmeir/eloquent-has-many-deep или явный join. Сложные through-связи плохо комбинируются с whereHas и могут давать неожиданные планы запросов - смотрите EXPLAIN.',
+                'answer' => '**`hasManyThrough`** — связь «через» промежуточную таблицу, когда две модели соединены не напрямую, а через третью.
+
+**Канонический пример:** `Country → User → Post`.
+
+- `Country` имеет много `User` (`users.country_id`).
+- `User` имеет много `Post` (`posts.user_id`).
+- `Country` хочет **все Post-ы своих юзеров одним запросом**: `$country->posts`.
+
+Без `hasManyThrough` пришлось бы делать `$country->users()->with(\'posts\')` и собирать вручную.
+
+**Сигнатура:**
+
+```
+hasManyThrough(
+    FinalModel,           // Post
+    IntermediateModel,    // User
+    foreignKeyOnIntermediate, // users.country_id
+    foreignKeyOnFinal,    // posts.user_id
+    localKey,             // countries.id
+    secondLocalKey,       // users.id
+)
+```
+
+По умолчанию Laravel угадывает имена FK (`country_id`, `user_id`) и PK (`id`) — если соглашение соблюдено, аргументы **можно опустить**.
+
+**`hasOneThrough`** — то же самое, но возвращает **одну** модель (хорошо комбинируется с `latestOfMany()`).
+
+**Ограничения:**
+
+- Работает только для **прямой цепочки** `belongsTo → hasMany` (через один уровень).
+- Для **many-to-many через pivot** — нужен пакет `staudenmeir/eloquent-has-many-deep` или явный `join`.
+- Сложные `through`-связи плохо комбинируются с `whereHas` и могут давать неожиданные планы запросов — смотрите `EXPLAIN`.',
                 'code_example' => '<?php
 class Country extends Model {
     public function users() {
@@ -86,7 +117,29 @@ Country::with("posts")->get();
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое полиморфные связи (morphTo, morphMany, morphedByMany)?',
-                'answer' => 'Полиморфная связь позволяет одной модели принадлежать нескольким разным моделям через одну таблицу. Например, Comment может относиться и к Post, и к Video. В таблице comments есть commentable_id и commentable_type. morphTo - на стороне Comment. morphMany - на стороне Post/Video. morphedByMany / morphToMany - many-to-many полиморфная.',
+                'answer' => '**Полиморфная связь** — одна модель может «принадлежать» **нескольким разным** моделям через **одну** таблицу.
+
+Канонический пример: `Comment` относится и к `Post`, и к `Video` (и к `Photo`).
+
+**Схема pivot:** в `comments` лежит **две** колонки:
+
+- **`commentable_id`** — id «родителя» (например, `42`).
+- **`commentable_type`** — класс «родителя» (`App\\Models\\Post`).
+
+**Какие отношения:**
+
+| Сторона | Метод | Пример |
+|---|---|---|
+| Дочка (`Comment`) | `morphTo()` | `$comment->commentable` → `Post` или `Video` |
+| Родитель (`Post`/`Video`) | `morphMany()` | `$post->comments` |
+| Полиморфный many-to-many | `morphToMany()` | `Post::tags()` через `taggables` |
+| Обратная сторона M:N | `morphedByMany()` | `Tag::posts()` |
+
+**Подводные камни:**
+
+- **`morphMap`** в `AppServiceProvider::boot` — фиксирует **короткие алиасы** (`\'post\' => Post::class`) вместо FQCN в БД; иначе рефакторинг неймспейса сломает связи.
+- **N+1 при `morphTo`** — обычный `with(\'commentable\')` делает по запросу на каждый тип; нужен `morphWith()` для подгрузки вложенных связей конкретных типов.
+- **Каскадное удаление** — нельзя сделать FK в БД (тип-зависимое), нужен Observer или job.',
                 'code_example' => 'class Comment extends Model {
     public function commentable() { return $this->morphTo(); }
 }
@@ -103,7 +156,29 @@ class Video extends Model {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое pivot-таблица в belongsToMany и как работать с ней?',
-                'answer' => 'Pivot - это промежуточная таблица для связи многие-ко-многим, которая хранит связи между двумя сущностями. Например, role_user. Дополнительные поля pivot достаются через withPivot, временные метки - withTimestamps. Можно создать кастомную модель пивота через using().',
+                'answer' => '**Pivot** — промежуточная таблица для связи **многие-ко-многим**, хранящая связи между двумя сущностями.
+
+**Пример:** `role_user` с парой FK `(user_id, role_id)`.
+
+**Конвенции:**
+
+- **Имя таблицы** — singular-имена обеих моделей в snake_case по **алфавиту**: `role_user`.
+- **Дополнительные поля pivot** — `withPivot([\'expires_at\', \'priority\'])`.
+- **Timestamps** — `withTimestamps()` подключает `created_at`/`updated_at` на pivot.
+- **Кастомная модель** — `->using(Membership::class)` с наследованием от `Pivot` (или `MorphPivot` для полиморфных).
+
+**Работа с pivot:**
+
+| Метод | Что делает |
+|---|---|
+| `attach($id, [\'role\' => \'owner\'])` | Добавить связь с дополнительными полями |
+| `detach($id)` или `detach()` | Убрать одну связь / все |
+| `sync([1, 2, 3])` | **Заменить весь набор** — что не в массиве, удалится |
+| `syncWithoutDetaching([...])` | Добавить, не удаляя существующие |
+| `toggle($id)` | Переключить: был → удалить, не было → добавить |
+| `updateExistingPivot($id, [...])` | Обновить дополнительные поля |
+
+**Доступ к данным pivot:** `$user->roles->first()->pivot->expires_at`. Через `as(\'membership\')` можно переименовать свойство.',
                 'code_example' => 'public function roles() {
     return $this->belongsToMany(Role::class)
         ->withPivot(\'expires_at\', \'priority\')

@@ -120,7 +120,20 @@ Route::get(\'/admin/posts\', ...)->middleware(\'auth\')->name(\'admin.posts.inde
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает route caching и какие у него ограничения?',
-                'answer' => 'php artisan route:cache компилирует все роут-файлы (web, api, console, channels) в один сериализованный PHP-файл, что ускоряет загрузку маршрутов в продакшене (особенно полезно при сотнях роутов). Под капотом Route::prepareForSerialization() пакует роуты, включая Closure-обработчики, через laravel/serializable-closure - поэтому в современном Laravel (8.62+) closure-роуты не ломают кеш. Команда исключительно для деплоя - после route:cache любые правки в routes/* не подхватываются до route:clear; не использовать в разработке.',
+                'answer' => '**`php artisan route:cache`** компилирует все роут-файлы (`web`, `api`, `console`, `channels`) **в один сериализованный PHP-файл** (`bootstrap/cache/routes-v7.php`) — Laravel при старте читает его вместо парсинга роутов на каждый запрос.
+
+**Когда даёт ощутимый выигрыш:** проекты с **сотнями маршрутов**, особенно при холодном опкеше — экономит десятки мс на bootstrap.
+
+**Что важно знать:**
+
+- Под капотом `Route::prepareForSerialization()` пакует роуты, **включая `Closure`-обработчики**, через `laravel/serializable-closure` (с **L8.62+**). До этого был миф «route:cache несовместим с closure-роутами» — он устарел.
+- Команда **исключительно для деплоя**. Любые правки в `routes/*` после `route:cache` **не подхватываются** до `route:clear`.
+- Связка прод-команд: **`php artisan optimize`** = `config:cache` + `route:cache` + `view:cache` + `event:cache`.
+
+**Подводные камни:**
+
+- `config:cache` **замораживает `env()`** — после кеша `.env` не читается; **`env()` в коде** видит только OS-уровень или дефолт. Правильно: использовать `config(\'...\')`, а `env()` — только в `config/*.php`.
+- `Closure`, замыкающий `$this` или несериализуемый объект (`PDO`, file handle), всё ещё **ломает кеш** — serializable-closure не магия.',
                 'code_example' => 'php artisan route:cache
 php artisan route:clear
 php artisan route:list',
@@ -131,7 +144,20 @@ php artisan route:list',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое route model binding?',
-                'answer' => 'Route Model Binding - автоматическая подстановка модели в контроллер по параметру маршрута. Простыми словами: вместо того чтобы вручную писать User::findOrFail($id), Laravel сам найдёт модель по ID или другому полю. Implicit binding - по типу параметра. Explicit binding - вручную через Route::bind.',
+                'answer' => '**Route Model Binding** — автоматическая подстановка модели в контроллер **по параметру маршрута**. Вместо `User::findOrFail($id)` в каждом методе — type-hint, и Laravel сам находит запись или возвращает **404**.
+
+**Виды биндинга:**
+
+- **Implicit** (по умолчанию) — Laravel смотрит на **type-hint** параметра метода и резолвит по primary key (или `getRouteKeyName()`). Имя параметра в URL и в сигнатуре должны **совпадать**.
+- **По другому полю** — `users/{user:slug}` или переопределение `getRouteKeyName()` на модели.
+- **Enum binding** — type-hint `BackedEnum` в сигнатуре автоматически валидирует значение и кастит (404 на невалидное).
+- **Explicit** — `Route::bind(\'user\', fn ($v) => ...)` — кастомная логика поиска.
+
+**Дополнительные приёмы:**
+
+- **Scoped bindings** — `Route::scopeBindings()` или `users/{user}/posts/{post:slug}`: Laravel ищет `Post` **через отношение** `$user->posts()` — гарантирует, что `post` действительно принадлежит `user`.
+- **`->withTrashed()`** на роуте — позволяет резолвить мягко удалённые модели.
+- **`Model::resolveRouteBindingUsing(...)`** — кастомизация для конкретной модели на уровне сервис-провайдера.',
                 'code_example' => '// Implicit
 Route::get(\'/users/{user}\', function (User $user) {
     return $user; // автоматически найдено
@@ -149,7 +175,24 @@ Route::bind(\'user\', fn($value) => User::where(\'username\', $value)->firstOrFa
             [
                 'category' => 'Laravel',
                 'question' => 'Какие ограничения у route:cache в современном Laravel?',
-                'answer' => 'Распространённое заблуждение: "route:cache не работает с Closure-роутами". Это было верно до Laravel 8.62 - сейчас Closure сериализуются через laravel/serializable-closure (форк opis/closure, переехавший в ядро Laravel в 8.62 и полностью заменивший opis в 9.0) и команда route:cache их корректно кеширует. Реальные ограничения: 1) После route:cache любые правки в routes/web.php / routes/api.php не подхватываются - нужен route:clear; то есть это команда деплоя, не разработки. 2) config:cache замораживает env() - после кеша Laravel пропускает загрузку .env, и env() в коде видит только OS-уровень переменных (Docker -e, systemd Environment=) или default; .env-only значения становятся "невидимыми" - классический source of bugs. 3) Если в роуте используется ссылка на класс/метод, недоступный для composer dump-autoload - кеш упадёт. 4) Closure, замыкающий $this или ссылку на несериализуемый объект (PDO, file handle), всё ещё ломает кеш - serializable-closure не магия. В проде route:cache + config:cache + view:cache + event:cache - стандартная связка, всё это объединяет artisan optimize.',
+                'answer' => '**Распространённое заблуждение** — «`route:cache` не работает с `Closure`-роутами». Это было верно **до L8.62**; сейчас `Closure` сериализуются через **`laravel/serializable-closure`** (с L9.0 полностью вытеснил `opis/closure`), и `route:cache` их корректно кеширует.
+
+**Реальные ограничения:**
+
+- **Только для деплоя.** После `route:cache` правки в `routes/*` **не видны** до `route:clear` — локально не запускать.
+- **`config:cache` замораживает `env()`** — после кеша `.env` не парсится, `env()` в коде видит только OS-уровень (Docker `-e`, systemd `Environment=`) или дефолт. Правило: использовать `env()` **только в `config/*.php`**, в приложении — `config(\'...\')`.
+- **Несериализуемые closure** — те, что замыкают `$this`, `PDO`, file handle, открытое соединение — всё ещё **ломают кеш**.
+- **Несуществующие классы** — если роут ссылается на `[NotExisting::class, \'foo\']` и `composer dump-autoload` не видит класс, кеш упадёт.
+
+**Стандартная связка прод-команд:**
+
+| Команда | Что кеширует |
+| --- | --- |
+| `config:cache` | Слитый `config/*.php` |
+| `route:cache` | Все `routes/*.php` |
+| `view:cache` | Скомпилированные Blade |
+| `event:cache` | Карту слушателей/событий |
+| `optimize` | **Всё перечисленное за один шаг** |',
                 'code_example' => '<?php
 // оба варианта корректны и кешируются
 Route::get("/", function () { return "hi"; });
@@ -167,7 +210,38 @@ Route::get("/", [HomeController::class, "index"]);
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое model binding и как сделать кастомное связывание по slug?',
-                'answer' => 'Implicit binding ловит type-hint Model в методе контроллера и резолвит по primary key из URL-параметра. Чтобы биндить по slug, переопределите getRouteKeyName() на модели или укажите в роуте users/{user:slug}. Можно делать кастомный резолвер через Route::bind() (firstOrFail сам бросит 404). Для составных условий используйте Explicit binding в провайдере (в L11 - в любом ServiceProvider).',
+                'answer' => '**Implicit binding** ловит type-hint модели в методе контроллера и резолвит запись **по primary key** из URL-параметра. Для нестандартного поля (например, `slug`) — три способа, по возрастанию гибкости:
+
+**1. `getRouteKeyName()` на модели — глобально для всех роутов:**
+
+```php
+class Post extends Model {
+    public function getRouteKeyName(): string { return \'slug\'; }
+}
+Route::get(\'/posts/{post}\', fn (Post $p) => $p);
+```
+
+**2. Параметр прямо в роуте — точечно:**
+
+```php
+Route::get(\'/posts/{post:slug}\', fn (Post $p) => $p);
+```
+
+**3. Explicit `Route::bind()` — кастомная логика:**
+
+```php
+Route::bind(\'post\', fn ($v) => Post::where(\'slug\', $v)
+    ->where(\'published\', true)
+    ->firstOrFail());
+```
+
+**Полезные расширения:**
+
+- **`scopeBindings()`** — `users/{user}/posts/{post:slug}` с `->scopeBindings()` проверит, что `post` принадлежит `user` (ищет через `$user->posts()`). Защита от **IDOR**.
+- **`->withTrashed()`** на роуте — позволит резолвить мягко удалённые модели.
+- **`resolveRouteBindingUsing(...)`** в `boot()` сервис-провайдера — кастомизация для конкретной модели глобально.
+
+**Подводный камень:** `getRouteKeyName()` влияет **и на `route(\'name\', $model)`** — URL-генератор тоже начнёт подставлять `slug` вместо `id`.',
                 'code_example' => '// Вариант 1: getRouteKeyName в модели
 class Post extends Model {
     public function getRouteKeyName(): string { return \'slug\'; }
@@ -188,7 +262,31 @@ Route::bind(\'post\', fn($value) =>
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Signed URLs в Laravel и как они защищены от подделки?',
-                'answer' => 'Signed URLs - механизм Laravel для генерации URL с криптографической подписью, защищающей от подделки параметров. URL::signedRoute("unsubscribe", ["user" => 42]) создаёт ссылку вида /unsubscribe/42?signature=abc123. Под подписью - HMAC-SHA256 от полного URL (хост + путь + query-строка, как её формирует Laravel из переданных параметров), посчитанный с APP_KEY как секретом. Если злоумышленник попробует подменить хоть один параметр (например, user=42 → user=43), HMAC не сойдётся, и middleware ValidateSignature вернёт 403. Дополнительно есть signedRoute с ->expiresAt() / temporarySignedRoute($name, $expiration, $params) - в подпись включается параметр expires (timestamp), и если он в прошлом, ссылка считается невалидной (даже с правильной подписью). Применение: одноразовые ссылки на скачивание файлов, email-подтверждения регистрации, отписка от рассылки одним кликом, password reset (но Laravel для reset использует свой токен в БД, не signed urls), magic-link auth. Защита от replay - не из коробки: signed url можно использовать многократно до истечения; если нужна разовость, добавляйте в подпись nonce и сохраняйте использованные nonce-ы в Redis с TTL. URL должен совпадать дословно - иначе подпись не сойдётся; если за прокси работает rewriting (X-Forwarded-Host, X-Forwarded-Proto), нужны TrustProxies middleware и совпадающий APP_URL, иначе подпись посчитается от другого хоста. В контроллере проверка: ->middleware("signed") в роуте, или $request->hasValidSignature() вручную.',
+                'answer' => '**Signed URLs** — механизм Laravel для генерации URL **с криптографической подписью**, защищающей от подделки параметров.
+
+**Как устроено:**
+
+- `URL::signedRoute(\'unsubscribe\', [\'user\' => 42])` создаёт ссылку вида `/unsubscribe/42?signature=eyJ...`.
+- Подпись — **HMAC-SHA256** от полного URL (хост + путь + query), с **`APP_KEY`** как секретом.
+- Любая подмена параметра (`user=42` → `user=43`) меняет хеш — middleware **`signed`** вернёт **403**.
+
+**Срок жизни:**
+
+- `URL::temporarySignedRoute(\'download\', now()->addHour(), [\'file\' => $id])` — в подпись попадает `expires` (timestamp).
+- После истечения ссылка невалидна **даже с верной подписью**.
+
+**Где применять:**
+
+- Magic-link логин.
+- Подтверждение email / отписка одним кликом.
+- Одноразовые ссылки на скачивание приватных файлов.
+- (Для **password reset** Laravel использует **свой токен в БД**, а не signed URL — у него своя ротация.)
+
+**Подводные камни:**
+
+- **Не защищает от replay** — ссылку можно использовать **многократно** до истечения. Нужна разовость → добавь `nonce` в параметры и **храни использованные** в Redis с TTL.
+- **URL должен совпадать дословно.** За прокси с rewriting (`X-Forwarded-Host`, `X-Forwarded-Proto`) включай `TrustProxies` middleware и держи `APP_URL` в `.env` точным — иначе сервер считает подпись от другого хоста.
+- **UTM-метки** ломают подпись → используй `->hasValidSignatureWhileIgnoring([...])` или middleware `signed:relative`.',
                 'code_example' => '<?php
 use Illuminate\\Support\\Facades\\URL;
 
@@ -239,7 +337,26 @@ class WelcomeNotification extends Notification {
             [
                 'category' => 'Laravel',
                 'question' => 'Что произойдёт, если вложенная route-группа задаёт middleware и prefix, которые уже есть у внешней?',
-                'answer' => 'Атрибуты группы НЕ перезаписываются, а МЕРДЖАТСЯ - это часто удивляет. Поведение определено в Illuminate\\Routing\\RouteGroup::merge. Правила: 1) prefix конкатенируется через слэш ("api" + "v1" -> "api/v1"); 2) middleware объединяется в массив (внешний + вложенный); 3) where-ограничения регекспов на параметры объединяются в массив (вложенный имеет приоритет на конфликте ключей); 4) name-prefix склеивается через точку ("api." + "v1." -> "api.v1."); 5) namespace конкатенируется через бэкслеш (легаси, в L11 редко используют); 6) domain - вложенный заменяет внешний (это исключение!). Поэтому admin-группа внутри api/v1 даст в итоге префикс api/v1/admin, имя api.v1.admin., и сумму всех middleware. Полезно для версионирования API + RBAC: одна группа задаёт auth:sanctum + throttle, вложенная добавляет role:admin.',
+                'answer' => '**Атрибуты группы не перезаписываются, а мерджатся** — это часто удивляет. Поведение реализовано в **`Illuminate\\Routing\\RouteGroup::merge`**.
+
+**Правила слияния:**
+
+| Атрибут | Как мерджится |
+| --- | --- |
+| `prefix` | Конкатенация **через `/`** — `\'api\'` + `\'v1\'` → `api/v1` |
+| `middleware` | **Сумма** массивов — внешний + вложенный |
+| `name` / `as` | Конкатенация **через `.`** — `\'api.\'` + `\'v1.\'` → `api.v1.` |
+| `where` (regex) | Сумма массивов; **вложенный** имеет приоритет при конфликте ключей |
+| `namespace` | Конкатенация через `\\` (легаси, в L11 почти не нужно) |
+| **`domain`** | **Исключение** — **вложенный заменяет** внешний |
+
+**Типовое применение — версионирование + RBAC:**
+
+- Внешняя группа: `prefix(\'api\')->middleware([\'throttle:60,1\'])->name(\'api.\')`.
+- Вложенная `v1`: добавляет `auth:sanctum` и префикс имени `v1.`.
+- Ещё одна `admin`: добавляет `role:admin` — в итоге `api/v1/admin/*` с тремя middleware и именами `api.v1.admin.*`.
+
+**Полезный приём:** вложенная группа может также **переопределить `where`** для конкретного параметра — внешний regex для `id` останется в силе, новые добавятся.',
                 'code_example' => '<?php
 Route::prefix("api")
     ->middleware(["throttle:60,1"])

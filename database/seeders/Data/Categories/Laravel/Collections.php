@@ -13,7 +13,25 @@ class Collections
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Collections в Laravel?',
-                'answer' => 'Collection - это обёртка вокруг массива с десятками методов: map, filter, reduce, pluck, where, groupBy, sortBy, chunk и т.д. Простыми словами: "удобный" массив с цепочкой методов как в JavaScript. Что возвращает Eloquent: get() / all() / find() с массивом id - Eloquent\\Collection (наследник Support\\Collection с моделями); cursor() / lazy() / lazyById() - LazyCollection (ленивая, не материализует все записи в памяти); paginate() / simplePaginate() / cursorPaginate() - LengthAwarePaginator / Paginator / CursorPaginator (НЕ Collection, отдельный объект с метаданными пагинации); chunk() / chunkById() / each() - не возвращают, передают порции в callback. Фраза "все Eloquent-результаты - Collection" неточна: cursor и paginate отдают другие типы.',
+                'answer' => '**Collection** — fluent-обёртка над массивом с десятками методов: `map`, `filter`, `reduce`, `pluck`, `where`, `groupBy`, `sortBy`, `chunk`. По сути «массив с цепочкой методов как в JS Array».
+
+**Что на самом деле возвращает Eloquent — это часто путают:**
+
+| Метод | Тип возврата | Особенность |
+|---|---|---|
+| `get()`, `all()`, `find([1,2,3])` | `Illuminate\\Database\\Eloquent\\Collection` | Наследник `Support\\Collection` с моделями |
+| `cursor()`, `lazy()`, `lazyById()` | `LazyCollection` | Ленивая, держит в памяти одну запись |
+| `paginate()`, `simplePaginate()`, `cursorPaginate()` | `LengthAwarePaginator` / `Paginator` / `CursorPaginator` | **НЕ Collection** — отдельный объект с meta пагинации |
+| `chunk()`, `chunkById()`, `each()` | `bool` | Ничего не возвращают — передают порции в callback |
+| `pluck(\'name\')` | `Support\\Collection` | Уже не Eloquent, скаляры |
+| `pluck(\'name\', \'id\')->all()` | `array` | Тоже частый кейс |
+
+**Полезные нюансы:**
+
+- `Eloquent\\Collection` имеет специальные методы: `load()`, `loadMissing()`, `pluck`, `modelKeys()`, `unique` сравнивает по PK.
+- `groupBy` принимает строку, callable или массив для multi-level группировки.
+- На большом наборе данных `->all()` материализует массив — для стрима использовать `LazyCollection`.
+- Фраза «все Eloquent-результаты — Collection» **неточна**: `cursor` отдаёт `LazyCollection`, `paginate` — `Paginator`.',
                 'code_example' => 'collect([1, 2, 3, 4])
     ->filter(fn($n) => $n % 2 === 0)
     ->map(fn($n) => $n * 10)

@@ -13,7 +13,27 @@ class AuthAuthorization
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Authentication Guards в Laravel?',
-                'answer' => 'Guard - это способ аутентификации (как Laravel определяет, кто пользователь). Стандартные: web (через сессии); api (исторически token-driven через TokenGuard, но он удалён в L6+ - в современном скаффолде api настраивают с драйвером sanctum); sanctum (cookies для SPA + bearer-токены для мобильных). Можно настроить несколько guards в config/auth.php (multi-auth) - например для admin и user отдельно.',
+                'answer' => '**Guard** — стратегия, **как Laravel опознаёт текущего пользователя**. Описывается в `config/auth.php` парой «`driver` + `provider`»: **driver** определяет, *откуда читать* данные (`session`, `token`, `sanctum`, `passport`), **provider** — *в какой таблице/модели* искать пользователя.
+
+**Дефолтные guards в Laravel 11:**
+
+| Guard | Driver | Где применяется |
+| --- | --- | --- |
+| `web` | `session` | Браузерные запросы — куки + CSRF |
+| `api` (если настроен) | `sanctum` | SPA на том же домене (куки) и мобильные/токены (Bearer) |
+| `admin` (кастомный) | `session` | Отдельная таблица `admins`, своя сессия |
+
+**Что важно про драйверы:**
+
+- Старый `token` (`TokenGuard`) в L6+ убран — в современных скаффолдах `api` сразу настраивают с `sanctum`.
+- `sanctum` — гибрид: для SPA выдаёт **сессионную куку** через `EnsureFrontendRequestsAreStateful`, для мобильных — **Bearer-токен**.
+- `passport` — полноценный OAuth2-сервер (если действительно нужно).
+
+**Несколько guards одновременно (multi-auth):**
+
+- Один и тот же роут можно открыть нескольким guard-ам: `auth:web,sanctum` — пускает, если **хотя бы один** опознал пользователя.
+- Логин в конкретный guard: `Auth::guard(\'admin\')->attempt(...)`.
+- Дефолтный guard меняется через `config(\'auth.defaults.guard\')`.',
                 'code_example' => 'auth()->guard(\'admin\')->attempt($credentials);
 auth(\'admin\')->user();
 Auth::guard(\'api\')->check();
@@ -46,7 +66,31 @@ fetch(\'/api/me\', { headers: { Authorization: `Bearer ${token}` } });',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Authorization, Gates и Policies?',
-                'answer' => 'Authorization - проверка прав ("может ли пользователь сделать X"). Gate - простая проверка через closure (для отдельных действий). Policy - класс, привязанный к модели, с методами view/create/update/delete. Используется через can(), authorize(), Blade-директиву @can.',
+                'answer' => '**Authorization** — проверка **«может ли этот пользователь сделать X»** (в отличие от authentication — «кто он»). В Laravel два механизма: **Gates** и **Policies**.
+
+**Gate** — простой closure, привязанный к **имени действия** (не к модели):
+
+- Регистрируется в любом провайдере через `Gate::define(\'edit-settings\', fn (User $u) => $u->is_admin)`.
+- Подходит для **сквозных правил**: «может зайти в админку», «может видеть billing».
+
+**Policy** — **класс**, привязанный к **модели**, с методами по CRUD:
+
+- `php artisan make:policy PostPolicy --model=Post` создаёт `view`, `create`, `update`, `delete`, `restore`, `forceDelete`.
+- **Автоматически связывается**: Laravel 11+ ищет policy по конвенции (`App\\Models\\Post` → `App\\Policies\\PostPolicy`), без явной регистрации.
+- Подходит для **правил вокруг сущности**: «владелец поста», «модератор может удалять чужие».
+
+**Как зовётся в коде:**
+
+- В контроллере: `$this->authorize(\'update\', $post)` — бросит `403` при отказе.
+- На юзере: `$user->can(\'update\', $post)` / `cannot(...)`.
+- В роуте: `->middleware(\'can:update,post\')` (явное связывание параметра).
+- В Blade: `@can(\'update\', $post)` / `@cannot`.
+- В FormRequest: переопределить `authorize()`.
+
+**Возврат значений:**
+
+- `true`/`false` — простой да/нет.
+- `Response::allow()` / `Response::deny(\'Причина\')` — кастомное сообщение для ответа `403`.',
                 'code_example' => '// Gate
 Gate::define(\'edit-settings\', fn(User $u) => $u->is_admin);
 if (Gate::allows(\'edit-settings\')) { /* ... */ }
@@ -69,11 +113,35 @@ $user->can(\'update\', $post);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает Gate::before?',
-                'answer' => 'Gate::before - это глобальный pre-check, выполняемый перед любой проверкой Gate/Policy. Если возвращает true - доступ разрешён, false - запрещён, null - проверка идёт дальше. Часто используется для super-admin: "админу можно всё".',
-                'code_example' => 'Gate::before(function (User $user, string $ability) {
+                'answer' => '**`Gate::before(...)`** — глобальный **pre-check**, который запускается **перед каждой** проверкой Gate/Policy.
+
+**Семантика возврата:**
+
+| Возврат | Что значит |
+| --- | --- |
+| `true` | Доступ **разрешён** — обычная проверка пропускается |
+| `false` | Доступ **запрещён** — обычная проверка пропускается |
+| `null` | Не вмешиваться — идём дальше в `Gate::define()` или метод Policy |
+
+Типовой кейс — **super-admin «можно всё»**. Дополняющий хук — **`Gate::after(...)`** — срабатывает **после** обычной проверки, если та вернула `null` (только дополняет, не переопределяет).
+
+**Подводные камни:**
+
+- Возврат **`false`** из `before` **жёстко** запрещает действие — даже если Policy разрешает. Поэтому для «по умолчанию запретить, кроме админа» возвращай `true` для админа и **`null`** (а не `false`) для остальных.
+- `before` срабатывает на **все** ability — фильтруй по имени `$ability` или по типу объекта, иначе суперадмин обойдёт даже строгие бизнес-проверки (например, «нельзя удалить уже оплаченный заказ»).',
+                'code_example' => 'use App\\Models\\User;
+use Illuminate\\Support\\Facades\\Gate;
+
+Gate::before(function (User $user, string $ability) {
     if ($user->is_super_admin) {
-        return true;
+        return true; // открыли всё
     }
+
+    return null; // НЕ false — иначе перекроем все остальные правила
+});
+
+Gate::after(function (User $user, string $ability, ?bool $result) {
+    // подоткнуть результат, если базовая проверка вернула null
 });',
                 'code_language' => 'php',
                 'difficulty' => 3,
@@ -113,7 +181,24 @@ Route::get("/users/{user}/orders/{order}", function (User $user, Order $order) {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое CSRF и как Laravel защищает от него?',
-                'answer' => 'CSRF (Cross-Site Request Forgery) - атака, при которой пользователя заставляют отправить запрос с его сессией на ваш сайт с другого. Laravel автоматически защищает все POST/PUT/DELETE формы web-роутов через middleware VerifyCsrfToken. В формах нужен @csrf, в Ajax - заголовок X-CSRF-TOKEN. Можно исключить роуты через $except.',
+                'answer' => '**CSRF (Cross-Site Request Forgery)** — атака, при которой **чужой сайт** заставляет браузер пользователя отправить запрос **с его сессионной кукой** на ваш сайт. Жертва залогинена → сервер видит легитимного юзера → деньги перевелись.
+
+**Как защищает Laravel:**
+
+- Middleware **`ValidateCsrfToken`** (в Laravel 11 — глобально в `bootstrap/app.php`) для всех **`POST`/`PUT`/`PATCH`/`DELETE`** web-роутов.
+- Каждой сессии присваивается **`csrf_token()`** (хранится в `_token` сессии); сайт отдаёт его в форме, браузер шлёт обратно — проверяется на равенство.
+- На API-роутах CSRF **не нужен** — там Bearer-токен/Sanctum, защита делается иначе.
+
+**Как передавать токен:**
+
+- В формах — **`@csrf`** (генерирует `<input type="hidden" name="_token">`).
+- В AJAX — заголовок **`X-CSRF-TOKEN`**: токен берут из `<meta name="csrf-token">`. Sanctum/Inertia ставят его сами.
+- В JSON-запросах с куками с того же домена браузер **сам** не пошлёт токен — нужен `X-XSRF-TOKEN` из куки `XSRF-TOKEN` (Sanctum и `axios` делают автоматически).
+
+**Когда отключают:**
+
+- Для webhook-ов от внешних сервисов (Stripe, GitHub) — их добавляют в `except` middleware (в Laravel 11 — через `$middleware->validateCsrfTokens(except: [...])` в `bootstrap/app.php`).
+- Защита от подделки на этих роутах — **сигнатура** запроса (HMAC от тела), а не CSRF.',
                 'code_example' => '<form method="POST">
     @csrf
     <input name="title">
@@ -131,7 +216,23 @@ axios.defaults.headers.common[\'X-CSRF-TOKEN\'] =
             [
                 'category' => 'Laravel',
                 'question' => 'В чём практическая разница между auth middleware и Authentication Guard?',
-                'answer' => 'Это разные слои - часто путают. Guard - стратегия идентификации пользователя (session, token, sanctum, кастомные), определяется в config/auth.php. Отвечает на вопрос "кто этот пользователь" - читает сессию/токен/cookie и возвращает Authenticatable или null. Сам по себе ничего не блокирует. Auth-middleware (auth, auth:web, auth:sanctum, auth.basic) - HTTP-сторож: проверяет, что указанный guard вернул пользователя, и если null - бросает AuthenticationException, который для web-запросов превращается в редирект на /login, для JSON-запросов в 401. То есть guard - КТО, middleware - ПУСКАТЬ ЛИ. Guard можно использовать в коде без middleware (Auth::guard("admin")->user() в контроллере), middleware всегда работает поверх какого-то guard. Сценарий: один роут принимает И session, И api-токен - middleware("auth:web,sanctum") пробует оба guard-а по очереди, пускает если хотя бы один опознал пользователя.',
+                'answer' => 'Это **разные слои** — часто путают.
+
+| | `Guard` | `auth` middleware |
+| --- | --- | --- |
+| Отвечает на | **«Кто этот пользователь?»** | **«Пускать ли его?»** |
+| Где живёт | `config/auth.php` (`session`, `sanctum`, кастомный) | HTTP-стек, висит на роуте |
+| Что делает | Читает сессию/токен/куку → возвращает `Authenticatable` или `null` | Зовёт `guard->check()`, при `false` бросает `AuthenticationException` |
+| Сам блокирует? | **Нет** — просто опознаёт | **Да** — редирект на `/login` (web) или `401` (JSON) |
+| Можно использовать без другого? | Да — `Auth::guard(\'admin\')->user()` прямо в коде | Нет — middleware всегда работает поверх какого-то guard |
+
+**Полезный сценарий:** `auth:web,sanctum` — middleware пробует **оба guard-а** по очереди и пускает, если **хотя бы один** опознал пользователя. Удобно для эндпоинтов, которые открыты и для браузера (сессия), и для мобильных (Bearer).
+
+**Что отсюда следует:**
+
+- Защитить роут — это **middleware**, а не guard.
+- Логин в админку с отдельной таблицей — это **guard `admin`** + `Auth::guard(\'admin\')->attempt(...)` + `auth:admin` middleware.
+- Если просто хочешь «достать текущего» без блокировки — бери guard напрямую, middleware не вешай.',
                 'code_example' => '<?php
 // config/auth.php - два guard-а
 "guards" => [
@@ -222,7 +323,27 @@ Auth::guard("admin")->attempt([
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Spatie Laravel-Permission и какую задачу он решает?',
-                'answer' => 'spatie/laravel-permission - самый популярный community-пакет для ролей и разрешений в Laravel (RBAC). Решает задачу гибкой системы доступа без написания своих таблиц и логики. Что даёт: 1) Таблицы roles, permissions, model_has_roles, model_has_permissions, role_has_permissions, миграции из коробки. 2) Трейт HasRoles на модели User добавляет методы assignRole(), removeRole(), hasRole(), hasAnyRole(), syncRoles(), givePermissionTo(), hasPermissionTo(). 3) Интеграция с Gate/Policy: если пермишен есть в БД, $user->can("edit posts") уже работает, не надо регистрировать каждый в AuthServiceProvider. 4) Blade-директивы @role, @hasrole, @hasanyrole, @can. 5) Middleware role:admin, permission:edit-posts, role_or_permission:admin|publish-articles. 6) Кеширование пермишенов в Redis - проверка прав не бьёт в БД. 7) Поддержка нескольких guards (web/api отдельные роли) и teams (multi-tenancy: одна роль "admin" в разных командах).',
+                'answer' => '**`spatie/laravel-permission`** — самый популярный community-пакет для **RBAC** (ролей и разрешений) в Laravel. Решает задачу гибкой системы доступа **без своих таблиц и логики**.
+
+**Что приносит из коробки:**
+
+- Миграции: `roles`, `permissions`, `model_has_roles`, `model_has_permissions`, `role_has_permissions`.
+- Трейт `HasRoles` на `User` — методы `assignRole`, `removeRole`, `hasRole`, `hasAnyRole`, `syncRoles`, `givePermissionTo`, `hasPermissionTo`.
+- **Интеграция с Gate**: если пермишен есть в БД, `$user->can(\'edit posts\')` сразу работает — не нужно регистрировать каждый в `AuthServiceProvider`.
+- **Blade-директивы**: `@role`, `@hasrole`, `@hasanyrole`, `@can`.
+- **Middleware**: `role:admin`, `permission:edit-posts`, `role_or_permission:admin|publish-articles`.
+- **Кеширование** пермишенов в Redis/файлах — проверка прав не бьёт в БД на каждом запросе.
+
+**Продвинутые возможности:**
+
+- **Несколько guards** — отдельные роли для `web` и `api`.
+- **Teams** (multi-tenancy) — одна роль `admin` может существовать в разных командах независимо.
+- **Wildcard-пермишены** (с включением в конфиге): `posts.*` покрывает `posts.create`, `posts.update`, ...
+
+**Когда не брать:**
+
+- Если правил всего 2–3 («админ/не админ») — хватит **флага в users** или enum-роли + Gate, без отдельных таблиц.
+- Для **ABAC** (атрибутивные правила, например «модератор видит только свой регион») — Spatie слабоват; берут Policy + scope-ы.',
                 'code_example' => '<?php
 // composer require spatie/laravel-permission
 // php artisan vendor:publish --provider="Spatie\\Permission\\PermissionServiceProvider"
@@ -272,7 +393,29 @@ Route::middleware("permission:edit articles")->put("/articles/{id}", ...);
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Fortify и как он связан с Breeze и Jetstream?',
-                'answer' => 'Fortify - backend-агностичная реализация аутентификации без UI. Регистрирует роуты и контроллеры для логина, регистрации, сброса пароля, подтверждения email, двухфакторной аутентификации (2FA), confirmable password. UI - на тебе: рендерь любой Blade/Vue/React-фронт. Это позволяет переиспользовать одну backend-логику auth и для SPA, и для серверного рендера, и для мобильного клиента. Связь со стартерами: Jetstream использует Fortify под капотом и добавляет сверху Livewire или Inertia+Vue вьюшки, профиль, 2FA UI, командные функции; Breeze, наоборот, НЕ использует Fortify - идёт со своими простыми контроллерами и вьюшками (так задумано: Breeze минималистичен, Fortify оверкилл для простых случаев). Когда выбирать Fortify напрямую: 1) Headless API - бэкенд для мобильного приложения. 2) Кастомный UI на собственном фронте, но не хочется писать password-reset/2FA вручную. 3) Микросервисная архитектура с auth-сервисом. Минус Fortify: без UI его сложно "потрогать" - надо самому строить фронт.',
+                'answer' => '**`Fortify`** — **backend-агностичная** реализация аутентификации **без UI**. Регистрирует роуты и контроллеры для:
+
+- логина / регистрации,
+- сброса и обновления пароля,
+- подтверждения email и confirmable password,
+- **двухфакторной аутентификации (2FA)** через TOTP + recovery codes.
+
+UI — **на тебе**: можешь рендерить Blade/Vue/React/мобильный клиент. Одна backend-логика обслуживает все фронтенды.
+
+**Связь со стартерами:**
+
+| Стартер | Использует Fortify? | UI |
+| --- | --- | --- |
+| `Breeze` | **Нет** — свои простые контроллеры и вьюшки | Blade / Livewire / Inertia |
+| `Jetstream` | **Да** — Fortify под капотом | Livewire или Inertia + Vue (с готовой страницей 2FA и сессий) |
+
+**Когда выбирать Fortify напрямую:**
+
+- **Headless API** — бэкенд для мобильного приложения, UI отсутствует.
+- **Кастомный фронт** на своём дизайне, но не хочется руками писать password-reset/2FA.
+- **Микросервис аутентификации** для нескольких приложений.
+
+**Минус:** «потрогать» Fortify нельзя — без своего UI он невидим, нужно самому строить страницы и подключаться к его эндпоинтам.',
                 'code_example' => '<?php
 // composer require laravel/fortify
 // php artisan vendor:publish --provider="Laravel\\Fortify\\FortifyServiceProvider"

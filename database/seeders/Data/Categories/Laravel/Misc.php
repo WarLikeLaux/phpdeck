@@ -104,16 +104,73 @@ class UserController extends Controller {
             [
                 'category' => 'Laravel',
                 'question' => 'Опиши жизненный цикл запроса в Laravel.',
-                'answer' => '1) Запрос попадает в public/index.php. 2) Загружается composer autoload и создаётся экземпляр Application (контейнер). 3) Bootstraps - регистрируются провайдеры, загружается env, конфиги. 4) HTTP-ядро (Illuminate\\Foundation\\Http\\Kernel) пропускает запрос через глобальные middleware - в L11 user-facing класса app/Http/Kernel.php нет, конфигурация ядра живёт в bootstrap/app.php, но сам класс Foundation\\Http\\Kernel остался внутри фреймворка. 5) Запрос диспатчится в роутер, который находит маршрут и его middleware. 6) Запускается контроллер/closure. 7) Формируется Response. 8) Response проходит обратно через middleware (terminate). 9) Ответ отправляется клиенту.',
-                'code_example' => null,
-                'code_language' => null,
+                'answer' => 'Каждый HTTP-запрос проходит через **9 этапов**:
+
+1. **`public/index.php`** — точка входа web-сервера. Подключает Composer autoload и `bootstrap/app.php`.
+2. **`Application`** — создаётся экземпляр контейнера (`Illuminate\\Foundation\\Application`).
+3. **Bootstraps** — `LoadEnvironmentVariables`, `LoadConfiguration`, `HandleExceptions`, `RegisterFacades`, `RegisterProviders`, `BootProviders`.
+4. **HTTP Kernel** (`Illuminate\\Foundation\\Http\\Kernel`) пропускает запрос через **глобальные middleware** (`TrustProxies`, `HandleCors`, `PreventRequestsDuringMaintenance`).
+5. **Router** — находит маршрут и применяет его **route/group middleware**.
+6. **Controller / closure** — выполняется бизнес-логика.
+7. **Response** — Laravel приводит возврат (`view`, `array`, `Resource`) к объекту `Response`.
+8. **Middleware response phase** — middleware обрабатывают **исходящий** ответ.
+9. **`terminate()`** — middleware с этим методом выполняются **после отправки ответа клиенту** (например, сохранение сессии, отправка логов).
+
+**Где конфигурируется в Laravel 11:**
+
+- **`app/Http/Kernel.php` удалён** — middleware-стек настраивается в `bootstrap/app.php` через `->withMiddleware(...)`.
+- **`app/Console/Kernel.php` удалён** — расписание/команды в `routes/console.php`.
+- **`app/Exceptions/Handler.php` удалён** — обработка через `->withExceptions(...)` в `bootstrap/app.php`.
+
+Сам класс `Foundation\\Http\\Kernel` остался **внутри фреймворка** — просто без user-facing наследника.',
+                'code_example' => '// bootstrap/app.php (Laravel 11)
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__.\'/../routes/web.php\',
+        api: __DIR__.\'/../routes/api.php\',
+        commands: __DIR__.\'/../routes/console.php\',
+        health: \'/up\',
+    )
+    ->withMiddleware(function (Middleware $m) {
+        $m->web(append: [EnsureUserIsActive::class]);
+        $m->alias([\'admin\' => EnsureIsAdmin::class]);
+    })
+    ->withExceptions(function (Exceptions $e) {
+        $e->dontReport(MissedPaymentException::class);
+    })
+    ->create();',
+                'code_language' => 'php',
                 'difficulty' => 3,
                 'topic' => 'laravel.misc',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Facades в Laravel и как они работают?',
-                'answer' => 'Facade - это статический "прокси" к объекту в контейнере. Простыми словами: вы пишете Cache::get(), а на самом деле вызывается метод объекта, который Laravel взял из контейнера. Под капотом Facade использует магический метод __callStatic, перенаправляя вызов на реальный сервис.',
+                'answer' => '**Facade** — статический «прокси» к объекту, который Laravel получает из контейнера.
+
+Вы пишете `Cache::put(...)`, но **внутри** Laravel дёргает `app(\'cache\')->put(...)` — то есть метод **обычного объекта-singleton** из контейнера.
+
+**Как это работает:**
+
+- Класс `Cache` наследует `Illuminate\\Support\\Facades\\Facade`.
+- Метод `getFacadeAccessor()` возвращает строку-binding в контейнере: `\'cache\'`.
+- Магический `__callStatic` перенаправляет любой статический вызов на резолв из контейнера: `app(\'cache\')->put(...)`.
+
+**Зачем такой механизм:**
+
+- **Краткость** — `Cache::put()` vs `app(\'cache\')->put()` или DI-конструктор.
+- **Под капотом — обычный объект** — Laravel не нарушает тестируемость: фасады поддерживают `Cache::shouldReceive(...)` (mock) и `Cache::fake()`.
+- **Не путать со Service Locator** — фасады дают **синтаксический сахар** над DI, не замена.
+
+**Сравнение с альтернативами:**
+
+| Способ | Краткость | Тестируемость | Явность зависимостей |
+|---|---|---|---|
+| **Facade** (`Cache::get`) | Высокая | Через `shouldReceive` | Скрыта |
+| **Helper** (`cache()->get(...)`) | Высокая | Через `Cache::fake()` | Скрыта |
+| **DI Contract** (`Repository $cache`) | Средняя | Тривиально через `instance()` | Явная |
+
+**Real-time facades:** `Facades\\App\\Services\\OrderService::create()` — Laravel сам делает фасад из любого класса, добавив префикс `Facades\\`. Удобно для legacy-кода.',
                 'code_example' => 'use Illuminate\Support\Facades\Cache;
 
 Cache::put(\'key\', \'value\', 60);
@@ -162,7 +219,38 @@ echo trans_choice(\'apples\', 5);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Scout?',
-                'answer' => 'Scout - это пакет для полнотекстового поиска в Eloquent-моделях. Драйверы: Algolia, Meilisearch, Typesense, database (простой LIKE), collection. Простыми словами: добавили трейт Searchable, и модель автоматически индексируется при сохранении.',
+                'answer' => '**Laravel Scout** (`laravel/scout`) — официальный пакет для **полнотекстового поиска** в Eloquent-моделях. Абстракция над движком: API одинаковый, драйвер меняется в `.env`.
+
+**Драйверы:**
+
+| Драйвер | Тип | Подходит для |
+|---|---|---|
+| **Algolia** | SaaS | Production, лучшее ранжирование |
+| **Meilisearch** | Self-hosted (Rust) | Middle-проекты, бесплатно |
+| **Typesense** | Self-hosted (C++) | Большие корпуса, геопоиск |
+| **database** | LIKE по БД | Прототип, до ~100k записей |
+| **collection** | LIKE в памяти | Тесты |
+
+**Как подключить:**
+
+- На модели — `use Searchable;`
+- Метод `toSearchableArray(): array` — какие поля индексировать.
+- Save/delete модели **автоматически** обновляют индекс (опционально через очередь — `SCOUT_QUEUE=true`).
+
+**Поиск:**
+
+```php
+Post::search(\'laravel\')
+    ->where(\'published\', true)
+    ->paginate(15);
+```
+
+**Подводные камни:**
+
+- **`SCOUT_QUEUE=true`** обязателен в проде — иначе SMTP к Algolia/Meili синхронно тормозит каждый `save()`.
+- **SoftDeletes** требуют `SCOUT_SOFT_DELETES=true`, иначе удалённые остаются в индексе.
+- **Bulk-операции** (`Model::where()->update()`) **не обновляют** Scout-индекс — нужно `Model::where()->searchable()` вручную.
+- **Импорт большой таблицы** — `php artisan scout:import "App\\Models\\Post"` (чанкует через `chunkById`).',
                 'code_example' => 'class Post extends Model {
     use Searchable;
 
@@ -181,7 +269,35 @@ php artisan scout:import "App\\Models\\Post"',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Telescope?',
-                'answer' => 'Telescope - это инструмент отладки и мониторинга Laravel-приложения. Простыми словами: dashboard, который показывает все запросы, SQL-запросы, jobs, события, кеш, логи, mail, exceptions. Используется в development. В продакшене обычно отключается или ограничивается доступ.',
+                'answer' => '**Laravel Telescope** (`laravel/telescope`) — официальный **debug-dashboard** для Laravel-приложения. Доступ через `/telescope`.
+
+**Что показывает:**
+
+- **HTTP-запросы** — URL, метод, status, latency, payload.
+- **Database** — все SQL-запросы с временем, bindings, источником вызова.
+- **Jobs** — диспатченные, обработанные, failed.
+- **Mail / Notifications** — что отправлено, кому, payload.
+- **Events / Listeners** — что бросалось, кто отреагировал.
+- **Cache / Redis** — hit/miss, set/forget.
+- **Logs / Exceptions** — все ошибки с stack trace.
+- **Models** — created/updated/deleted с diff.
+- **Schedule** — расписание-команды.
+- **Gates / Policies** — авторизация решения.
+
+**Когда нужен:**
+
+- **Development** — стандартный дефолт.
+- **Staging** — ограниченный доступ для QA.
+- **Production** — **обычно выключают** (или ограничивают `--tag=fresh-after-installer-only` для админа), потому что:
+
+**Подводные камни в проде:**
+
+- **Большой объём данных** — Telescope пишет в БД на **каждый запрос**, разрастается до GB за день.
+- **Защита маршрута** — gate `Telescope::auth(fn ($u) => $u->isAdmin())` обязателен.
+- **Sampling** — `TELESCOPE_ENABLED=true` + sampling в `TelescopeServiceProvider::register()` (например, 10% запросов).
+- **Prune** — расписать `php artisan telescope:prune --hours=48` в crone, иначе таблица `telescope_entries` лопнет.
+
+**Альтернатива для прода — Laravel Pulse** (`laravel/pulse`): легче, считает агрегаты, не пишет каждое событие.',
                 'code_example' => 'composer require laravel/telescope --dev
 php artisan telescope:install
 php artisan migrate
@@ -194,7 +310,38 @@ php artisan migrate
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Pulse?',
-                'answer' => 'Pulse - это лёгкий dashboard для мониторинга performance в продакшене (от Laravel). Простыми словами: показывает медленные запросы, нагруженные jobs, slow queries, активных пользователей, cache hit rate в реальном времени. Альтернатива Telescope для production.',
+                'answer' => '**Laravel Pulse** (`laravel/pulse`) — **лёгкий production-dashboard** для мониторинга performance в реальном времени. От той же команды Laravel.
+
+**Идея:** Telescope пишет каждое событие → разрастается, в проде не используется. Pulse **агрегирует** метрики и пишет компактные summary → можно держать в проде постоянно.
+
+**Что показывает:**
+
+- **Slow queries** — top SQL по latency.
+- **Slow jobs** — какие очереди тормозят.
+- **Slow requests** — медленные HTTP-эндпоинты с p50/p95/p99.
+- **Slow outgoing requests** — медленные HTTP-вызовы наружу (Guzzle).
+- **Exceptions** — топ ошибок по частоте.
+- **Cache hit rate** — процент попаданий.
+- **Servers** — load average, CPU, memory, disk на каждой ноде (через `pulse:check` worker).
+- **Users / Usage** — активные пользователи, запросы по юзерам.
+
+**Сравнение с Telescope:**
+
+| Параметр | **Telescope** | **Pulse** |
+|---|---|---|
+| Цель | Debug в dev | Мониторинг в prod |
+| Запись | Каждое событие | Агрегаты с sampling |
+| Объём данных | Большой | Малый |
+| Production | Не рекомендуется | Дефолтный путь |
+| Что важнее | Полнота | Производительность |
+
+**Установка:** `composer require laravel/pulse` → `php artisan pulse:install` → `php artisan migrate`. Доступ через `/pulse`.
+
+**Подводные камни:**
+
+- **`Pulse::user(fn ($u) => $u->isAdmin())`** — обязательно ограничить доступ.
+- **Sampling** — `PULSE_INGEST_INTERVAL`, `PULSE_TRIM_TIMEFRAMES_OLDER_THAN_HOURS` тюнятся под нагрузку.
+- **Pulse не заменяет** APM (NewRelic/Datadog) для глубокого профилирования — он скорее «здоровье в реальном времени».',
                 'code_example' => 'composer require laravel/pulse
 php artisan vendor:publish --tag=pulse-config
 php artisan migrate
@@ -207,7 +354,38 @@ php artisan migrate
             [
                 'category' => 'Laravel',
                 'question' => 'Почему нельзя использовать env() вне config-файлов после кеширования?',
-                'answer' => 'При config:cache Laravel выполняет все config-файлы и сохраняет результат. Файл .env при этом НЕ читается на каждом запросе. Если в коде вы вызовете env() напрямую (вне config), оно вернёт null в продакшене. Правильно: значения env читать только в config/, а в коде использовать config(\'app.something\').',
+                'answer' => 'При **`php artisan config:cache`** Laravel:
+
+1. Выполняет **все файлы из `config/`** (которые вызывают `env(\'...\')`).
+2. Складывает результат в **`bootstrap/cache/config.php`**.
+3. **При следующих запросах `.env` НЕ читается** — фреймворк не подгружает `vlucas/phpdotenv`.
+
+**Что из этого следует:**
+
+- `env(\'STRIPE_KEY\')` **в коде** (не в `config/`) **вернёт null** после `config:cache`, потому что `$_ENV` уже не наполнен значениями `.env`.
+- Точнее — вернёт **то, что есть в OS-окружении** (Docker `-e`, systemd `Environment=`) либо **default** из второго аргумента.
+
+**Почему это сделано:**
+
+- **Производительность** — `.env` парсится regex-ом, на high-load это десятки µs на запрос.
+- **Атомарность** — конфиг становится «застывшим снимком», нет race между чтением и сменой `.env`.
+
+**Правильный паттерн:**
+
+```php
+// config/services.php - env читается ОДИН раз при config:cache
+return [\'stripe\' => [\'key\' => env(\'STRIPE_KEY\')]];
+
+// в коде - config() работает всегда, читает из кеша
+$key = config(\'services.stripe.key\');
+```
+
+**Подводные камни:**
+
+- **Забыли `config:clear` после смены `.env`** — старое значение остаётся в кеше. Деплой-скрипт должен делать `config:clear` или `config:cache`.
+- **`env()` в Blade-шаблоне** — та же проблема. Использовать `config()`.
+- **`env()` в Service Provider `boot()`** — после `config:cache` тоже сломается, потому что boot выполняется после загрузки кеша.
+- **Tests** — `config:cache` обычно **не делают** в тестовом окружении, поэтому `env()` там работает.',
                 'code_example' => '// плохо - в коде
 $key = env(\'STRIPE_KEY\'); // вернёт OS-env / default, но не значение из .env
                           // после config:cache - частый источник "пустых" переменных в проде
@@ -250,7 +428,45 @@ collect([\'a\', \'b\'])->toUpper(); // [\'A\', \'B\']',
             [
                 'category' => 'Laravel',
                 'question' => 'Как обрабатывать исключения в Laravel?',
-                'answer' => 'Все exceptions попадают в обработчик. В Laravel 10 - app/Exceptions/Handler.php, в Laravel 11+ - bootstrap/app.php (метод withExceptions). Можно: переопределить рендеринг конкретных исключений, добавить контекст в логи, добавить reportable/renderable callbacks. Кастомные исключения могут реализовать report()/render().',
+                'answer' => 'Все необработанные исключения попадают в **глобальный handler** Laravel. Он делает две вещи: **logging** (через `report()`) и **рендеринг ответа** (через `render()`).
+
+**Где конфигурируется:**
+
+| Версия | Где |
+|---|---|
+| **Laravel 10 и ниже** | `app/Exceptions/Handler.php` (свойства `$dontReport`, `$levels`, `register()` метод) |
+| **Laravel 11+** | `bootstrap/app.php` через `->withExceptions(...)` — handler-файла больше нет |
+
+**Что можно настроить:**
+
+- **`->dontReport(ClassName::class)`** — не логировать конкретное исключение.
+- **`->report(fn (CustomException $e) => Sentry::captureException($e))`** — кастомное reporting.
+- **`->render(fn (NotFoundHttpException $e, Request $r) => ...)`** — кастомный response.
+- **`->stopIgnoring(ClassName::class)`** — наоборот, начать логировать то, что Laravel по умолчанию пропускает.
+- **`->level(NotificationException::class, LogLevel::CRITICAL)`** — задать log level для класса.
+
+**Кастомные исключения с self-rendering:**
+
+```php
+class PaymentFailed extends Exception {
+    public function render(Request $r): JsonResponse {
+        return response()->json([\'error\' => $this->getMessage()], 422);
+    }
+
+    public function report(): void {
+        // Кастомный logging
+    }
+}
+```
+
+Если кастомный exception имеет методы `render()` и/или `report()` — Laravel автоматически их использует.
+
+**Подводные камни:**
+
+- **`render()` возвращает `null`** → Laravel идёт по дефолтной цепочке (рендерит как обычный exception).
+- **`report()` возвращает `false`** → продолжает обычное логирование (не подавляет).
+- **`abort(404)`** бросает `NotFoundHttpException` — обрабатывается стандартно, рендерит `404.blade.php` или JSON.
+- **API-маршруты** — в L11 определяй `api` middleware-группу с JSON-рендерингом исключений через `$r->expectsJson()`.',
                 'code_example' => '// Laravel 11+ bootstrap/app.php
 ->withExceptions(function (Exceptions $e) {
     $e->render(function (NotFoundHttpException $e, Request $r) {
@@ -273,7 +489,32 @@ class PaymentFailed extends Exception {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Action Classes (Single-Purpose Service) и зачем они нужны?',
-                'answer' => 'Action Class - это класс с одним методом execute/handle/__invoke, который инкапсулирует одно действие приложения (например, "создать пользователя"). НЕ путать с invokable-контроллером: Action - сервис-объект, не привязанный к HTTP-запросу, его можно вызвать из контроллера, ArtisanCommand или Job. Простыми словами: вытащить бизнес-логику из контроллера в отдельный класс. Чище контроллер, легче тестировать, переиспользуемо в job/console/controller.',
+                'answer' => '**Action Class** — класс с **одним публичным методом** (`execute`, `handle` или `__invoke`), инкапсулирующий **ровно одно действие** приложения: `CreateUserAction`, `SuspendUserAction`, `ChargeFailedPaymentAction`.
+
+**Не путать с invokable-контроллером** (`__invoke` в `app/Http/Controllers`): Action — **сервис-объект, не привязанный к HTTP-запросу**. Его можно дёрнуть из:
+
+- **Controller** — `$action->execute($data)`.
+- **Artisan-команды** — `RetryFailedPaymentsCommand::handle()`.
+- **Job-а** — `dispatch(new ProcessRefundJob($id))` + `$action->execute()` внутри.
+- **Тестов** — без HTTP-обвязки.
+
+**Зачем выносить:**
+
+- **Тонкий контроллер** — `validate → action → resource`, бизнес-логика снаружи.
+- **Single Responsibility** — каждое действие — отдельный класс с собственными зависимостями.
+- **Тестируемость** — мок-ать одну зависимость легче, чем весь сервис.
+- **Переиспользуемость** — Controller + CLI + Job дёргают **тот же код**.
+
+**Когда Action vs Service:**
+
+| Признак | Action | Service |
+|---|---|---|
+| Сколько публичных методов | 1 | Несколько |
+| Имя | `<Verb><Noun>Action` | `<Noun>Service` |
+| Зависимости в `__construct` | Только нужные для одного действия | Общие для всего сервиса |
+| Когда выбирать | Сложная операция со своими зависимостями | Простая связка CRUD-операций |
+
+**Прагматика:** начинать с `Service`, выносить в `Action`, когда метод стал толстым (>30 строк) или появились свои зависимости. В одном проекте оба паттерна сосуществуют.',
                 'code_example' => 'class CreateUserAction {
     public function execute(array $data): User {
         return DB::transaction(function () use ($data) {
@@ -297,7 +538,35 @@ public function store(StoreUserRequest $r, CreateUserAction $a) {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между config() и env()?',
-                'answer' => 'env() читает переменную из окружения процесса (через $_ENV/getenv()). До php artisan config:cache Laravel загружает .env через Dotenv в это окружение, поэтому env() везде "работает". После config:cache загрузка .env пропускается, и env() видит ТОЛЬКО переменные, заданные на уровне ОС (Docker -e, systemd Environment=, переменные окружения сервера) либо вернёт второй аргумент-default. То есть после кеша env() в коде НЕ ВСЕГДА возвращает null - возвращает default/OS-env, если они есть; на практике в проде .env-only переменные становятся "невидимыми" - отсюда ощущение "вернёт null". Правильно: env() читать ТОЛЬКО в config/, в коде использовать config(). config() работает всегда - значения зашиты в кеш.',
+                'answer' => 'Две похожие функции с **принципиально разным контрактом**.
+
+**`env(\'KEY\', $default)`** — читает переменную окружения процесса (через `$_ENV` / `getenv()`).
+
+- До `php artisan config:cache` Laravel загружает `.env` через `vlucas/phpdotenv` в окружение — `env()` везде «работает».
+- После `config:cache` загрузка `.env` **пропускается** — `env()` видит **только** переменные, заданные на уровне ОС (Docker `-e`, systemd `Environment=`).
+- На практике в проде после `config:cache` `.env`-only переменные становятся «невидимыми» → отсюда ощущение «возвращает null».
+
+**`config(\'app.name\')`** — читает из **загруженного конфига** (из `config/` или из кеша).
+
+- Работает **всегда**, в любой момент жизненного цикла.
+- Значения «зашиты» в кеш `bootstrap/cache/config.php` после `config:cache`.
+
+**Сравнение:**
+
+| Параметр | `env()` | `config()` |
+|---|---|---|
+| Источник | OS-окружение / `.env` (до cache) | Файлы `config/` или кеш |
+| Где можно использовать | **Только** в `config/` | Везде в коде |
+| После `config:cache` | Видит только OS-env / default | Работает как раньше |
+| Тип значения | Строка / `true`/`false` (магическая) | Любой PHP-тип |
+
+**Правило:** `env()` читать **только** в файлах `config/`, в коде использовать `config()`.
+
+**Подводные камни:**
+
+- **Не делать** `cache()->remember(env(\'KEY\'), ...)` — в проде упадёт.
+- **Изменили `.env` в проде** — забыли `config:clear` → старое значение в кеше.
+- **`env(\'X\', false)`** — `false` строкой! Дефолт — `null` или `boolean false`. Документация phpdotenv vs Laravel — проверять.',
                 'code_example' => '// .env
 APP_NAME=MyApp
 
@@ -314,7 +583,45 @@ env(\'APP_NAME\');    // null после config:cache в проде',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Vapor и Forge? Какие у них подводные камни?',
-                'answer' => 'Forge - сервис для развёртывания Laravel-приложений на VPS (DigitalOcean, AWS, Linode). Автоматизирует настройку nginx, php-fpm, supervisor, SSL, deploy через git. Vapor - serverless-платформа для Laravel на AWS Lambda. Не нужны серверы, оплата по запросам, автомасштабирование. Главный подводный камень Vapor - файловая система. В Lambda есть директория /tmp размером до 10 GiB (по умолчанию 512 MB, конфигурируется), которая ТЕХНИЧЕСКИ работает: можно временно сохранить файл, обработать, отдать клиенту или загрузить в S3 в рамках одного запроса. Но /tmp ЭФЕМЕРНА - между прогревами контейнера данные теряются, между разными контейнерами не шарятся. Поэтому для персистентного хранения (avatars, uploads, generated PDFs) обязателен S3 диск; для transient-обработки (распаковать, отресайзить, удалить) /tmp вполне подходит. Также важно: в Vapor нет долгоживущих процессов - очереди работают через SQS, расписание - через CloudWatch, websockets - через отдельный сервис (Pusher/Ably/Reverb на EC2).',
+                'answer' => 'Два **разных** платных продукта Laravel для деплоя.
+
+**Forge** — сервис управления **VPS** (DigitalOcean, AWS, Linode, Vultr, Hetzner).
+
+- Автоматизирует настройку **nginx**, **php-fpm**, **supervisor**, **Let\'s Encrypt SSL**, deploy через git.
+- Вы платите за **VPS отдельно** + ~$12/мес за Forge.
+- Поведение — обычный Linux-сервер с долгоживущими процессами (PHP-FPM, queue worker, websockets).
+- Подходит для большинства production-проектов.
+
+**Vapor** — **serverless**-платформа для Laravel на AWS Lambda.
+
+- Без серверов: оплата по запросам, **автомасштабирование** до тысяч инстансов.
+- Использует AWS Lambda (PHP), API Gateway, RDS, ElastiCache, S3, SQS, CloudWatch.
+- Идеально для **резко-неравномерной** нагрузки (промо-кампании, batch-обработка).
+
+**Сравнение:**
+
+| Параметр | **Forge** | **Vapor** |
+|---|---|---|
+| Инфраструктура | Долгоживущий VPS | AWS Lambda |
+| Цена | Фикс/мес + VPS | Per-invocation |
+| Масштабирование | Ручное / Auto Scaling | Автоматическое |
+| Cold start | Нет | Да (100-500ms) |
+| Файловая система | Persistent | **/tmp эфемерная** |
+| Долгоживущие процессы | Queue worker, websockets | Нет — SQS, отдельные сервисы |
+
+**Главный подводный камень Vapor — файловая система:**
+
+- `/tmp` размером до **10 GiB** (по умолчанию 512 MB) **технически работает** в рамках одного invoke.
+- Но **эфемерна** — между прогревами контейнера данные теряются, между разными контейнерами не шарятся.
+- Для **персистентного** хранения (avatars, uploads, PDF) — **обязательно S3**.
+- Для transient-обработки (распаковать, отресайзить, удалить, загрузить в S3) — `/tmp` подходит.
+
+**Что ещё специфично для Vapor:**
+
+- **Очереди** — через **SQS** (нет долгоживущих воркеров).
+- **Расписание** — через **CloudWatch Events**.
+- **WebSocket** — нельзя в Lambda; отдельный сервис (Pusher/Ably/Reverb на EC2).
+- **Sessions** — только Redis/Database (`SESSION_DRIVER=redis`), не `file`.',
                 'code_example' => '<?php
 // config/filesystems.php - в Vapor местный disk заворачивают в /tmp
 "local" => [
@@ -363,7 +670,37 @@ tap($user, fn($u) => $u->update([\'last_login\' => now()]))->save();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что нового в Laravel 11 по сравнению с Laravel 10?',
-                'answer' => 'Laravel 11: упрощённая структура (нет app/Http/Kernel.php, ConsoleKernel, app/Exceptions/Handler.php - всё в bootstrap/app.php). routes/console.php вместо ConsoleKernel для расписания/команд. Health-endpoint /up из коробки. Per-second rate limiting (perSecond). Метод casts() в модели как альтернатива свойству $casts. Slimmer config: многие опции убраны в дефолты. Минимальный PHP 8.2. Из новых пакетов экосистемы: Reverb (WebSocket-сервер), Pennant (feature flags), Volt (single-file Livewire), Folio (page-based routing).',
+                'answer' => 'Laravel 11 — крупный релиз с **упрощённой структурой** и новыми пакетами.
+
+**Структурные изменения:**
+
+| Что | Было (L10) | Стало (L11) |
+|---|---|---|
+| HTTP middleware-стек | `app/Http/Kernel.php` | `bootstrap/app.php` → `withMiddleware()` |
+| Console schedule | `app/Console/Kernel.php` | `routes/console.php` |
+| Exception handler | `app/Exceptions/Handler.php` | `bootstrap/app.php` → `withExceptions()` |
+| Service providers | `config/app.php` массив | `bootstrap/providers.php` |
+| Конфиг-файлов | ~15 | ~7 (многие опции в дефолтах) |
+
+**Новые фичи:**
+
+- **`/up`** — health-endpoint из коробки.
+- **`Limit::perSecond(10)`** — per-second rate limiting в Throttle.
+- **`casts(): array`** — метод модели как альтернатива свойству `$casts`.
+- **`php artisan install:api`** — установка Sanctum + `routes/api.php`.
+- **`php artisan install:broadcasting`** — установка Reverb + `routes/channels.php`.
+- **Implicit Enum Binding** в роутах (на самом деле появилось в L9, но в L11 стало стабильнее).
+- **HasMiddleware-интерфейс** на контроллерах вместо конструктор-`$this->middleware()`.
+
+**Новые пакеты экосистемы:**
+
+- **Reverb** — WebSocket-сервер на ReactPHP, Pusher-совместимый.
+- **Pennant** — feature flags.
+- **Volt** — single-file Livewire components.
+- **Folio** — page-based routing в духе Next.js.
+- **Prompts** — красивые CLI-формы для artisan-команд.
+
+**Требования:** минимальный **PHP 8.2**.',
                 'code_example' => '// bootstrap/app.php
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(web: __DIR__.\'/../routes/web.php\')
@@ -539,7 +876,35 @@ Context::addHidden("tenant_id", $tenant->id);
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Pennant и зачем он нужен?',
-                'answer' => 'Laravel Pennant - официальный пакет (composer require laravel/pennant) для управления feature flags. Решает задачи: 1) Trunk-based development - вливать незавершённую фичу в main за флагом, чтобы не держать долгоживущие feature-ветки. 2) Постепенный rollout - включить новую фичу 5% юзеров, потом 50%, потом всем; откатить быстро без редеплоя. 3) A/B-тестирование вариантов UI/алгоритма. 4) Kill switch - мгновенно отключить проблемную фичу при инциденте. 5) Feature gating по сегменту (только premium-юзеры, только определённые tenant-ы). Регистрация флага в provider через Feature::define(name, resolver), где resolver - замыкание, получающее scope (по умолчанию current user) и возвращающее bool/строку для variant-флагов. Проверка в коде: Feature::active("new-checkout") или $user->features()->active("new-checkout"). Хранение: array (in-memory, per-request) для тестов, database (persistent, дёшево), Redis (быстро). Variant-флаги дают больше двух состояний - "control" / "blue-button" / "green-button". Полезные методы: Lottery::odds() для случайной выборки процентом, when()/unless() в blade, scope() для не-юзерных скоупов (tenant, organisation). Тестирование: Feature::activate() / Feature::deactivate() в setUp. Альтернативы: Laravel Gate (только bool через политики), сторонние SaaS (LaunchDarkly, GrowthBook, Unleash) - богаче по UI и аналитике, дороже.',
+                'answer' => '**Pennant** — официальный пакет Laravel для **feature flags** (`composer require laravel/pennant`).
+
+**Какие задачи решает:**
+1. **Trunk-based development** — вливать незавершённую фичу в `main` **за флагом**, не держа долгоживущих feature-веток.
+2. **Постепенный rollout** — включить новую фичу **5% юзеров → 50% → всем**; откат **без редеплоя**.
+3. **A/B-тесты** вариантов UI / алгоритма.
+4. **Kill switch** — мгновенно отключить сбойную фичу при инциденте.
+5. **Gating по сегменту** — «только premium», «только tenant X», «только определённый регион».
+
+**Регистрация и проверка:**
+- В `AppServiceProvider::boot()`:
+  `Feature::define("new-checkout", fn (User $u) => ...)` — resolver возвращает **`bool`** или **строку** для variant-флагов.
+- В коде: **`Feature::active("new-checkout")`** или `$user->features()->active(...)`.
+- В Blade: **`@feature("new-checkout") ... @endfeature`**.
+
+**Хранилища (драйверы):**
+- **`array`** — in-memory, per-request, для тестов.
+- **`database`** — persistent, простое и дешёвое (таблица `features`).
+- **`redis`** — быстро, для высокой нагрузки.
+
+**Полезное API:**
+- **`Lottery::odds(1, 100)`** — стохастический rollout процентом.
+- **`Feature::for($user)`** — явный scope.
+- **`Feature::activate()`** / **`deactivate()`** — управление в тестах в `setUp`.
+- **Variants** — больше двух состояний: `"control" / "blue" / "green"`.
+
+**Альтернативы:**
+- **`Gate`** — только bool, без rollout / variants / scopes.
+- **SaaS**: LaunchDarkly, GrowthBook, Unleash — UI, аналитика, real-time targeting; платно.',
                 'code_example' => '<?php
 // composer require laravel/pennant
 
@@ -608,7 +973,33 @@ Feature::for($user)->forget("new-checkout");',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Contracts в Laravel и чем они отличаются от Facades?',
-                'answer' => 'Contracts - набор интерфейсов в неймспейсе Illuminate\\Contracts, описывающих основные сервисы фреймворка: Cache\\Repository, Queue\\Queue, Mail\\Mailer, Filesystem\\Filesystem, Auth\\Guard и т.д. Внедряя контракт через конструктор, вы получаете ту же реализацию, что стоит за фасадом, но через явный DI. Преимущества: 1) Подменяется в тестах через $this->instance(Contract::class, $mock) без shouldReceive на фасадах. 2) Типизированная зависимость видна в сигнатуре - реальный контракт класса. 3) Удобно для пакетов, которые не хотят жёстко зависеть от фасадов Laravel. Фасад выигрывает по краткости в простом коде, контракт - по тестируемости и явности в сервисах/Action-классах.',
+                'answer' => '**Contracts** — набор **интерфейсов** в неймспейсе **`Illuminate\\Contracts`**, описывающих основные сервисы фреймворка.
+
+**Главные контракты:**
+- `Cache\\Repository` — кэш.
+- `Queue\\Queue` — очереди.
+- `Mail\\Mailer` — почта.
+- `Filesystem\\Filesystem` — файлы.
+- `Auth\\Guard` — аутентификация.
+- `Events\\Dispatcher`, `Hashing\\Hasher`, `Bus\\Dispatcher`, …
+
+**Contracts vs Facades:**
+
+| | **Facade** | **Contract** |
+|---|---|---|
+| Стиль | `Cache::put(...)` — **статика** | `__construct(Repository $cache)` — **DI** |
+| Краткость | **выигрывает** в простом коде | требует объявить параметр |
+| Видимость зависимости | **скрытая** | **явная** в сигнатуре |
+| Подмена в тестах | `Cache::shouldReceive(...)` | **`$this->instance(Repository::class, $mock)`** |
+| Завязка кода на Laravel | **жёсткая** | **слабая** (можно использовать пакет вне Laravel) |
+| Что под капотом | proxy к биндингу из контейнера | сам биндинг |
+
+**Когда что брать:**
+- В **контроллерах / простых сценариях** — фасад, **короче**.
+- В **сервисах / Action-классах / пакетах** — **контракт через DI**: явные зависимости, легко мокать.
+- В **переиспользуемых библиотеках** — только контракты, чтобы не тянуть `Illuminate\\Support\\Facades` за собой.
+
+**Подвох:** один и тот же сервис, по сути, **один и тот же объект** — фасад `Cache` и контракт `Repository` через `app(Repository::class)` вернут **один singleton**. Выбор — про **стиль написания и тестируемость**, не про производительность.',
                 'code_example' => '<?php
 // Facade - кратко, статика
 use Illuminate\\Support\\Facades\\Cache;
@@ -637,7 +1028,32 @@ $this->instance(CacheContract::class, new InMemoryCache());',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Sail и зачем он нужен, если уже есть Docker?',
-                'answer' => 'Sail - официальный CLI-обёртка над docker compose с готовым docker-compose.yml для типового dev-стека: PHP, MySQL/PostgreSQL/MariaDB, Redis, MeiliSearch/Typesense, MailHog/Mailpit, Selenium для Dusk. Команды sail up, sail artisan migrate, sail composer require, sail npm i проксируют команды в контейнеры приложения - не нужно держать локально установленные PHP/Node/composer и не нужно писать свой docker-compose. Ставится через composer require laravel/sail --dev + php artisan sail:install. Подходит как стандартное dev-окружение и onboarding новых разработчиков; для прода не предназначен - там FPM/Octane + nginx/k8s.',
+                'answer' => '**Laravel Sail** — официальная **CLI-обёртка** над **`docker compose`** с готовым `docker-compose.yml` для типового **dev-стека**.
+
+**Что в коробке:**
+- **PHP** (нужной версии), **Node**, **Composer**.
+- **MySQL / PostgreSQL / MariaDB** на выбор.
+- **Redis**, **MeiliSearch** / **Typesense**.
+- **Mailpit** (бывш. MailHog) — локальный SMTP-вьювер.
+- **Selenium** для **Dusk**-тестов.
+
+**Зачем нужно, если уже есть Docker:**
+- **Готовый compose-файл** — не нужно писать вручную и держать актуальным.
+- **Проксирование команд**: `sail artisan migrate`, `sail composer require`, `sail npm i` запускаются **в контейнере** — на хосте не нужны PHP/Node нужных версий.
+- **Унифицированный onboarding** — у всех команды одинаковые, разные ОС работают идентично.
+- Утилиты типа `sail mysql`, `sail shell`, `sail dusk` — короче, чем `docker compose exec ...`.
+
+**Когда брать:**
+- Стандартное **dev-окружение** для команды (особенно с Mac/Windows-разработчиками).
+- Быстрый старт на новой машине.
+- Onboarding джунов.
+
+**Когда НЕ Sail:**
+- **На проде** — там FPM/Octane + nginx, kubernetes, продакшен-стек, не dev-compose.
+- Если в команде уже есть свой выстроенный compose / Devcontainer / DDEV — Sail не нужен.
+- Если хост-окружение PHP/Node уже настроено и устраивает — `php artisan serve` быстрее.
+
+**Установка:** `composer require laravel/sail --dev` + `php artisan sail:install`. Часто заводят алиас `alias sail="bash vendor/bin/sail"`, чтобы не писать длинный путь.',
                 'code_example' => '# Установка
 composer require laravel/sail --dev
 php artisan sail:install   # выбрать сервисы интерактивно
@@ -667,7 +1083,35 @@ sail artisan sail:publish',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Pint и чем он отличается от php-cs-fixer?',
-                'answer' => 'Pint - официальный фиксер стиля кода Laravel поверх PHP-CS-Fixer. Идёт с готовыми пресетами (laravel - дефолт, psr12, per, symfony) и нулевой конфигурацией: достаточно vendor/bin/pint. Технически это тот же php-cs-fixer, но с подкрученными под Laravel правилами и удобным CLI: --test (dry-run для CI), --dirty (только изменённые в git файлы), --bail (упасть на первой проблеме). Кастомные правила и исключения - в pint.json в корне проекта. Ставится по умолчанию в Laravel 9+; для старых версий composer require laravel/pint --dev.',
+                'answer' => '**Laravel Pint** — официальный **фиксер стиля кода** для Laravel **поверх `php-cs-fixer`**. Не свой движок, а **обёртка с пресетами и удобным CLI**.
+
+**Что в коробке:**
+- **Пресеты**: `laravel` (дефолт), `psr12`, `per` (PER-CS), `symfony`.
+- **Нулевая конфигурация** — достаточно `vendor/bin/pint` без аргументов.
+- Удобный **CLI поверх PHP-CS-Fixer**:
+  - **`--test`** — dry-run, ничего не пишет, валит CI ненулевым кодом возврата.
+  - **`--dirty`** — только файлы, изменённые в git (быстро для pre-commit).
+  - **`--bail`** — упасть на **первой** проблеме.
+  - **`-v`** — показать применённые правила по файлам.
+
+**Pint vs `php-cs-fixer`:**
+
+| Аспект | **Pint** | **`php-cs-fixer`** |
+|---|---|---|
+| Движок | тот же `friendsofphp/php-cs-fixer` | сам по себе |
+| Конфиг | **`pint.json`** в корне | `.php-cs-fixer.php` (PHP-объект) |
+| Дефолтный пресет | **`laravel`** | `@PSR12` / надо настраивать |
+| Идиоматика | оптимизирован под Laravel-кодстайл | универсален |
+| CLI | `--test` / `--dirty` / `--bail` сразу | через флаги fixer-а |
+
+**Кастомизация:** `pint.json` в корне — указывают `preset`, расширяют `rules`, добавляют `exclude` для генерируемых файлов (миграции, IDE-helper).
+
+**Где использовать:**
+- **`pre-commit`** хуком (через Husky / Captain Hook) — на коммитах.
+- **CI** через `pint --test` — фейл, если код не отформатирован.
+- **Локально** руками после большой правки.
+
+**Установка:** ставится **по умолчанию** в новых Laravel 9+. Для старых проектов — `composer require laravel/pint --dev`.',
                 'code_example' => '# Запустить fixer
 vendor/bin/pint
 
@@ -697,7 +1141,38 @@ vendor/bin/pint app/Models
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Cashier и какие провайдеры он поддерживает?',
-                'answer' => 'Cashier - официальный пакет для подписочного биллинга. Существует две независимых версии под разные платёжные системы: Cashier Stripe (laravel/cashier) и Cashier Paddle (laravel/cashier-paddle). Закрывает подписки, тарифные планы, пробные периоды, купоны, single-charge платежи, инвойсы, обработку вебхуков, прокси-роуты для payment intent (3DS). На модели User подключают трейт Billable, дальше биллинг ведётся выразительным API ($user->newSubscription, $user->subscribed, $user->invoices) вместо ручных вызовов Stripe/Paddle SDK. Webhook controller из коробки обрабатывает все основные события (invoice.paid, customer.subscription.deleted) и обновляет статус подписки в БД.',
+                'answer' => '**Cashier** — официальный пакет для **подписочного биллинга**. Закрывает рутину работы с платёжной системой через выразительный API на модели `User`.
+
+**Две независимые версии (под разные платёжки):**
+
+| Версия | Пакет | Назначение |
+|---|---|---|
+| **Cashier Stripe** | `laravel/cashier` | для **Stripe** |
+| **Cashier Paddle** | `laravel/cashier-paddle` | для **Paddle** (Merchant of Record) |
+
+Раньше существовали Cashier Mollie / Braintree — **deprecated** / community-maintained.
+
+**Что покрывает:**
+- **Подписки** и **тарифные планы** (price IDs).
+- **Trial-периоды** (с/без payment method).
+- **Купоны** и промо-коды.
+- **Single-charge** платежи (`charge`).
+- **Инвойсы** — генерация, выгрузка PDF.
+- **Webhooks** — готовый контроллер обрабатывает `invoice.paid`, `customer.subscription.deleted`, `customer.subscription.updated` и сам обновляет статус в БД.
+- **Payment intents / 3DS** — прокси-роуты для подтверждения карт.
+
+**Как подключается:**
+1. **`composer require laravel/cashier`**.
+2. **`php artisan vendor:publish --tag="cashier-migrations"`** + `migrate` — добавляет колонки `stripe_id`, `stripe_status` к `users` и таблицы `subscriptions`, `subscription_items`.
+3. На модели **`User`** подключают трейт **`Billable`**.
+
+**Типовой API:**
+- `$user->newSubscription("default", "price_monthly")->trialDays(14)->create($pm)`.
+- `$user->subscribed("default")` / `$user->subscription("default")->onTrial()`.
+- `$user->subscription("default")->swap("price_pro")` — смена плана.
+- `$user->subscription("default")->cancel()` / `cancelNow()`.
+
+**Подвох:** Stripe и Paddle модели **разные** (например, у Paddle MoR-сценарий — налоги/возвраты включены), поэтому код одного **не переносится** на другой без правок.',
                 'code_example' => '<?php
 // composer require laravel/cashier
 // php artisan vendor:publish --tag="cashier-migrations"
@@ -736,7 +1211,37 @@ return $user->downloadInvoice($invoiceId, ["vendor" => "MyApp"]);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Folio и в чём его особенность маршрутизации?',
-                'answer' => 'Folio - пакет page-based роутинга в духе Next.js: маршрут создаётся самим фактом существования Blade-файла в каталоге resources/views/pages. Файл pages/users/[id].blade.php автоматически становится роутом GET /users/{id}, [...slug].blade.php - catch-all. Параметры в квадратных скобках, middleware/name/доменные настройки задаются прямо во фронт-маттере страницы через директивы. Удобен для контентных сайтов и landing-страниц с большим числом простых страниц - не нужно объявлять каждый роут в routes/web.php. Для сложного API/CRUD остаётся классический routes/web.php.',
+                'answer' => '**Folio** — пакет **page-based routing** в духе **Next.js**: маршрут создаётся **самим фактом существования Blade-файла** в каталоге `resources/views/pages/`. Никаких записей в `routes/web.php`.
+
+**Соглашения по именам файлов:**
+
+| Путь к файлу | URL |
+|---|---|
+| `pages/index.blade.php` | **`GET /`** |
+| `pages/about.blade.php` | `GET /about` |
+| `pages/users/[id].blade.php` | `GET /users/{id}` |
+| `pages/users/[id]/edit.blade.php` | `GET /users/{id}/edit` |
+| `pages/blog/[...slug].blade.php` | catch-all `GET /blog/{slug...}` |
+| `pages/users/[User].blade.php` | Route Model Binding по типу — переменная `$User` |
+
+**Метаданные внутри страницы** через фронт-маттер-директивы:
+- `name("users.show")` — имя роута для `route(...)`.
+- `middleware(["auth", "verified"])` — middleware.
+- `withTrashed()` — soft-deleted в binding.
+- `render(fn(View $v) => ...)` — кастомный рендер.
+
+**Когда брать:**
+- **Контентные сайты**, **лендинги**, **документация** — много простых страниц.
+- **Прототипы / MVP** — добавил Blade-файл, страница уже доступна.
+- Минимизация **бойлерплейта** routes-файла.
+
+**Когда НЕ Folio:**
+- Сложный API / REST CRUD — там нужны `Route::apiResource`, контроллеры, FormRequest.
+- Логика далеко выходит за «отрендерить шаблон» — лучше явный контроллер.
+
+**Сравнение с `routes/web.php`:**
+- **Folio**: маршрут привязан к **файлу** на диске — структура каталогов = карта сайта.
+- **`routes/web.php`**: централизованный реестр — удобно искать «куда ведёт URL».',
                 'code_example' => '<?php
 // composer require laravel/folio
 // php artisan folio:install
@@ -767,7 +1272,34 @@ return $user->downloadInvoice($invoiceId, ["vendor" => "MyApp"]);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Envoy и для чего он применяется?',
-                'answer' => 'Envoy - простой раннер задач на удалённых серверах через SSH. Задачи описываются в Envoy.blade.php в синтаксисе, похожем на Blade: @servers задаёт хосты, @task - команды для них. Используется для деплоя, миграций, выкладки секретов, обслуживания серверов: envoy run deploy выполнит указанную задачу на всех заданных серверах. По функциям сравним с упрощённым Capistrano или Deployer. Поддерживает интерполяцию задач, передачу аргументов, hipchat/slack-уведомления, story (последовательное выполнение нескольких task-ов). Альтернатива для k8s/lambda - не нужен; для classic VPS-деплоев живёт хорошо.',
+                'answer' => '**Laravel Envoy** — простой **раннер задач на удалённых серверах через SSH**. Задачи описываются в **`Envoy.blade.php`** в корне проекта с Blade-синтаксисом.
+
+**Базовые директивы:**
+- **`@servers([...])`** — список хостов (имя → SSH-цель).
+- **`@task("deploy", ["on" => "production"]) ... @endtask`** — команды для выбранных хостов.
+- **`@story("zero-downtime") ... @endstory`** — **последовательность** нескольких task-ов.
+- **`@before / @after / @error / @success`** — хуки до/после/при ошибке.
+- **`@slack($webhook, "#deploys", $msg)`** — нотификация в Slack.
+
+**Запуск:**
+- **`envoy run deploy`** — выполнит задачу `deploy`.
+- **`envoy run deploy --branch=staging`** — передача аргументов.
+- **`envoy run zero-downtime`** — запустит story из task-ов.
+
+**Где применяется:**
+- **Деплой** на classic-VPS: `git pull`, `composer install --no-dev`, `migrate --force`, `php artisan optimize`, `php artisan queue:restart`.
+- **Миграции** на проде по требованию.
+- **Обслуживание** — ротация логов, прогрев кеша, рестарт воркеров.
+
+**С чем сравним:**
+- Упрощённый **Capistrano** (Ruby) / **Deployer** (PHP-альтернатива с zero-downtime из коробки).
+- **Не делает** zero-downtime сам: для symlink-swap пишут вручную или берут Deployer.
+
+**Когда НЕ Envoy:**
+- **Kubernetes / Lambda / Vapor** — деплой идёт через `kubectl apply` / CI-pipelines, не SSH.
+- Многосервисный микросервисный стек — Envoy на каждый сервис превратится в зоопарк, проще CI/CD pipelines (GitLab/GitHub Actions).
+
+**Когда хорошо:** classic Linux VPS, моноинстанс или 2-3 сервера, нужна простая автоматизация без оркестратора.',
                 'code_example' => '# composer global require laravel/envoy
 
 # Envoy.blade.php в корне проекта
@@ -807,7 +1339,38 @@ return $user->downloadInvoice($invoiceId, ["vendor" => "MyApp"]);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Prompts и где он используется?',
-                'answer' => 'Prompts - пакет красивых интерактивных форм для CLI: text, password, confirm, select, multiselect, search, suggest, spin (long-running task с спиннером), progress (progress bar), form (мультишаговая форма). Используется внутри artisan-команд и инсталлеров пакетов вместо устаревших $this->ask()/$this->choice() (они всё ещё работают, но Prompts красивее). С Laravel 10.17+ ставится по умолчанию и применяется самим фреймворком в make:* командах. Поддерживает валидацию, transform-функции, defaults; на не-TTY окружениях (CI, Docker без -it) автоматически фолбэчится на старые prompts.',
+                'answer' => '**Laravel Prompts** — пакет **красивых интерактивных форм для CLI**. Заменяет устаревшие `$this->ask()` / `$this->choice()` в artisan-командах на современный UX.
+
+**Доступные prompts:**
+- **`text()`** — обычная строка.
+- **`password()`** — ввод без отображения.
+- **`confirm()`** — Yes/No.
+- **`select()`** — выбор из списка.
+- **`multiselect()`** — несколько из списка (пробел переключает).
+- **`search()`** — поиск с фильтрацией по мере ввода.
+- **`suggest()`** — text + автодополнение.
+- **`spin()`** — long-running задача со **спиннером**.
+- **`progress()`** — **progress bar** для итераций.
+- **`form()`** — **мультишаговая** форма с back/next.
+
+**Возможности:**
+- **`validate: fn($v) => ...`** — валидация ввода.
+- **`transform: fn($v) => trim($v)`** — преобразование результата.
+- **`default:`** — дефолт, кнопка Enter применяет.
+- **`required: true`** — нельзя оставить пустым.
+- **`hint:`** — подсказка под вопросом.
+
+**Где используется:**
+- **`make:*` команды** Laravel 10.17+ — сам фреймворк теперь спрашивает «Use git?» и т.п. красивее.
+- **Инсталлеры пакетов** — Spatie / Filament всё активнее переходят на Prompts.
+- **Свои artisan-команды** — заменить `$this->ask("Имя?")` на **`text("Имя?")`**.
+
+**Подвох — не-TTY окружения:**
+- CI, Docker **без `-it`**, фоновый процесс — нет терминала.
+- Prompts **автоматически фолбэчатся** на простые ASCII-prompts (или используют дефолты).
+- В CI-скриптах все вопросы лучше пропускать через флаги команды (`--name=...`) или **`Prompts::fallbackWhen(fn() => app()->runningInCi())`**.
+
+**Установка:** уже **в коробке Laravel 10.17+**. Для старых проектов — `composer require laravel/prompts`.',
                 'code_example' => '<?php
 use function Laravel\\Prompts\\{text, password, select, confirm, multiselect, search, spin, progress};
 
@@ -858,7 +1421,33 @@ progress(label: "Импорт", steps: $rows, callback: fn ($row) => importRow($
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel IDE Helper и зачем он нужен?',
-                'answer' => 'IDE Helper (barryvdh/laravel-ide-helper) - dev-пакет, генерирующий PHPDoc-метаинформацию для фасадов, моделей и контейнерных биндингов. Команды: ide-helper:generate - создаёт _ide_helper.php с PHPDoc для всех фасадов (Cache::get → реальная сигнатура); ide-helper:models - добавляет @property/@method PHPDoc прямо в файлы моделей (или в отдельный _ide_helper_models.php), чтобы IDE понимала магические where{Field}, findOrFail и атрибуты из БД; ide-helper:meta - создаёт .phpstorm.meta.php для PhpStorm, чтобы он понимал app()->make() и резолв из контейнера. Без него PhpStorm/static анализаторы ругаются на "undefined method" у фасадов и Eloquent-магии. Запускается обычно в post-update-cmd composer-скрипта и/или в deploy.',
+                'answer' => '**IDE Helper** (`barryvdh/laravel-ide-helper`) — **dev-пакет**, генерирующий **PHPDoc-метаинформацию** для **фасадов**, **моделей** и **контейнерных биндингов**.
+
+**Зачем нужен:**
+- PhpStorm / VS Code / **PHPStan** видят **`Cache::get(...)`** как «undefined method» — это магия фасада через `__callStatic`.
+- Eloquent-модель имеет магические **`where{Field}`**, **`findOrFail`** и атрибуты из БД — статанализ их **не видит**.
+- IDE Helper **генерирует PHPDoc-обёртки**, по которым IDE и статический анализ всё распознают.
+
+**Три ключевые команды:**
+
+| Команда | Что делает |
+|---|---|
+| **`ide-helper:generate`** | создаёт `_ide_helper.php` — `@method` для всех фасадов (`Cache`, `Auth`, `Route` …) с реальными сигнатурами |
+| **`ide-helper:models`** | добавляет `@property` / `@method` **в сами файлы моделей** (или в `_ide_helper_models.php` с флагом `-N`) — на основе схемы БД |
+| **`ide-helper:meta`** | создаёт `.phpstorm.meta.php` для **PhpStorm** — он понимает `app()->make(X::class)`, `resolve(...)`, контекстные биндинги |
+
+**Где запускать:**
+- Локально вручную после изменения миграций / биндингов.
+- **`composer.json` → `scripts → post-update-cmd`** — автогенерация после `composer install/update`:
+  ```
+  "post-update-cmd": [
+      "@php artisan ide-helper:generate --ansi",
+      "@php artisan ide-helper:meta --ansi"
+  ]
+  ```
+- **`.gitignore`** для `_ide_helper*.php` — не коммитят, регенерируется.
+
+**Подвох:** **`ide-helper:models -W`** (write to model files) **меняет файлы моделей** — конфликтует с code-review. Команды обычно держат `-N` (separate file), чтобы не модифицировать сами модели.',
                 'code_example' => '# Установка
 composer require --dev barryvdh/laravel-ide-helper
 
@@ -889,7 +1478,31 @@ _ide_helper_models.php
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Nova и чем она отличается от бесплатных админок (Filament, Backpack)?',
-                'answer' => 'Nova - официальная платная админка Laravel: Resource-классы описывают CRUD-страницы, фильтры, lenses (saved views), actions (групповые операции), metrics (KPI-карточки). Стек - Vue.js + Laravel API. Filament - бесплатная open-source альтернатива на TALL-стеке (Tailwind + Alpine + Livewire + Laravel), сейчас самая активная экосистема и плагины. Backpack - бесплатная (Pro-плагины платные) с самой длинной историей и зрелостью, шаблон CoreUI. Nova - выбирают за официальную поддержку и тесную интеграцию с экосистемой (Scout, Sanctum, Horizon, Pulse); Filament - за современный стек и быстрый старт; Backpack - за зрелую функциональность и community-плагины. Цена: Nova - $199/сайт (бессрочная лицензия), Filament/Backpack - бесплатно.',
+                'answer' => '**Laravel Nova** — **официальная платная админка** для Laravel. Resource-классы описывают CRUD-страницы, фильтры, **lenses** (saved views), **actions** (групповые операции), **metrics** (KPI-карточки на дашборде).
+
+**Что есть в Nova:**
+- **Resource** — конфиг страниц для модели (`fields()`, `filters()`, `actions()`).
+- **Lenses** — кастомные представления (e.g., «только активные подписчики этого месяца»).
+- **Actions** — bulk-операции на выбранных строках с UI-формой.
+- **Metrics** — Value/Trend/Partition/Progress карточки.
+- Стек — **Vue.js** + Laravel API.
+
+**Сравнение с альтернативами:**
+
+| | **Nova** | **Filament** | **Backpack** |
+|---|---|---|---|
+| Цена | **`$199`** / сайт (бессрочно) | **бесплатно** | **бесплатно** (плагины Pro платные) |
+| Стек фронта | Vue.js | **TALL** (Tailwind + Alpine + Livewire) | CoreUI + Blade |
+| Зрелость | официальная, стабильно | очень активная экосистема, **самый растущий** | самый старый, **много плагинов** |
+| UX | классический Vue-SPA | **современный**, Livewire-реактивность | классический |
+| Лучшая интеграция с | Scout, Horizon, Pulse, Sanctum | Spatie-стек, любые пакеты | community-плагины |
+
+**Когда что брать:**
+- **Nova** — нужна **официальная поддержка**, тесная интеграция со Scout / Horizon / Pulse, корпоратив готов заплатить за уверенность.
+- **Filament** — стартап / pet-project с современным стеком, активной комьюнити-экосистемой плагинов, **быстрый старт**.
+- **Backpack** — нужна **зрелая функциональность** «из коробки» (импорт/экспорт, медиа-менеджер, мощный CRUD), привыкшие к Blade.
+
+**Вне Laravel-мира:** **`django-admin`** (Python), **`rails_admin`** (Ruby), **Strapi** (headless CMS) — концептуально похожие решения.',
                 'code_example' => '<?php
 // Nova Resource - app/Nova/User.php
 use Laravel\\Nova\\Resource;

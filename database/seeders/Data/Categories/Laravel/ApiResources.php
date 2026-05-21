@@ -13,7 +13,26 @@ class ApiResources
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое API Resources в Laravel?',
-                'answer' => 'API Resource - это класс трансформации модели в JSON для API. Простыми словами: вместо того чтобы возвращать модель напрямую, мы оборачиваем её в Resource, где явно указываем, какие поля и как форматировать. Помогает скрыть лишние данные и формировать стабильный контракт API.',
+                'answer' => '**API Resource** — класс-трансформер Eloquent-модели в JSON для API. Лежит в `app/Http/Resources`, наследует `JsonResource`, реализует `toArray($request)`.
+
+**Зачем он нужен:**
+
+- **Скрыть лишние поля** — пароль, FK, `remember_token`, внутренние флаги.
+- **Зафиксировать контракт** — структура ответа не зависит от схемы БД, миграция не сломает клиентов.
+- **Форматировать** — даты в ISO 8601, деньги в копейках/рублях, флаги в bool.
+- **Условные поля** — `when()`, `whenLoaded()`, `whenPivotLoaded()` — отдать только если есть данные/связь подгружена/право доступа.
+
+**Способы использования:**
+
+- **Одна модель** — `new UserResource($user)`.
+- **Коллекция** — `UserResource::collection(User::paginate(15))` — корректно работает с пагинатором (`data`/`meta`/`links`).
+- **Собственная коллекция** — `class UsersCollection extends ResourceCollection` — если нужны общие meta.
+
+**Подводные камни:**
+
+- **`whenLoaded(\'posts\')`** — спасает от N+1: без `with(\'posts\')` Resource не дёрнет связь, не «случайно» сделает 100 запросов.
+- **`new JsonResource::withoutWrapping()`** — убрать оборачивающий ключ `data`.
+- В `toArray` доступ к атрибутам идёт через `$this->...` — это прокси к модели.',
                 'code_example' => 'class UserResource extends JsonResource {
     public function toArray($request): array {
         return [

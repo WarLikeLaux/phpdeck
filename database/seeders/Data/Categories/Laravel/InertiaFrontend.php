@@ -46,7 +46,31 @@ class InertiaFrontend
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Blade Components и как работают slots?',
-                'answer' => 'Blade-компонент - это переиспользуемый кусок UI (как в React/Vue). Создаётся через make:component, имеет класс с свойствами и шаблон. В шаблоне через <x-component-name>. Slots - именованные "дырки" для вставки контента: {{ $slot }} (default), <x-slot name="header">.',
+                'answer' => '**Blade-компонент** — переиспользуемый кусок UI (как в React/Vue), описанный в Laravel.
+
+**Два вида компонентов:**
+
+- **Class-based** — `php artisan make:component Alert` создаёт класс `App\\View\\Components\\Alert` (свойства, конструктор) **и** шаблон `resources/views/components/alert.blade.php`. Подходит для логики (computed-свойства, методы).
+- **Anonymous** — только шаблон в `resources/views/components/*.blade.php`, **без класса**. Параметры объявляются через `@props([...])`. Подходит для **чистого UI**.
+
+**Использование:**
+
+- Тег `<x-alert type="error">...</x-alert>` — `kebab-case` от имени файла.
+- Вложенные папки: `<x-forms.input>` → `components/forms/input.blade.php`.
+
+**Slots — «дырки» для контента:**
+
+| Тип | Где объявить | Как передать |
+| --- | --- | --- |
+| **Default** | `{{ $slot }}` | Всё между открывающим и закрывающим тегами |
+| **Named** | `{{ $header }}` | `<x-slot:header>...</x-slot:header>` |
+| **Scoped attributes** | `$header->attributes` | На теге слота можно навешивать `class="..."` |
+
+**Полезное:**
+
+- `<x-dynamic-component :component="$name">` — компонент по переменной.
+- `@aware([\'color\'])` в дочернем — забрать `props` родителя без проброса.
+- `$attributes->merge([\'class\' => \'btn\'])` — корректно слить дефолтные классы с пришедшими снаружи.',
                 'code_example' => '// resources/views/components/alert.blade.php
 <div class="alert alert-{{ $type }}">
     {{ $slot }}
@@ -63,7 +87,27 @@ class InertiaFrontend
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое @props в Blade?',
-                'answer' => '@props объявляет свойства анонимного компонента (без класса). Можно задать значение по умолчанию. Все остальные атрибуты тега попадают в $attributes и могут быть выведены через {{ $attributes }}.',
+                'answer' => '**`@props([...])`** объявляет **свойства анонимного компонента** (без PHP-класса). Используется только в шаблоне `resources/views/components/*.blade.php`.
+
+**Что делает:**
+
+- Перечисленные ключи становятся **переменными внутри шаблона**.
+- Значения в массиве — **дефолты**: `@props([\'type\' => \'primary\', \'size\' => \'md\'])`.
+- Эти атрибуты **исключаются** из объекта `$attributes` (туда попадает только «остальное»).
+
+**`$attributes` — bag со всем, что пришло сверх `@props`:**
+
+- `{{ $attributes }}` — вывести всё как есть.
+- `$attributes->merge([\'class\' => \'btn\'])` — корректно склеить классы.
+- `$attributes->only([\'id\', \'data-*\'])`, `$attributes->except([\'class\'])` — фильтры.
+- `$attributes->class([\'btn\', \'btn-primary\' => $type === \'primary\'])` — условные классы.
+
+**Когда выбирать `@props` (anonymous) vs class-based:**
+
+- **Anonymous** — кнопки, инпуты, бейджи, **никакой PHP-логики**.
+- **Class-based** — если нужны методы, computed properties, инжекция сервисов в конструктор.
+
+**Подводный камень:** в `@props` нельзя класть значения, требующие выполнения SQL/контейнера — `@props` парсится при компиляции шаблона. Динамические дефолты вычисляй в самом теле компонента: `@php $type ??= \'primary\'; @endphp`.',
                 'code_example' => '// resources/views/components/button.blade.php
 @props([\'type\' => \'primary\', \'size\' => \'md\'])
 
@@ -80,7 +124,28 @@ class InertiaFrontend
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Inertia.js?',
-                'answer' => 'Inertia.js - это "монолит с SPA-чувствами". Простыми словами: вы пишете обычный Laravel (controllers, routes), но возвращаете не Blade, а компоненты Vue/React/Svelte. Inertia сам обновляет страницу через AJAX, без перезагрузки. Идея: иметь SPA без отдельного API. Не нужно строить REST или GraphQL.',
+                'answer' => '**Inertia.js** — «монолит с ощущениями SPA». Вы пишете обычный Laravel (controllers, routes), но возвращаете **не Blade, а компоненты Vue/React/Svelte** через `Inertia::render(\'Users/Index\', [...])`.
+
+**Как устроено:**
+
+- На **первый запрос** браузер получает обычный HTML — там Vite-бандл и JSON с `page` (имя компонента + `props`).
+- На **последующие переходы** — `axios`-запрос на тот же URL с заголовком `X-Inertia: true`; Laravel отдаёт **тот же ответ контроллера**, но только как JSON.
+- Клиент **подменяет компонент** страницы, передаёт ему свежие `props` — браузер не перезагружается.
+
+**Что не нужно строить:**
+
+- **API** — нет REST/GraphQL слоя; «эндпоинты» это ваши контроллеры.
+- **Свой роутинг на фронте** — роуты по-прежнему в `routes/web.php`.
+
+**Полезные фичи Inertia:**
+
+- **`Inertia::share([...])`** — данные, видимые **на всех страницах** (например, текущий юзер, flash).
+- **`Inertia::lazy(fn () => ...)`** / **partial reloads** — `router.reload({ only: [\'stats\'] })` обновит только указанные props без полной перерисовки.
+- **Validation** — `withErrors()` из Laravel автоматически попадает в `usePage().props.errors`.
+- **SSR** — есть отдельный режим server-side rendering для SEO.
+
+**Когда брать:** один продукт, одна команда, нужен SPA-UX без отдельного API.
+**Когда не брать:** нужен публичный API (мобильные клиенты, сторонние интеграции) — там REST/GraphQL правильнее.',
                 'code_example' => '// Controller
 return Inertia::render(\'Users/Index\', [
     \'users\' => User::all(),
@@ -97,7 +162,32 @@ defineProps({ users: Array })
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Livewire?',
-                'answer' => 'Livewire - это пакет для создания "реактивных" интерфейсов на чистом PHP/Blade без написания JavaScript. Простыми словами: ваш компонент - это PHP-класс + Blade-шаблон, а Livewire под капотом сам делает AJAX-запросы при изменении свойств. Идея: SPA без SPA, для тех кто не хочет учить Vue/React.',
+                'answer' => '**Livewire** — пакет для **реактивных** интерфейсов на **PHP + Blade** без написания JS-фреймворка. Один компонент = **класс на PHP + Blade-шаблон**.
+
+**Как работает под капотом:**
+
+- На каждом действии (`wire:click`, `wire:model`) Livewire отправляет **AJAX-запрос** на сервер с **текущим состоянием** компонента (свойства + payload).
+- Сервер запускает соответствующий метод PHP-класса, **рендерит шаблон заново** и возвращает diff.
+- На клиенте **AlpineJS** делает morph-патч DOM-а (без полной перерисовки страницы).
+
+**Ключевые директивы:**
+
+- `wire:click=\'increment\'` — вызвать метод.
+- `wire:model=\'name\'` — двунаправленный биндинг (re-render на `blur`/`debounce`).
+- `wire:model.live=\'name\'` — обновлять **на каждом keystroke** (дороже, осторожно).
+- `wire:loading` / `wire:loading.delay` — состояние «идёт запрос».
+- `wire:poll.5s` — опрос сервера по таймеру.
+
+**Чем отличается от Inertia:**
+
+| | `Livewire` | `Inertia` |
+| --- | --- | --- |
+| Фронтенд-стек | Blade + Alpine | Vue / React / Svelte |
+| Где живёт логика | На сервере (каждый клик → PHP) | На клиенте (JS-компонент) |
+| Размер ответа | Diff HTML | JSON с props |
+| Зависимость от сети | **Высокая** (каждое действие = HTTP) | Только переходы и сабмиты |
+
+**Когда брать:** хочется реактивности, но команда — на бэке; нет желания держать отдельный JS-стек.',
                 'code_example' => 'class Counter extends Component {
     public int $count = 0;
 
@@ -154,7 +244,29 @@ defineProps({ users: Array })
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Volt и как он связан с Livewire?',
-                'answer' => 'Volt - single-file API для Livewire 3-компонентов: класс компонента и Blade-шаблон описываются в ОДНОМ .blade.php-файле через функции state(), computed(), mount(), rules(). Это синтаксический сахар поверх обычного Livewire - под капотом Volt анонимно генерирует тот же Livewire-класс. Похоже на single-file components Vue (<script setup>). Удобен для небольших страниц и идеально связывается с Laravel Folio (page-based routing): один файл резко увеличивает density компонента. Для крупных компонентов часто остаются на классическом class-based Livewire (отдельный класс + view) - проще тестировать и поддерживать. Есть два варианта Volt: functional (через top-level вызовы функций - как в примере) и class-based (анонимный класс через new class extends Component внутри файла). Не путать с Laravel Volt 1.0 и Vue Volt (это другое). Появился в 2023 году.',
+                'answer' => '**`Laravel Volt`** — **single-file API** для **Livewire 3** компонентов: класс компонента и Blade-шаблон в **одном `.blade.php`-файле** через функции `state()`, `computed()`, `mount()`, `rules()`. Под капотом Volt **генерирует обычный Livewire-класс** — это синтаксический сахар, а не отдельный движок.
+
+**Аналогия:** Vue `<script setup>` — короткая запись single-file component.
+
+**Два варианта синтаксиса:**
+
+- **Functional** — top-level вызовы `state([...])`, `mount(fn () => ...)`, `$increment = fn () => ...`. Минимум boilerplate.
+- **Class-based** — анонимный `new class extends Component { ... }` прямо в файле. Близко к классическому Livewire.
+
+**Связка с экосистемой L11:**
+
+- Идеально работает с **`Laravel Folio`** (page-based routing): один файл = одна страница со своей логикой. Density резко вырастает.
+- Сохраняется вся Livewire-обвязка (`wire:click`, `wire:model`, события, lifecycle).
+
+**Когда брать Volt, когда оставаться на class-based Livewire:**
+
+| | Volt | Class-based Livewire |
+| --- | --- | --- |
+| Размер | Маленькие/средние страницы | Сложные компоненты |
+| Тестирование | Сложнее (нет явного класса) | Проще, привычно |
+| Density | Высокая (всё в одном файле) | Низкая (класс + view) |
+
+**Установка:** `composer require livewire/volt` + `php artisan volt:install`. Появился в 2023 году в составе Laravel 10.x ecosystem.',
                 'code_example' => '<?php
 // composer require livewire/volt
 // php artisan volt:install
