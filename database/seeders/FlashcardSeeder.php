@@ -11,6 +11,7 @@ use Database\Seeders\Data\Categories\PhpQuestions;
 use Database\Seeders\Data\Categories\SecurityQuestions;
 use Database\Seeders\Data\Categories\SystemDesignQuestions;
 use Database\Seeders\Data\Categories\TestingQuestions;
+use Database\Seeders\Data\Categories\Yii2Questions;
 use Illuminate\Database\Seeder;
 
 class FlashcardSeeder extends Seeder
@@ -21,6 +22,7 @@ class FlashcardSeeder extends Seeder
             ...PhpQuestions::all(),
             ...OopQuestions::all(),
             ...LaravelQuestions::all(),
+            ...Yii2Questions::all(),
             ...DatabaseQuestions::all(),
             ...SystemDesignQuestions::all(),
             ...NetworkingQuestions::all(),

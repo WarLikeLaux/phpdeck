@@ -12,6 +12,10 @@ const palette: Record<string, CategoryStyle> = {
         badge: 'border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300',
         dot: 'bg-rose-500',
     },
+    Yii2: {
+        badge: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-300',
+        dot: 'bg-cyan-500',
+    },
     'ООП': {
         badge: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
         dot: 'bg-amber-500',
