@@ -225,16 +225,94 @@ $request->validate([\'code\' => [\'required\', new Uppercase()]]);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Form Request и какие у него этапы валидации?',
-                'answer' => 'FormRequest - типизированный request с инкапсулированной валидацией и авторизацией. Контейнер резолвит его и через ValidatesWhenResolvedTrait::validateResolved() запускает фиксированную последовательность: 1) prepareForValidation() (нормализация входа - merge/replace ДО авторизации и правил), 2) passesAuthorization() → authorize() (если false → failedAuthorization), 3) getValidatorInstance() - создание валидатора, внутри которого читаются rules()/messages()/attributes() и вызывается withValidator() для after-rules, 4) если валидатор fails → failedValidation, иначе passedValidation() для пост-обработки. failedValidation/failedAuthorization можно переопределять для кастомных ответов. Тонкий момент: prepareForValidation() выполняется ДО authorize(), поэтому authorize() уже видит нормализованные данные ($this->input()).',
+                'answer' => '**`FormRequest`** — типизированный request с **инкапсулированными валидацией и авторизацией**. Контейнер резолвит его и через **`ValidatesWhenResolvedTrait::validateResolved()`** запускает **фиксированную последовательность хуков**.
+
+**Этапы жизненного цикла FormRequest (в порядке вызова):**
+
+| № | Метод | Что делает |
+|---|---|---|
+| 1 | **`prepareForValidation()`** | **Нормализация входа** — `merge`/`replace` ДО авторизации и правил |
+| 2 | **`passesAuthorization()` → `authorize()`** | Проверка прав; если `false` → **`failedAuthorization()`** (по умолчанию `403`) |
+| 3 | **`getValidatorInstance()`** | Создание валидатора |
+| 4 | Внутри (3): чтение **`rules()` / `messages()` / `attributes()`** | Сбор правил |
+| 5 | Внутри (3): **`withValidator($validator)`** | After-rules, кросс-полевые проверки |
+| 6 | Валидация выполняется | Если **fails** → **`failedValidation($validator)`** |
+| 7 | **`passedValidation()`** | Пост-обработка (например, поднять данные в DTO) |
+
+**Что можно переопределять:**
+
+- **`failedValidation($validator)`** — кастомный ответ при провале (обычно для API — единый JSON-формат).
+- **`failedAuthorization()`** — кастомный 403 / редирект.
+
+**Тонкий момент — `prepareForValidation` выполняется ДО `authorize()`:**
+
+- `authorize()` уже видит **нормализованные данные** (`$this->input()` отражает изменения из `merge()`).
+- Это позволяет писать `authorize()` против чистого payload.
+
+**Полезные продвинутые техники:**
+
+- В **`rules()`** разные правила под `POST`/`PUT`: `match ($this->method()) { ... }`.
+- В **`rules()`** правила, зависящие от `$this->route("id")` — для `update` с `Rule::unique()->ignore()`.
+- **Кросс-полевые правила** удобнее в `withValidator()->after(...)` — там доступен полный массив значений.
+- **`$this->validated()`** — массив **только тех полей**, что прошли валидацию (безопасно для `Model::create`).
+- **`$this->safe()->only([...])`** / **`->merge([...])`** — fine-grained доступ к валидным данным.
+
+**Главное правило:** **не передавайте `$request->all()` в `Model::create`** — это путь к mass assignment-уязвимости. Используйте **`$request->validated()`**.',
                 'code_example' => '<?php
-class StoreUserRequest extends FormRequest {
-    protected function prepareForValidation(): void {
-        $this->merge(["email" => strtolower($this->email ?? "")]);
+use Illuminate\\Foundation\\Http\\FormRequest;
+use Illuminate\\Validation\\Rule;
+
+class StoreUserRequest extends FormRequest
+{
+    // 1) Нормализация входа ДО authorize и rules
+    protected function prepareForValidation(): void
+    {
+        \$this->merge([
+            "email" => strtolower(\$this->email ?? ""),
+            "name"  => trim(\$this->name ?? ""),
+        ]);
     }
-    public function rules(): array {
-        return ["email" => ["required", "email", Rule::unique("users")]];
+
+    // 2) Авторизация - видит нормализованные данные
+    public function authorize(): bool
+    {
+        return \$this->user()->can("create-user");
     }
-    public function authorize(): bool { return $this->user()->can("create-user"); }
+
+    // 3) Правила
+    public function rules(): array
+    {
+        \$id = \$this->route("user")?->id;
+        return [
+            "email"    => ["required", "email", Rule::unique("users")->ignore(\$id)],
+            "name"     => ["required", "string", "max:255"],
+            "password" => ["required", "string", "min:8", "confirmed"],
+        ];
+    }
+
+    // 4) Кросс-полевые правила
+    public function withValidator(\$validator): void
+    {
+        \$validator->after(function (\$v) {
+            if (str_contains(\$this->password, \$this->name)) {
+                \$v->errors()->add("password", "Пароль не должен содержать имя");
+            }
+        });
+    }
+
+    // 5) Кастомный ответ при провале (для API)
+    protected function failedValidation(\\Illuminate\\Contracts\\Validation\\Validator \$validator)
+    {
+        if (\$this->expectsJson()) {
+            throw new \\Illuminate\\Http\\Exceptions\\HttpResponseException(
+                response()->json([
+                    "message" => "Validation failed",
+                    "errors"  => \$validator->errors(),
+                ], 422)
+            );
+        }
+        parent::failedValidation(\$validator);
+    }
 }',
                 'code_language' => 'php',
                 'difficulty' => 4,

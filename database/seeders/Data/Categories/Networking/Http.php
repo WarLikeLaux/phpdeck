@@ -188,14 +188,70 @@ class Http
             [
                 'category' => 'Сети',
                 'question' => 'В чём разница между HTTP/1.1, HTTP/2 и HTTP/3?',
-                'answer' => 'HTTP/1.1 (1997): текстовый протокол, одно соединение = один запрос за раз. Keepalive позволяет переиспользовать TCP. Pipelining (отправить запрос не дожидаясь ответа предыдущего) — теоретически есть, но в реальности отключён везде из-за HOL blocking и багов прокси. Браузеры открывают 6 параллельных коннектов на хост → разработчики хитрят: domain sharding, CSS sprites, JS bundle. HTTP/2 (2015, RFC 7540): бинарный фрейминг — один TCP содержит много параллельных потоков (streams). Multiplexing решает HOL blocking на уровне HTTP — но не на уровне TCP (потеря пакета останавливает ВСЕ streams). Server push (мог отдать ресурсы до запроса) — отменён в Chrome 106, не оправдал ожиданий. HPACK — сжатие заголовков (общий словарь между запросами). Прирост на типовом сайте: 10-30% быстрее загрузка, особенно при многих мелких ресурсах. Browser требует TLS (RFC не требует, но фактически — да). HTTP/3 (2022, RFC 9114): полностью переработан — HTTP поверх QUIC (поверх UDP). Решает TCP HOL blocking: каждый stream независим, потеря пакета влияет только на свой поток. Встроенное шифрование (нельзя без TLS 1.3). 0-RTT handshake для повторных подключений — на 1 RTT быстрее, чем HTTP/2. Connection migration — клиент может сменить IP (переход WiFi → 4G) без переустановки соединения. Минусы: middleboxes часто блокируют UDP, требуется fallback на HTTP/2. На 2025: ~30% веб-трафика — HTTP/3, поддерживают Google, Cloudflare, AWS CloudFront, Apple, Meta.',
+                'answer' => 'Три поколения веб-протокола — каждое лечит проблемы предыдущего.
+
+| | **`HTTP/1.1`** (1997) | **`HTTP/2`** (2015, RFC 7540) | **`HTTP/3`** (2022, RFC 9114) |
+|---|---|---|---|
+| Транспорт | TCP, **текст** | TCP, **бинарь** | **QUIC** поверх UDP |
+| Запросы на коннект | один за раз (+ pipelining на бумаге) | **multiplexing** streams | multiplexing streams |
+| **HOL blocking** | на уровне HTTP **И** TCP | **только TCP-уровень** | **полностью убран** |
+| Шифрование | опционально | де-факто обязательно | **встроено**, без `TLS 1.3` нельзя |
+| Сжатие заголовков | нет | **`HPACK`** | **`QPACK`** |
+| Server push | нет | был, **отменён** в Chrome 106 | нет |
+| 0-RTT повтор | нет | нет | **да** |
+| Connection migration (WiFi → 4G) | нет | нет | **да** (по Connection ID) |
+
+**`HTTP/1.1`:** один запрос за раз на соединение. `keepalive` переиспользует TCP, но `pipelining` в реальности **отключён** везде из-за `HOL blocking` и багов прокси. Браузеры открывают **6 параллельных коннектов** на хост → разработчики хитрят: domain sharding, CSS sprites, JS bundle.
+
+**`HTTP/2`:** бинарный фрейминг, один TCP содержит много **параллельных streams**. Решает HOL blocking на уровне HTTP, но **не TCP** — потеря пакета останавливает **ВСЕ** streams. Прирост на типовом сайте: **10-30%** быстрее.
+
+**`HTTP/3`:** HTTP поверх **`QUIC`** (поверх UDP).
+
+- Решает **TCP HOL blocking**: каждый stream независим, потеря пакета влияет только на свой поток.
+- **`0-RTT` handshake** для повторных подключений — на 1 RTT быстрее, чем `HTTP/2`.
+- **Connection migration** — клиент может сменить IP (переход WiFi → 4G) без переустановки соединения.
+- **Минус:** middleboxes часто блокируют UDP, требуется **fallback на `HTTP/2`**.
+
+На 2025: ~30% веб-трафика — `HTTP/3`, поддерживают **Google, Cloudflare, AWS CloudFront, Apple, Meta**.',
                 'difficulty' => 4,
                 'topic' => 'networking.http',
             ],
             [
                 'category' => 'Сети',
                 'question' => 'Как работают HTTP-заголовки кэширования: Cache-Control, ETag, Last-Modified?',
-                'answer' => 'Два уровня: 1) Freshness — сервер говорит «эта версия валидна N секунд, не дёргайте меня». Cache-Control: max-age=3600 значит свежа 1 час, после — нужно проверить. public — можно кэшировать общими кэшами (CDN, прокси); private — только браузером (для персонализированных страниц). no-cache — кэшируй, но всегда валидируй перед использованием. no-store — вообще не кэшируй (для секретных данных). immutable — никогда не валидируй (для версионированных static-ресурсов: /app.abc123.js). s-maxage — то же, но только для прокси/CDN. stale-while-revalidate=N — можешь отдать устаревший ответ ещё N секунд, пока в фоне валидируешь. 2) Validation — когда фрешность истекла, клиент шлёт условный запрос: ETag: "abc123" — opaque-токен версии ресурса (часто хеш контента или revision id). Клиент шлёт If-None-Match: "abc123"; сервер либо отдаёт 200 с новым контентом и новым ETag, либо 304 Not Modified без тела (экономит трафик и серверное время). Last-Modified / If-Modified-Since — то же, но по дате. ETag точнее (миллисекунды и нет проблемы с CDN clock skew), Last-Modified удобнее для статических файлов. Стратегии: 1) HTML — короткий max-age + must-revalidate (чтобы сразу видеть обновления). 2) Хешированные ассеты (/app.abc.js) — max-age=31536000, immutable (никогда не валидируют). 3) Изображения пользователя — public, max-age=86400 + ETag.',
+                'answer' => 'Кэширование работает на **двух уровнях**.
+
+**1. Freshness — `Cache-Control`** говорит «эта версия валидна N секунд, не дёргайте меня».
+
+| Директива | Что значит |
+|---|---|
+| `max-age=3600` | свежа 1 час, после — нужно проверить |
+| `s-maxage=...` | то же, **но только для прокси/CDN** |
+| `public` | можно кэшировать общими кэшами (CDN, прокси) |
+| `private` | только браузером (для персонализированных страниц) |
+| `no-cache` | кэшируй, **но всегда валидируй** перед использованием |
+| `no-store` | вообще не кэшируй (для секретных данных) |
+| `immutable` | никогда не валидируй (для версионированных ассетов: `/app.abc123.js`) |
+| `stale-while-revalidate=N` | можешь отдать устаревший ответ ещё N сек, пока в фоне валидируешь |
+| `must-revalidate` | после истечения **обязан** валидировать, нельзя отдавать stale |
+
+**2. Validation — условные запросы.** Когда freshness истекла, клиент шлёт **условный запрос**:
+
+- **`ETag: "abc123"`** — opaque-токен версии ресурса (часто хеш контента или revision id). Клиент шлёт `If-None-Match: "abc123"`. Сервер либо отдаёт `200` с новым контентом и новым `ETag`, либо **`304 Not Modified`** без тела (экономит трафик и серверное время).
+- **`Last-Modified` / `If-Modified-Since`** — то же, но по дате.
+
+**`ETag` vs `Last-Modified`:**
+
+- **`ETag`** точнее — миллисекунды, нет проблемы с CDN clock skew.
+- **`Last-Modified`** удобнее для статических файлов.
+
+**Стратегии:**
+
+1. **HTML** — короткий `max-age` + `must-revalidate` (сразу видеть обновления).
+2. **Хешированные ассеты** (`/app.abc.js`) — `max-age=31536000, immutable` (никогда не валидируют).
+3. **Изображения пользователя** — `public, max-age=86400` + `ETag`.',
+                'code_example' => "# Ответ на HTML\nHTTP/1.1 200 OK\nCache-Control: no-cache, must-revalidate\nETag: \"abc123\"\n\n# Условный запрос клиента\nGET /index.html HTTP/1.1\nIf-None-Match: \"abc123\"\n\n# Сервер: ничего не изменилось\nHTTP/1.1 304 Not Modified\nETag: \"abc123\"\n\n# Ответ на immutable-ассет\nHTTP/1.1 200 OK\nCache-Control: public, max-age=31536000, immutable",
+                'code_language' => 'http',
                 'difficulty' => 4,
                 'topic' => 'networking.http',
             ],
@@ -559,7 +615,40 @@ class Http
             [
                 'category' => 'Сети',
                 'question' => 'Что такое CORS, зачем preflight-запрос и как настраивать?',
-                'answer' => 'CORS (Cross-Origin Resource Sharing) — браузерный механизм, разрешающий или запрещающий JS на странице A.com обращаться к ресурсам на B.com. По умолчанию same-origin policy: запрос из app.example.com на api.example.com — это cross-origin (даже совпадение поддомена считается разным origin). Защищает от: токены/куки одного сайта не должны утекать в скрипты другого. Простые запросы (simple requests) — GET/HEAD/POST с «безопасными» content-type (application/x-www-form-urlencoded, multipart/form-data, text/plain) — браузер шлёт обычный запрос с заголовком Origin: https://app.example.com. Сервер должен ответить Access-Control-Allow-Origin: https://app.example.com (или *), иначе браузер скроет ответ от JS (но запрос дойдёт до сервера — это важно для CSRF-думания). Preflight — для «сложных» запросов (PUT/DELETE/PATCH, application/json, кастомные заголовки): браузер сначала шлёт OPTIONS-запрос с заголовками Access-Control-Request-Method и Access-Control-Request-Headers. Сервер отвечает Access-Control-Allow-Methods, Access-Control-Allow-Headers, Access-Control-Max-Age (сколько секунд кэшировать preflight, чтобы не дёргать каждый раз — типично 86400). Только потом браузер шлёт реальный запрос. Куки: чтобы cross-origin запрос отправлял куки, нужны Access-Control-Allow-Credentials: true + fetch с credentials: \'include\' + НЕЛЬЗЯ Origin: *, нужно конкретный домен. Типовые ошибки: 1) Allow-Origin: * + Allow-Credentials: true — браузер блокирует. 2) Забыли отвечать на OPTIONS (некоторые middleware фильтруют). 3) Думают, что CORS — это security: на самом деле это POLICY браузера; сервер защищать от прямых запросов всё равно надо.',
+                'answer' => '**`CORS`** (Cross-Origin Resource Sharing) — браузерный механизм, разрешающий или запрещающий JS на странице `A.com` обращаться к ресурсам на `B.com`.
+
+**По умолчанию — Same-Origin Policy:** запрос из `app.example.com` на `api.example.com` — это **cross-origin** (даже совпадение поддомена считается разным origin).
+
+**От чего защищает:** токены/куки одного сайта **не должны утекать** в скрипты другого.
+
+**Два типа запросов:**
+
+| Тип | Когда | Поток |
+|---|---|---|
+| **Simple** | `GET`/`HEAD`/`POST` + «безопасный» `Content-Type` (`form-urlencoded`, `multipart/form-data`, `text/plain`) | один запрос с `Origin:`, сервер отвечает `Access-Control-Allow-Origin:` |
+| **Preflight** | `PUT`/`DELETE`/`PATCH`, `application/json`, кастомные заголовки | сначала `OPTIONS`, затем реальный запрос |
+
+**Поток preflight:**
+
+1. Браузер шлёт **`OPTIONS`** с заголовками `Access-Control-Request-Method` и `Access-Control-Request-Headers`.
+2. Сервер отвечает `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`, **`Access-Control-Max-Age`** (сколько секунд кэшировать preflight — типично `86400`).
+3. Только потом летит **реальный запрос**.
+
+**Важно:** даже без `Allow-Origin` запрос **дойдёт до сервера** — браузер только скроет ответ от JS. Поэтому **CSRF-защита сервером всё равно нужна**.
+
+**Куки (cross-origin с авторизацией):**
+
+- **`Access-Control-Allow-Credentials: true`** на сервере.
+- **`fetch(..., { credentials: \'include\' })`** на клиенте.
+- **НЕЛЬЗЯ `Allow-Origin: *`** — обязательно конкретный домен.
+
+**Типовые ошибки:**
+
+1. **`Allow-Origin: *` + `Allow-Credentials: true`** — браузер блокирует.
+2. Забыли отвечать на **`OPTIONS`** (некоторые middleware фильтруют).
+3. Думают, что **`CORS` — это security**: на самом деле это **policy браузера**; сервер защищать от прямых запросов **всё равно надо**.',
+                'code_example' => "# Preflight\nOPTIONS /api/users HTTP/1.1\nOrigin: https://app.example.com\nAccess-Control-Request-Method: PUT\nAccess-Control-Request-Headers: Content-Type, Authorization\n\n# Ответ сервера\nHTTP/1.1 204 No Content\nAccess-Control-Allow-Origin: https://app.example.com\nAccess-Control-Allow-Methods: GET, POST, PUT, DELETE\nAccess-Control-Allow-Headers: Content-Type, Authorization\nAccess-Control-Allow-Credentials: true\nAccess-Control-Max-Age: 86400\n\n# Реальный запрос\nPUT /api/users/42 HTTP/1.1\nOrigin: https://app.example.com\nContent-Type: application/json\nAuthorization: Bearer ...",
+                'code_language' => 'http',
                 'difficulty' => 4,
                 'topic' => 'networking.http',
             ],

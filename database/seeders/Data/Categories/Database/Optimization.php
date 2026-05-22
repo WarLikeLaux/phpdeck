@@ -10,7 +10,36 @@ class Optimization
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое Nested Loop, Hash Join, Merge Join?',
-                'answer' => 'Это три алгоритма JOIN. Nested Loop: для каждой строки слева ищем подходящие справа (хорошо когда слева мало строк и есть индекс справа). Hash Join: строим хэш-таблицу из правой стороны и для каждой левой ищем в хэше O(1) (хорошо для больших таблиц без индексов). Merge Join: обе стороны должны быть отсортированы по ключу JOIN, идём слиянием как при merge sort (хорошо для уже отсортированных данных). Планировщик сам выбирает.',
+                'answer' => 'Три **физических алгоритма** соединения таблиц — оптимизатор выбирает один из них исходя из размеров входов, наличия индексов и сортировки.
+
+| | **Nested Loop** | **Hash Join** | **Merge Join** |
+|---|---|---|---|
+| Идея | для каждой строки слева — поиск справа | строим hash-таблицу из правой, ищем в ней | merge двух отсортированных потоков |
+| Стоимость | `O(N × M)` без индекса; `O(N × log M)` с индексом | `O(N + M)` + память на hash | `O(N + M)` + сортировка |
+| Когда хорош | **N маленькое**, индекс по правой стороне | большие таблицы, **без подходящего индекса**, есть RAM | обе таблицы **уже отсортированы** по ключу JOIN |
+| Память | минимальная | hash-таблица в RAM (`work_mem`) | минимальная (стримим) |
+| Подходит для | OLTP, точечные JOIN | analytics, batch | merge-replication, sorted scans |
+
+**Nested Loop:**
+- классический алгоритм, **самый частый в OLTP**;
+- идеален, когда **внешняя выборка маленькая** (`WHERE id = 5`) + индекс на ключе JOIN справа;
+- катастрофичен, если внешний цикл — миллион строк без индекса справа (`O(N²)`).
+
+**Hash Join:**
+- **`build phase`** — читаем меньшую таблицу, строим hash-table в RAM по ключу JOIN;
+- **`probe phase`** — стримим вторую таблицу, для каждой строки lookup в hash O(1);
+- если хеш-таблица **не влезает в `work_mem`** — спил на диск (batch hash join);
+- **MySQL 8.0.18+** наконец-то умеет hash join (раньше был только NL).
+
+**Merge Join:**
+- работает, если **обе стороны отсортированы** по ключу JOIN — обычно через `INDEX SCAN` по `B-tree`;
+- идёт **двумя курсорами** слиянием, как в merge sort;
+- если приходится **сортировать на лету** — обычно проигрывает Hash.
+
+**На что смотреть в плане:**
+- **MySQL `EXPLAIN`** — `Using join buffer (hash join)` в `Extra`;
+- **PostgreSQL** — `Nested Loop` / `Hash Join` / `Merge Join` в верхушке плана;
+- **тревожный сигнал** — `Nested Loop` с `Rows Removed by Filter` в десятках миллионов.',
                 'difficulty' => 4,
                 'topic' => 'database.optimization',
             ],
@@ -119,7 +148,33 @@ foreach ($users as $user) {
             [
                 'category' => 'Базы данных',
                 'question' => 'Почему SELECT COUNT(*) без WHERE работает медленно в InnoDB и PostgreSQL, хотя в старом MyISAM был мгновенным?',
-                'answer' => 'Точная цифра в MyISAM хранилась прямо в метаданных таблицы - SELECT COUNT(*) без WHERE возвращал её за O(1). InnoDB и PostgreSQL так не могут из-за MVCC (Multi-Version Concurrency Control). Когда в БД одновременно работают несколько транзакций с разными snapshot-ами, "точное количество строк" - не одна цифра, а N разных цифр для N снапшотов: транзакция T1, начавшаяся в момент A, видит одни строки; T2, начавшаяся позже - другие (часть удалённых стала "не видна", часть добавленных - "не видна"). Для каждой транзакции БД должна пройти и проверить visibility (видимость) каждой строки относительно её snapshot-а - это full scan по таблице или по индексу. В InnoDB с PK можно сделать count по самому компактному индексу (не по таблице), но всё равно линейный проход. В PostgreSQL ещё хуже: heap-страницы могут содержать "мёртвые" строки (удалённые, но не очищенные VACUUM); visibility map иногда позволяет ускорить через index-only scan, но при свежих изменениях map неактуален. Способы ускорения: 1) SELECT reltuples FROM pg_class WHERE relname="t" - приблизительная оценка (обновляется ANALYZE/VACUUM, может отставать). 2) Своя счётная таблица + триггеры на INSERT/DELETE. 3) Для UI-пагинации - simplePaginate / cursor-пагинация без COUNT вообще. 4) Кеш с TTL: если погрешность приемлема. 5) В Postgres 16+ EXPLAIN с estimate - часто достаточно. Когда COUNT(*) ОК: с селективным WHERE по индексу, на маленьких таблицах. Анти-паттерн: показывать "Найдено 12 345 678 записей" в админке на 100M-таблице - полный скан на каждый клик.',
+                'answer' => '**Старый `MyISAM`** хранил **точную цифру в метаданных таблицы** → `COUNT(*)` без `WHERE` возвращал её за **`O(1)`**.
+
+**`InnoDB`** и **`PostgreSQL`** так **не могут из-за MVCC** — точное количество строк **зависит от snapshot транзакции**:
+
+> Транзакция T1, стартовавшая в момент A, **видит одни строки**. T2, стартовавшая позже, — другие (часть удалена, часть добавлена). «Точное количество» — это **N разных цифр** для N snapshot-ов.
+
+**Что происходит на самом деле:**
+- БД должна **физически пройти** все строки и проверить **visibility** каждой относительно read view → **full scan**;
+- в `InnoDB` с PK счёт делается по **самому компактному индексу** — всё равно линейный проход;
+- в `PostgreSQL` ещё хуже — heap содержит **dead tuples** (удалённые, не очищенные `VACUUM`); **visibility map** иногда помогает, но при свежих изменениях устарела.
+
+**Пять способов ускорить:**
+
+| # | Способ | Точность | Когда применять |
+|---|---|---|---|
+| 1 | **`SELECT reltuples FROM pg_class WHERE relname = \'t\'`** | ~99% после `ANALYZE` | большая таблица, погрешность ОК |
+| 2 | **Своя счётная таблица** + триггеры на `INSERT`/`DELETE` | точная | нужна гарантия + допустим оверхед записи |
+| 3 | **`simplePaginate` / cursor-пагинация** без `COUNT` | n/a | UI-пагинация |
+| 4 | **Кеш с TTL** (Redis) | устаревает | разрешена погрешность в N минут |
+| 5 | `EXPLAIN` оценка (PG 16+ имеет лучшую) | ~ | разовый отчёт |
+
+**Когда `COUNT(*)` ещё ОК:**
+- **селективный `WHERE`** по индексу (`WHERE user_id = 42`);
+- маленькие таблицы (`< 100K`).
+
+**Антипаттерн** в админке на 100M-таблице:
+> «Найдено **12 345 678** записей» — полный скан **на каждый клик** пагинации.',
                 'code_example' => '-- ❌ Медленно на больших таблицах
 SELECT COUNT(*) FROM events; -- full scan / index scan, O(N)
 
@@ -162,7 +217,41 @@ SELECT COUNT(*) FROM events WHERE user_id = 42; -- индекс по user_id
             [
                 'category' => 'Базы данных',
                 'question' => 'Как читать EXPLAIN: чем отличается Seq Scan от Index Scan, и почему LIMIT иногда заставляет оптимизатор отказаться от индекса?',
-                'answer' => 'Базовые типы операций в плане. SEQ SCAN (Postgres) / type=ALL (MySQL): полное чтение таблицы строка за строкой. Дешёвая операция, если читать НАДО почти всю таблицу (>10-30%) - последовательный I/O быстрее, чем рандомные seek-и. ДОРОГАЯ, если из 10М строк нужно 10 - но оптимизатор всё равно выбрал Seq Scan: это сигнал, что либо нет подходящего индекса, либо он есть но не используется (см. ниже). INDEX SCAN: бинарный спуск по B-tree до нужного диапазона + чтение листовых страниц + дереференс TID/RID к heap. Хорошо при селективном фильтре (1-5% строк). INDEX-ONLY SCAN (Postgres) / Using index (MySQL): данные взяты ПРЯМО из индекса, без обращения к heap-таблице - возможно, когда все нужные колонки покрыты индексом (covering index). BITMAP SCAN (Postgres): много несмежных рядов - сначала собрать bitmap позиций, потом одним проходом прочитать heap. ВАЖНОЕ ЯВЛЕНИЕ - LIMIT МЕНЯЕТ ПЛАН. Запрос SELECT * FROM orders WHERE user_id = 5 ORDER BY created_at DESC может пойти через Index Scan (orders_user_id_idx) + Sort. Тот же запрос с LIMIT 10 оптимизатор может перестроить совсем иначе: пойти ПО ИНДЕКСУ (created_at DESC) и читать по одной строке, отбрасывая не подходящих по user_id, пока не наберёт 10 - надеясь, что 10 первых среди свежих заказов скорее всего окажутся искомым user_id. На "плотных" данных это работает, на разреженных (user_id=5 заказывал последний раз год назад) - оптимизатор перебирает весь индекс впустую и получается медленнее, чем без LIMIT. Это классический "abort early" паттерн - и его узнают по плану с Limit над Index Scan и низкими actual rows. Боремся: 1) ANALYZE для свежей статистики; 2) форс через индекс-хинт (USE INDEX в MySQL); 3) переписать как WHERE id IN (subquery с LIMIT по нужному индексу); 4) добавить составной индекс (user_id, created_at DESC) - тогда оптимизатор увидит "копеечный" путь.',
+                'answer' => '**Базовые типы операций в плане:**
+
+| Операция | PG | MySQL | Что делает | Когда выбирается |
+|---|---|---|---|---|
+| **Seq Scan** | `Seq Scan` | `type=ALL` | полное чтение таблицы строка за строкой | нужно **>10-30%** строк — последовательный I/O дешевле рандомных seek-ов |
+| **Index Scan** | `Index Scan` | `type=ref/range` | спуск по B-tree + dereference TID к heap | **селективный** фильтр (1-5% строк) |
+| **Index-Only Scan** | `Index Only Scan` | `Using index` | данные **из самого индекса**, без heap | **covering index** покрывает все нужные колонки |
+| **Bitmap Scan** | `Bitmap Heap Scan` | (нет аналога) | собрать bitmap позиций + один проход по heap | много несмежных строк, средняя селективность |
+
+**Если выбран `Seq Scan` на большой таблице с селективным WHERE** — **тревожный сигнал**:
+- либо нет подходящего **индекса**;
+- либо он есть, **но не используется** (`WHERE LOWER(email) = ...` без функционального индекса; неявное приведение типов; `LIKE \'%abc%\'`).
+
+**Важное явление — `LIMIT` меняет план («abort early» pattern):**
+
+```sql
+-- Без LIMIT
+SELECT * FROM orders WHERE user_id = 5 ORDER BY created_at DESC;
+-- → Index Scan(user_id) + Sort
+
+-- С LIMIT 10 оптимизатор может пойти иначе:
+SELECT * FROM orders WHERE user_id = 5 ORDER BY created_at DESC LIMIT 10;
+-- → Index Scan по (created_at DESC), читаем по одной, фильтруем user_id,
+--   пока не наберём 10
+```
+
+**Когда работает плохо:** если `user_id=5` заказывал **год назад**, оптимизатор **переберёт весь индекс впустую**, отбрасывая не подходящих — получится медленнее, чем без `LIMIT`.
+
+**Узнаётся по плану:** `Limit` над `Index Scan` + `Rows Removed by Filter` в сотни тысяч.
+
+**Как чинить:**
+1. **`ANALYZE`** — обновить статистику;
+2. **Force index hint** — `USE INDEX (orders_user_id_idx)` в MySQL;
+3. Переписать как **`WHERE id IN (subquery с LIMIT по нужному индексу)`**;
+4. Добавить **составной индекс** `(user_id, created_at DESC)` — тогда оптимизатор сразу видит «копеечный» путь.',
                 'code_example' => '-- Postgres: читать вывод EXPLAIN ANALYZE сверху вниз
 EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM users WHERE email = ?;
 -- Index Scan using users_email_idx on users  (cost=0.42..8.44 rows=1)
@@ -237,7 +326,46 @@ EXPLAIN ANALYZE  SELECT ...; -- MySQL 8.0.18+, реальные времена',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что значат Using filesort и Using temporary в выводе EXPLAIN?',
-                'answer' => 'Using filesort — это не сортировка в файле буквально, а отдельный проход для упорядочивания результата, потому что подходящего индекса для ORDER BY нет; на больших наборах он сильно бьёт по CPU и памяти. Using temporary означает, что MySQL создал временную таблицу (сначала в памяти, при переполнении — на диске) для GROUP BY, DISTINCT, UNION или подзапроса. Оба маркера — кандидаты на оптимизацию: либо добавить составной индекс, покрывающий ORDER BY/GROUP BY, либо переписать запрос так, чтобы группировка шла по индексированному префиксу.',
+                'answer' => 'Два маркера в колонке **`Extra`** вывода `EXPLAIN` MySQL — **обычно кандидаты на оптимизацию**.
+
+| Маркер | Что происходит |
+|---|---|
+| **`Using filesort`** | **не файл!** — отдельный проход для сортировки результата, потому что **нет индекса под `ORDER BY`**. При маленьких наборах — в памяти (`sort_buffer_size`), при больших — на диск |
+| **`Using temporary`** | MySQL создал **внутреннюю temporary table** (сначала в RAM, потом на диск при переполнении `tmp_table_size`/`max_heap_table_size`) для `GROUP BY`, `DISTINCT`, `UNION`, derived tables, оконных функций |
+
+**`Using filesort` — что делать:**
+- добавить **составной индекс**, покрывающий `WHERE` + `ORDER BY`:
+  - `WHERE user_id = ? ORDER BY created_at DESC` → индекс `(user_id, created_at)`;
+- проверить, что **порядок колонок** в индексе совпадает с `ORDER BY`;
+- ослабить требования к сортировке (если бизнес позволяет);
+- увеличить `sort_buffer_size` — поможет только маленьким наборам.
+
+**`Using temporary` — что делать:**
+- переписать так, чтобы группировка шла по **индексированному префиксу** (`GROUP BY user_id` при индексе `(user_id, ...)`);
+- избавиться от `DISTINCT` (часто это симптом лишних `JOIN`);
+- `UNION ALL` вместо `UNION` (не нужна dedup);
+- в MySQL 8+ window functions иногда дешевле `GROUP BY` для аналитики.
+
+**Желательный маркер — `Using index`** (covering index): данные взяты **прямо из индекса**, к таблице не лезли.
+
+**В PostgreSQL аналоги:** `Sort` (= filesort), `HashAggregate` / `GroupAggregate` (= temporary под GROUP BY).',
+                'code_example' => '-- Без индекса под ORDER BY → Using filesort
+EXPLAIN SELECT * FROM orders WHERE user_id = 5 ORDER BY created_at DESC;
+-- type=ref, Extra: Using filesort
+
+-- С составным индексом → нет filesort
+CREATE INDEX idx_user_created ON orders (user_id, created_at DESC);
+EXPLAIN SELECT * FROM orders WHERE user_id = 5 ORDER BY created_at DESC;
+-- type=ref, Extra: (пусто или Using index condition)
+
+-- GROUP BY → Using temporary
+EXPLAIN SELECT category_id, COUNT(*) FROM products GROUP BY brand;
+-- Extra: Using temporary; Using filesort
+
+-- С правильным индексом GROUP BY идёт без temporary
+CREATE INDEX idx_brand ON products (brand);
+EXPLAIN SELECT brand, COUNT(*) FROM products GROUP BY brand;',
+                'code_language' => 'sql',
                 'difficulty' => 4,
                 'topic' => 'database.optimization',
             ],
@@ -317,12 +445,47 @@ EXPLAIN (ANALYZE) SELECT ... ;
             [
                 'category' => 'Базы данных',
                 'question' => 'Как читать вывод EXPLAIN ANALYZE в PostgreSQL и какие признаки плохого плана?',
-                'answer' => 'EXPLAIN показывает план; ANALYZE реально выполняет запрос и добавляет actual time, rows, loops. Тревожные признаки: Seq Scan по большой таблице с селективным WHERE (нет индекса), резкое расхождение rows-estimate vs actual (плохая статистика, нужен ANALYZE), Nested Loop с большим внешним циклом (надо Hash Join), Sort с внешним диском (work_mem мал), Bitmap Heap Scan + Recheck Cond (lossy). Используют BUFFERS для shared hit/read.',
-                'code_example' => 'EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
+                'answer' => '`EXPLAIN` показывает **план**; **`EXPLAIN ANALYZE`** **реально выполняет** запрос и добавляет фактические **`actual time`**, **`rows`**, **`loops`** рядом с оценками планировщика.
+
+**Полезные опции:**
+- **`BUFFERS`** — сколько страниц прочитано из buffer pool (`shared hit`) vs с диска (`shared read`);
+- **`VERBOSE`** — раскрыть все выражения;
+- **`SETTINGS`** — что повлияло на план;
+- **`FORMAT JSON`** — для парсинга в инструменты (`explain.depesz.com`, `tatiyants.com`).
+
+**Тревожные признаки в плане:**
+
+| Симптом | Что значит | Лечение |
+|---|---|---|
+| **`Seq Scan`** на большой таблице с селективным `WHERE` | нет индекса или он не используется | создать индекс / переписать предикат |
+| **`Plan rows` ≠ `actual rows`** (разница в 100× и больше) | устаревшая статистика | **`ANALYZE`** таблицу, увеличить `default_statistics_target` |
+| **`Nested Loop`** с большим внешним циклом | оптимизатор недооценил размер | `ANALYZE`; иногда форсируют hash через `SET enable_nestloop = off` |
+| **`Sort Method: external merge Disk: …kB`** | `work_mem` мал, sort пошёл на диск | увеличить `work_mem` для сессии |
+| **`Bitmap Heap Scan`** + `Recheck Cond` с большими `lossy` | bitmap не помещается в RAM | увеличить `work_mem` |
+| **`Rows Removed by Filter`** в миллионах | предикат не индексируется | добавить **функциональный** или **partial** индекс |
+
+**Универсальное правило:** читать план **снизу вверх** (исполняется так), а **смотреть на `actual time` каждого узла** — самый дорогой и есть bottleneck.',
+                'code_example' => '-- Базовый EXPLAIN ANALYZE с BUFFERS
+EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
 SELECT u.id, COUNT(o.id)
 FROM users u JOIN orders o ON o.user_id = u.id
 WHERE u.created_at > NOW() - INTERVAL \'30 days\'
-GROUP BY u.id;',
+GROUP BY u.id;
+
+-- HashAggregate (cost=10000.0..10500.0 rows=5000 width=12)
+--                (actual time=120.5..125.3 rows=4870 loops=1)
+--   Group Key: u.id
+--   Buffers: shared hit=15000 read=300
+--   -> Hash Join (actual time=10..100 rows=50000)
+--        Hash Cond: (o.user_id = u.id)
+--        -> Seq Scan on orders o
+--        -> Hash
+--             -> Index Scan using users_created_at_idx on users u
+--                  Index Cond: (created_at > now() - \'30 days\')
+-- Planning Time: 0.5 ms
+-- Execution Time: 126.0 ms
+
+-- Бывает важно: SET LOCAL work_mem = \'256MB\'; перед запросом',
                 'code_language' => 'sql',
                 'difficulty' => 4,
                 'topic' => 'database.optimization',
@@ -330,11 +493,56 @@ GROUP BY u.id;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Как устроен оптимизатор запросов и что такое статистики?',
-                'answer' => 'Оптимизатор перебирает планы и оценивает стоимость через cost-based модель. Статистики (pg_statistic, ANALYZE) дают cardinality для столбцов: гистограммы, MCV, n_distinct. На их основе оценивается selectivity предикатов и размер промежуточных наборов. Если статистики устарели или коррелированные предикаты - план кривой. Решения: ANALYZE, увеличить default_statistics_target, CREATE STATISTICS для функциональных зависимостей.',
-                'code_example' => '-- multivariate statistics для коррелированных колонок
-CREATE STATISTICS orders_corr (dependencies)
+                'answer' => 'Современные SQL-оптимизаторы — **cost-based (CBO)**: перебирают возможные **планы выполнения**, оценивают **стоимость** каждого через формулы (`cost = CPU + I/O + ...`), выбирают **самый дешёвый**.
+
+**Этапы работы оптимизатора:**
+1. **Parse + bind** — синтаксический разбор, разрешение имён;
+2. **Rewrite** — алгебраические преобразования (выталкивание предикатов, упрощение `JOIN`, view inlining);
+3. **Plan enumeration** — перебор порядка `JOIN`, выбор алгоритмов (Nested Loop / Hash / Merge), стратегии доступа (Seq Scan / Index Scan);
+4. **Cost estimation** — оценка цены каждого плана **на основе статистик**;
+5. **Execution** — выполняется выбранный план.
+
+**Что такое статистики:**
+
+| Метаданные | Что хранит | Использование |
+|---|---|---|
+| **`n_distinct`** | количество уникальных значений в колонке | оценка selectivity `WHERE col = ?` |
+| **`MCV` (most common values)** | топ N частых значений + частоты | точная оценка selectivity для «горячих» значений |
+| **Гистограмма** | распределение значений по бакетам | range-предикаты `WHERE col BETWEEN ...` |
+| **`null_frac`** | доля NULL | `IS NULL` selectivity |
+| **`correlation`** | связь логического и физического порядка | дешевизна Index Scan |
+
+**В PostgreSQL** — `pg_statistic` (видимый view `pg_stats`), обновляется **`ANALYZE`** (или фоновым autovacuum).
+
+**Когда план «кривой»:**
+- **устаревшая статистика** — после bulk-load, большого `DELETE` → план берёт ALL вместо индекса;
+- **коррелированные предикаты** — оптимизатор по умолчанию считает колонки независимыми. `WHERE city = \'Moscow\' AND country = \'Russia\'` → перемножает selectivity, недооценивая;
+- **skew** — гистограмма не покрывает реальное распределение.
+
+**Лечение:**
+- **`ANALYZE table;`** после массовых изменений;
+- **`SET default_statistics_target = 1000;`** — больше бакетов в гистограмме (стоит память и время `ANALYZE`);
+- **`CREATE STATISTICS`** для **multivariate-зависимостей** (PG 10+):',
+                'code_example' => '-- 1. Базовый ANALYZE
+ANALYZE orders;
+ANALYZE VERBOSE orders;  -- с прогрессом
+
+-- 2. Увеличить разрешение гистограммы для критичной колонки
+ALTER TABLE orders ALTER COLUMN user_id SET STATISTICS 1000;
+ANALYZE orders (user_id);
+
+-- 3. Multivariate statistics для коррелированных колонок (PG 10+)
+CREATE STATISTICS orders_corr (dependencies, ndistinct)
 ON status, payment_method FROM orders;
-ANALYZE orders;',
+ANALYZE orders;
+
+-- 4. Посмотреть, что планировщик "видит"
+SELECT * FROM pg_stats WHERE tablename = \'orders\' AND attname = \'user_id\';
+-- n_distinct | most_common_vals | most_common_freqs | histogram_bounds
+
+-- 5. Сравнить оценку и реальность
+EXPLAIN (ANALYZE) SELECT * FROM orders WHERE user_id = 42;
+-- если Plan rows=1 vs Actual rows=500000 → нужен ANALYZE или статистика плохая',
                 'code_language' => 'sql',
                 'difficulty' => 5,
                 'topic' => 'database.optimization',

@@ -403,7 +403,32 @@ $key = config(\'services.stripe.key\');',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Macroable trait?',
-                'answer' => 'Macroable - это трейт, позволяющий добавлять кастомные методы в классы Laravel runtime через ::macro(). Простыми словами: можно расширять Collection, Str, Request, Response своими методами. Регистрируется в Service Provider boot().',
+                'answer' => '**`Macroable`** — трейт из `Illuminate\\Support\\Traits`, позволяющий **добавлять кастомные методы в Laravel-классы во время выполнения** через статический `::macro()`. Под капотом — `__call` / `__callStatic`, ищущие зарегистрированное замыкание по имени метода.
+
+**Где используется в Laravel:**
+
+- **`Collection`**, **`Str`**, **`Stringable`**, **`Arr`** — расширить чейн.
+- **`Request`**, **`Response`**, **`RedirectResponse`** — добавить методы вроде `$request->isFromMobileApp()`.
+- **`Route`**, **`Blueprint`**, **`QueryBuilder`** — добавить свои методы DSL.
+- **`Carbon`** — наследует `Macroable` через `nesbot/carbon`.
+
+**Где регистрируют:**
+
+- **`AppServiceProvider::boot()`** — макросы доступны с момента boot всех провайдеров.
+- **Конкретный пакетный provider** — для расширений из вендора.
+
+**Ключевые правила:**
+
+| Правило | Зачем |
+|---|---|
+| **Имя должно быть НОВЫМ** | `__call` срабатывает **после** реальных методов; если метод уже есть в классе — макрос **никогда не вызовется** |
+| Регистрировать **в `boot()`**, не в `register()` | `register()` может выполниться до загрузки трейта |
+| **`$this` в замыкании** = инстанс класса | Так макрос видит свойства Collection / Request |
+| Для статических вызовов | Просто `Str::macro(...)` — работает через `__callStatic` |
+
+**Подвох:** `Str::isUuid()` уже существует в ядре — макрос с таким именем станет мёртвым кодом. Перед регистрацией проверять: **`Collection::hasMacro("name")`**.
+
+**Альтернатива:** для **более типобезопасных** расширений — собственный класс-обёртка или `Mixin::class` через `Collection::mixin(...)` (умеет принимать целый объект-набор методов).',
                 'code_example' => 'use Illuminate\Support\Str;
 
 // Имя должно быть НОВЫМ - Macroable работает через __callStatic / __call,
@@ -716,15 +741,84 @@ return Application::configure(basePath: dirname(__DIR__))
             [
                 'category' => 'Laravel',
                 'question' => 'Зачем нужен Pipeline и как его использовать вне middleware?',
-                'answer' => 'Pipeline - декоратор поверх классов pipe-методов. Принимает входное значение и пропускает через цепочку, каждый pipe вызывает $next($payload). Используется для middleware HTTP, но прекрасно подходит для бизнес-цепочек: валидация-обогащение-вычисление-сохранение. Альтернатива длинному if-else или CoR вручную. Pipes могут быть Closure или класс с handle().',
+                'answer' => '**`Illuminate\\Pipeline\\Pipeline`** — реализация паттерна **Chain of Responsibility** в Laravel. Принимает payload и **пропускает его через цепочку «pipe-ов»**, каждый из которых может **модифицировать**, **обогатить** или **прервать** обработку.
+
+**Под капотом — HTTP middleware:**
+
+- `Kernel::handle($request)` — это именно `Pipeline::send($request)->through($middlewares)`.
+- Сигнатура pipe: **`handle($passable, Closure $next)`** — как у HTTP middleware.
+
+**Где полезно вне middleware:**
+
+| Сценарий | Цепочка |
+|---|---|
+| **Бизнес-цепочка оформления заказа** | `ValidateInventory → ApplyPromoCodes → ChargeCustomer → EmitEvent` |
+| **Импорт данных** | `Normalize → Validate → Dedupe → Persist → Index` |
+| **Обработка webhook-а** | `VerifySignature → Parse → Route → Reply` |
+| **Подготовка response** | `AddCors → Compress → AddRateLimitHeaders` |
+
+**Альтернативы и когда что брать:**
+
+- **Pipeline** — когда цепочка **линейная**, шаги однотипные, может прерваться (через `throw` или `return`).
+- **Длинный `if-else`** — плох тем, что **смешивает шаги** и нельзя переиспользовать отдельные блоки.
+- **Events + Listeners** — когда шаги **независимы** и должны выполняться **параллельно** (или порядок не важен).
+- **Bus chain** — когда шаги — это **отдельные jobs** в очереди.
+
+**API:**
+
+- **`Pipeline::send($payload)->through([...])->thenReturn()`** — вернуть финальный payload.
+- **`->then(fn ($p) => ...)`** — финальный callback с финальным результатом.
+- **`->via("method")`** — назвать метод pipes отличный от `handle` (например, `via("execute")`).
+
+**Pipes могут быть:**
+
+- **Замыканием** `fn ($payload, $next) => $next($payload)`.
+- **Классом** с `handle()` (или другим методом через `via()`).',
                 'code_example' => '<?php
+use Illuminate\\Pipeline\\Pipeline;
+
+// Бизнес-цепочка оформления заказа
 $result = app(Pipeline::class)
-    ->send($order)
+    ->send(\$order)
     ->through([
         ValidateInventory::class,
         ApplyPromoCodes::class,
         ChargeCustomer::class,
         EmitOrderPlacedEvent::class,
+    ])
+    ->thenReturn();
+
+// Pipe — класс
+class ValidateInventory
+{
+    public function handle(Order \$order, Closure \$next)
+    {
+        foreach (\$order->items as \$item) {
+            if (\$item->stock < \$item->qty) {
+                throw new OutOfStockException(\$item);
+            }
+        }
+        return \$next(\$order);
+    }
+}
+
+// Pipe может прервать цепочку — просто не вызовет $next
+class CheckMaintenance
+{
+    public function handle(\$payload, Closure \$next)
+    {
+        if (app()->isDownForMaintenance()) {
+            return response("Maintenance", 503);  // прервали, $next не вызван
+        }
+        return \$next(\$payload);
+    }
+}
+
+// Pipe как замыкание
+\$result = app(Pipeline::class)
+    ->send(\$request)
+    ->through([
+        fn (\$r, \$next) => \$next(\$r->merge(["traced_at" => now()])),
     ])
     ->thenReturn();',
                 'code_language' => 'php',
@@ -734,15 +828,84 @@ $result = app(Pipeline::class)
             [
                 'category' => 'Laravel',
                 'question' => 'Как Laravel Scout работает и какие нюансы при индексации больших коллекций?',
-                'answer' => 'Scout - абстракция над поисковыми движками (Algolia, Meilisearch, database). Использует Searchable-трейт: автоматически синхронизирует модели с индексом на save/delete через очередь (если SCOUT_QUEUE=true). Для больших коллекций используют scout:import, который чанкует выборку. Для сложных фильтров комбинируют search($q)->where()->whereIn() и Builder-callback для специфичных запросов. softDeletes требуют отдельного флага, иначе удалённые остаются в индексе.',
+                'answer' => '**Scout** — официальный пакет полнотекстового поиска, **абстракция над движком**. API одинаковый, драйвер меняется в `.env`.
+
+**Драйверы:**
+
+| Драйвер | Тип | Когда |
+|---|---|---|
+| **`algolia`** | SaaS | Прод, лучшее ранжирование |
+| **`meilisearch`** | Self-hosted (Rust) | Middle-проекты |
+| **`typesense`** | Self-hosted (C++) | Большие корпуса, геопоиск |
+| **`database`** | LIKE по БД | Прототип, до ~100k записей |
+| **`collection`** | LIKE в памяти | Тесты |
+
+**Как работает с моделью:**
+
+- Трейт **`Searchable`** на модели.
+- Метод **`toSearchableArray()`** — какие поля индексировать.
+- **`save()` / `delete()`** автоматически синхронизируют индекс (опционально через очередь).
+
+**Критичные нюансы для больших коллекций:**
+
+1. **`SCOUT_QUEUE=true`** — обязательно в проде. Иначе каждый `save()` синхронно вызывает HTTP к Algolia/Meili → тормозит запросы пользователей.
+2. **`scout:import`** — чанкует выборку через `chunkById`, не грузит миллион моделей в память.
+3. **`scout:flush`** — удалить весь индекс (перед полным re-import).
+4. **Bulk-операции НЕ синхронизируют индекс:**
+   - `Model::where(...)->update([...])` — обходит Eloquent-события → индекс остался старым.
+   - Решение: `Model::where(...)->searchable()` руками после bulk.
+5. **`SoftDeletes`** требуют **`SCOUT_SOFT_DELETES=true`** в `config/scout.php`, иначе `deleted_at` модели остаются в индексе.
+
+**Сложные фильтры:**
+
+- **`search($q)->where("status", "active")->whereIn("category_id", [1,2])`** — простые фильтры через `where()`.
+- **`search($q, fn ($engine, $query, $options) => ...)`** — callback для движок-специфичных запросов (Meilisearch facets, Algolia numericFilters).
+
+**Подводный камень кеша:** результаты поиска — это **ID моделей** из индекса; затем Scout делает `Model::whereIn("id", $ids)`. Если используете `softDeletes` + не передаёте флаг — пользователи увидят «удалённые» строки в выдаче.',
                 'code_example' => '<?php
-class Product extends Model {
+use Laravel\\Scout\\Searchable;
+
+class Product extends Model
+{
     use Searchable;
-    public function toSearchableArray(): array {
-        return ["name" => $this->name, "category" => $this->category->name];
+
+    public function toSearchableArray(): array
+    {
+        return [
+            "name"        => \$this->name,
+            "description" => \$this->description,
+            "category"    => \$this->category->name,    // через eager-load
+            "price"       => (int) \$this->price,
+            "is_active"   => (bool) \$this->is_active,
+        ];
+    }
+
+    // Опционально — кастомное имя индекса
+    public function searchableAs(): string
+    {
+        return "products_index_v2";
+    }
+
+    // Опционально — не индексировать неактивные
+    public function shouldBeSearchable(): bool
+    {
+        return \$this->is_active;
     }
 }
-// php artisan scout:import App\\Models\\Product',
+
+// Импорт большой таблицы (чанкует, не валит память)
+// php artisan scout:import "App\\Models\\Product"
+// php artisan scout:flush  "App\\Models\\Product"
+
+// Поиск с фильтрами
+\$results = Product::search("laravel book")
+    ->where("is_active", true)
+    ->whereIn("category_id", [1, 2, 3])
+    ->paginate(15);
+
+// Bulk-update — индекс надо обновить вручную
+Product::where("category_id", 5)->update(["price" => 100]);
+Product::where("category_id", 5)->searchable();  // ← синхронизация',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.misc',
@@ -750,7 +913,36 @@ class Product extends Model {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое DTO (Data Transfer Object) и зачем они нужны в Laravel?',
-                'answer' => 'DTO - объект для передачи типизированных данных между слоями приложения (Request → Action/Service → Repository, Service → Job, Service → API client). Заменяет передачу ассоциативных массивов вида $request->validated(), которые: (1) не дают автокомплита и статической проверки типов; (2) превращаются в "магические строки" по ключам, и переименование поля ломает всё молча; (3) не валидируются повторно при передаче в job (где исходный Request уже недоступен). DTO решает это: класс с явно типизированными readonly-свойствами, конструктор делает контракт явным, IDE подсказывает поля, phpstan ловит опечатки. В современном Laravel чаще всего используют readonly-классы (модификатор на уровне всего класса доступен с PHP 8.2; readonly у отдельных свойств - с 8.1) с named arguments, либо пакет spatie/laravel-data, который умеет автоматически собирать DTO из Request, валидировать и сериализовать обратно в JSON. Для job DTO критичен: сериализуется в очередь как обычный объект, без зависимости от Request. Антипаттерн: передавать в Action/Job сырой $request - это нарушает single responsibility и делает класс непригодным к запуску из консоли/теста.',
+                'answer' => '**DTO (Data Transfer Object)** — объект для передачи **типизированных данных** между слоями приложения: `Request → Action/Service → Repository`, `Service → Job`, `Service → API client`.
+
+**Что не так с ассоциативными массивами `$request->validated()`:**
+
+- **Нет автокомплита** и статической проверки типов в IDE.
+- **«Магические строки»** по ключам — переименование поля ломает всё молча.
+- **Нельзя протащить в job-ы**: при передаче в очередь исходный Request уже недоступен.
+- **Опечатки в ключах** не ловятся — `$data["emial"]` вернёт `null`.
+
+**Что даёт DTO:**
+
+- **Класс с явно типизированными `readonly` свойствами** — IDE подсказывает поля.
+- **Конструктор делает контракт явным** — нельзя забыть параметр.
+- **PHPStan / Psalm ловят опечатки** на этапе анализа.
+- **Сериализуется в очередь** как обычный объект — независим от HTTP.
+
+**Современные подходы в Laravel:**
+
+| Подход | Когда |
+|---|---|
+| **`final readonly class`** (PHP 8.2+) | Чистый PHP, без зависимостей |
+| **Отдельные `public readonly` свойства** (PHP 8.1+) | Если нужны не-readonly utility-методы |
+| **`spatie/laravel-data`** | Декларативно — автосбор из Request, валидация, сериализация |
+
+**Критично для job-ов:**
+
+- DTO сериализуется в payload очереди **как обычный объект** — никакой зависимости от Request.
+- Можно дёрнуть тот же Action из **CLI / job / контроллера** с одинаковым контрактом.
+
+**Антипаттерн:** передавать сырой `$request` в Action/Job — нарушает Single Responsibility и делает класс непригодным к запуску из консоли или теста.',
                 'code_example' => '<?php
 // Чистый PHP 8.1+ readonly DTO
 final readonly class CreateOrderData
@@ -794,7 +986,42 @@ class CreateOrderData extends Data {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между Service и Action классами? Когда что выбирать?',
-                'answer' => 'Service - класс с НЕСКОЛЬКИМИ публичными методами, объединёнными общей предметной областью: UserService::create(), update(), suspend(), restore(). Action - класс с ОДНИМ публичным методом (execute / handle / __invoke), инкапсулирующий ровно одну операцию: CreateUserAction, SuspendUserAction. Это разные уровни декомпозиции, а не "правильный/неправильный". Когда Service: набор простых CRUD-операций, между которыми много общего state/зависимостей; точка входа в bounded context для не-DDD-проектов. Когда Action: операции имеют разные зависимости (одна нуждается в почтовом клиенте, другая - в платёжном API), сложную бизнес-логику внутри, или должны переиспользоваться в Controller + ArtisanCommand + Job. Минусы Service: со временем разрастается до "god object" на 30 методов, тесты тяжёлые (приходится мокать всё, даже не используемое в данном тесте), DI-конструктор раздут. Минусы Action: больше файлов, между связанными операциями нужно прыгать. Прагматичный подход: начинать с Service, выделять Action, когда метод стал толстым (>30 строк) или появились свои зависимости. В обоих случаях контроллер тонкий: validate → call → return resource.',
+                'answer' => 'Это **разные уровни декомпозиции** — не «правильный/неправильный» подход, а **разная гранулярность** под разный объём логики.
+
+**Сравнение:**
+
+| Признак | **Service** | **Action** |
+|---|---|---|
+| Сколько публичных методов | **Несколько** (`create`, `update`, `suspend`, `restore`) | **Один** (`execute` / `handle` / `__invoke`) |
+| Что инкапсулирует | Набор связанных операций над сущностью | **Ровно одно** действие |
+| Имя | `UserService` | `CreateUserAction`, `SuspendUserAction` |
+| Зависимости в `__construct` | **Общие** для всех методов | **Только** для одного действия |
+| Точка входа | Группа CRUD-операций | Конкретная операция |
+
+**Когда выбирать Service:**
+
+- Набор **простых CRUD-операций** над одной сущностью.
+- Много **общего state / зависимостей** между методами.
+- Точка входа в bounded context для не-DDD-проектов.
+
+**Когда выбирать Action:**
+
+- Операции имеют **разные зависимости** (одна нуждается в `Mailer`, другая — в `StripeClient`).
+- **Сложная бизнес-логика** внутри одной операции (>30 строк).
+- Нужно **переиспользовать** в Controller + Artisan Command + Job + Listener.
+
+**Минусы Service:**
+
+- Со временем разрастается до **God Object** на 30 методов.
+- **Тесты тяжёлые** — приходится мокать всё, даже не используемое в данном тесте.
+- **DI-конструктор раздут** — все зависимости на каждый метод.
+
+**Минусы Action:**
+
+- **Больше файлов** в проекте.
+- Между связанными операциями приходится **прыгать по файлам**.
+
+**Прагматичный подход:** **начинать с Service**, выделять **Action**, когда метод стал толстым (>30 строк) или появились свои зависимости. **В обоих случаях контроллер тонкий**: `validate → call → return resource`.',
                 'code_example' => '<?php
 // Service - связка CRUD на одной сущности
 final class UserService
@@ -836,7 +1063,41 @@ final class ChargeFailedPaymentRetryAction
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое фасад Context (Laravel 11+) и зачем он нужен?',
-                'answer' => 'Context (Illuminate\Support\Facades\Context, появился в Laravel 11) - это механизм для хранения метаданных в рамках текущего request/job, которые автоматически добавляются ко всем log-записям и автоматически передаются в queued jobs. Простыми словами: вы один раз пишете Context::add("trace_id", $id) в начале запроса, и это значение попадёт в каждую log-строку этого запроса, а также автоматически окажется доступно внутри любого job, диспатченного во время этого запроса. Это решает классическую проблему observability: связать логи разных слоёв (controller → service → job → notification) одним trace_id, не таская его руками через каждый параметр. Под капотом Context живёт в singleton сервиса в контейнере; в Octane слушатель события RequestReceived вызывает Context::flush() между запросами, чтобы данные не утекли. При dispatch job текущий снимок Context-а сериализуется в payload job-а и восстанавливается в воркере. Также есть hidden context (Context::addHidden()) - не попадает в логи, но передаётся между job-ами; полезно для tenant_id или auth-state. Заменяет хак с глобальным singleton + Log::shareContext().',
+                'answer' => '**`Illuminate\\Support\\Facades\\Context`** (появился в **Laravel 11**) — механизм хранения **метаданных в рамках текущего request/job**, которые:
+
+1. **Автоматически добавляются ко всем log-записям** этого запроса.
+2. **Автоматически передаются в диспатченные job-ы** через сериализацию.
+
+**Решаемая проблема — observability:**
+
+- Связать **логи разных слоёв** (controller → service → job → notification) одним `trace_id`.
+- **Не таскать** trace_id руками через каждый параметр и конструктор.
+
+**Как использовать:**
+
+| Метод | Что делает |
+|---|---|
+| **`Context::add("trace_id", $id)`** | Добавить в context (видно в логах) |
+| **`Context::addHidden("tenant_id", 7)`** | **НЕ** попадает в логи, **передаётся** в jobs |
+| **`Context::get("trace_id")`** | Прочитать значение |
+| **`Context::push("breadcrumbs", $event)`** | Добавить в массив (audit-trail) |
+| **`Context::flush()`** | Очистить (Octane делает сам между запросами) |
+
+**Под капотом:**
+
+- Живёт как **singleton** сервиса в контейнере.
+- В **Octane** слушатель `RequestReceived` вызывает `Context::flush()` между запросами — данные не утекают.
+- При **`dispatch`** job-а **текущий снимок Context** сериализуется в payload и восстанавливается в воркере.
+
+**Сравнение public vs hidden context:**
+
+| | `Context::add` | `Context::addHidden` |
+|---|---|---|
+| Попадает в логи | **Да** | Нет |
+| Передаётся в jobs | Да | **Да** |
+| Применение | `trace_id`, `user_id` | `tenant_id`, auth state, секреты |
+
+**Заменяет старый хак** с глобальным singleton + `Log::shareContext()` — теперь это **first-class citizen** в фреймворке.',
                 'code_example' => '<?php
 // Middleware - добавляем trace_id один раз
 class AssignTraceId

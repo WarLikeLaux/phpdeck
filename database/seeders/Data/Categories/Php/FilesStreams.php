@@ -60,7 +60,39 @@ fclose($fh);',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое stream wrappers и как использовать php://?',
-                'answer' => 'Stream wrappers - механизм PHP для работы с разными источниками данных через единый файловый API (fopen, file_get_contents). Встроенные: php://stdin, php://stdout, php://memory (в памяти), php://temp (диск, если переполнило), php://input (тело запроса), php://output. file:// - локальные файлы (по умолчанию). http://, https://, ftp:// - сеть. Можно регистрировать свои через stream_wrapper_register.',
+                'answer' => '**Stream wrappers** — механизм PHP для работы с разными источниками данных через **единый файловый API** (`fopen`, `file_get_contents`, `fread`).
+
+**Встроенные обёртки:**
+
+| Wrapper | Что это | Когда |
+| --- | --- | --- |
+| **`file://`** | локальные файлы (default, можно опустить) | `fopen("/etc/passwd", "r")` |
+| **`php://stdin`** / **`stdout`** / **`stderr`** | CLI-потоки | `fgets(STDIN)` или прямой `fopen` |
+| **`php://input`** | **тело HTTP-запроса** | API получает JSON-payload |
+| **`php://output`** | пишет в **ответ** напрямую | потоковая отдача больших файлов |
+| **`php://memory`** | буфер **в памяти** | временный буфер для тестов |
+| **`php://temp`** | буфер **в памяти, при >2 MB — на диск** | большие in-flight буферы |
+| **`php://filter`** | цепочка фильтров поверх другого потока | base64, deflate, charset |
+| **`http://`** / **`https://`** | HTTP(S) клиент | требует **`allow_url_fopen`** |
+| **`ftp://`** / **`ftps://`** | FTP | |
+| **`compress.zlib://`** | прозрачная gz-декомпрессия | `fopen("compress.zlib:///x.gz", "r")` |
+| **`compress.bzip2://`** | bzip2 | |
+| **`phar://`** | внутри PHP Archive | |
+| **`glob://`** | iter-патчей по маске | `new DirectoryIterator("glob:///*.php")` |
+| **`data://`** | data-URI inline | `fopen("data://text/plain,Hello", "r")` |
+
+**Регистрация своих:**
+- **`stream_wrapper_register(string $scheme, string $class)`** — класс реализует протокол (`stream_open`, `stream_read`, `stream_write`, `stream_eof`, `stream_close`, `url_stat`, ...)
+- так делают **`vfsStream`** для тестов файловой системы, **AWS SDK `s3://`**, **Flysystem-обёртки**
+
+**Stream context** — параметры обёртки:
+- **`stream_context_create(["http" => [...]])`** — таймауты, заголовки, прокси
+- **`stream_context_set_default(...)`** — глобальные
+
+**Подводные камни:**
+- **`allow_url_fopen=Off`** в проде по безопасности — **`http://`-обёртка отключена**
+- **`allow_url_include=Off`** запрещает `include "http://..."` (LFI/RFI защита)
+- **`file_get_contents("http://...")`** — простая, но **без** retries, redirects (поведение `follow_location=1` по умолчанию)',
                 'code_example' => '<?php
 // Тело POST-запроса
 $body = file_get_contents("php://input");

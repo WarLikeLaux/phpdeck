@@ -102,7 +102,34 @@ try {
             [
                 'category' => 'PHP',
                 'question' => 'Что такое сериализация в PHP?',
-                'answer' => 'Сериализация - превращение PHP-объекта или структуры в строку, из которой потом можно восстановить. serialize() / unserialize() - бинарный PHP-формат, сохраняет тип. json_encode() / json_decode() - текстовый, межъязыковой. С PHP 7.4 есть __serialize / __unserialize - современная замена устаревших Serializable. ВАЖНО: unserialize небезопасен с недоверенными данными - может выполнить код через __wakeup/__destruct (POP-цепочки).',
+                'answer' => '**Сериализация** — превращение PHP-объекта или структуры в **строку**, из которой потом можно **восстановить** значение.
+
+**Два основных формата:**
+
+| Формат | Функции | Особенности |
+| --- | --- | --- |
+| **PHP serialize** | `serialize()` / `unserialize()` | **бинарный**, сохраняет **тип и класс**, размер компактный, только PHP-to-PHP |
+| **JSON** | `json_encode()` / `json_decode()` | **текстовый**, **межъязыковой**, теряет тип объекта (восстановит как `array` или `stdClass`) |
+
+**Магические методы для контроля сериализации:**
+
+| Метод | Когда вызывается | Что должен делать |
+| --- | --- | --- |
+| **`__serialize(): array`** (PHP 7.4+) | при `serialize($obj)` | вернуть массив — то, что будет сериализовано |
+| **`__unserialize(array $data): void`** (PHP 7.4+) | при `unserialize($str)` | восстановить состояние |
+| `__sleep()` / `__wakeup()` | устаревшие — оставлены для совместимости |
+| **`Serializable`-интерфейс** | **deprecated с PHP 8.1**, удалён в 9.0 | использовать `__serialize` / `__unserialize` |
+
+**⚠️ КРИТИЧНО — `unserialize` небезопасен с НЕдоверенными данными:**
+- может вызвать **`__wakeup()`**, **`__destruct()`**, **`__toString()`** на произвольных классах
+- атакующий конструирует **POP-цепочку** (Property-Oriented Programming) — комбинирует магические методы существующих классов для **RCE**
+- классический пример — **уязвимости в Laravel / Symfony / WordPress** при `unserialize($_COOKIE["user"])`
+
+**Защита:**
+- **`allowed_classes`** в опциях: `unserialize($str, ["allowed_classes" => [User::class]])` — whitelist
+- **`allowed_classes => false`** — запретить **все** классы, только скалары/массивы
+- **никогда** не `unserialize` пользовательский ввод — использовать **JSON** + явная валидация
+- альтернатива — **подписанный токен** (`hash_hmac`) поверх serialize, проверять подпись до `unserialize`',
                 'code_example' => '<?php
 class User {
     public function __construct(
@@ -110,23 +137,32 @@ class User {
         private string $secret,
     ) {}
 
+    // Контролируем, что попадёт в сериализованную строку
     public function __serialize(): array {
-        return ["name" => $this->name];
+        return ["name" => $this->name];  // secret НЕ серилизуем
     }
 
     public function __unserialize(array $data): void {
         $this->name = $data["name"];
-        $this->secret = "";
+        $this->secret = "";              // пересоздадим в безопасное состояние
     }
 }
 
 $user = new User("Иван", "pwd");
 $str = serialize($user);
+// O:4:"User":1:{s:4:"name";s:8:"Иван";}
 
 $user2 = unserialize($str);
 
-// Безопасный режим
-$obj = unserialize($str, ["allowed_classes" => [User::class]]);',
+// ✅ БЕЗОПАСНО — whitelist классов
+$obj = unserialize($str, ["allowed_classes" => [User::class]]);
+
+// ✅ Совсем без объектов
+$data = unserialize($str, ["allowed_classes" => false]);
+// массивы/скаляры останутся, объекты станут __PHP_Incomplete_Class
+
+// ❌ Опасно — данные из вне приложения
+$data = unserialize($_COOKIE["state"]);  // RCE-уязвимость',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'php.std_lib',
@@ -134,7 +170,42 @@ $obj = unserialize($str, ["allowed_classes" => [User::class]]);',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое SPL и какие структуры из неё реально полезны на собеседованиях?',
-                'answer' => 'Standard PHP Library предоставляет специализированные структуры данных и итераторы. SplQueue/SplStack/SplDoublyLinkedList - связные списки с O(1) на голову/хвост. SplPriorityQueue - куча. SplObjectStorage - set/map для объектов. SplFixedArray - массив с числовыми индексами и фиксированным размером; немного экономит память по сравнению с обычным array (~1.1-1.3x на PHP 8 для int/string-значений - замерено через memory_get_usage), а не в 3-5 раз, как часто пишут (это легенда из эпохи PHP 5, когда HashTable был тяжёлым; в PHP 7+ packed array хранится как сплошной блок и почти догоняет SplFixedArray). Реальная польза SplFixedArray сегодня - жёсткая фиксация размера и невозможность нечисловых ключей, а не радикальная экономия памяти. Итераторы (RecursiveIteratorIterator, FilterIterator) дают компонуемые потоки.',
+                'answer' => '**SPL (Standard PHP Library)** — встроенное расширение со специализированными **структурами данных** и **итераторами**.
+
+**Структуры данных:**
+
+| Класс | Что это | Сложность |
+| --- | --- | --- |
+| **`SplDoublyLinkedList`** | двусвязный список (deque) | `push`/`pop`/`shift`/`unshift` — **O(1)** |
+| **`SplStack`** extends DoublyLinkedList | LIFO | `push`/`pop` — O(1) |
+| **`SplQueue`** extends DoublyLinkedList | FIFO | `enqueue`/`dequeue` — **O(1)** (vs `array_shift` O(N)) |
+| **`SplPriorityQueue`** | мин/макс-куча | `insert` — O(log N), `extract` — O(log N) |
+| **`SplHeap`** (`SplMinHeap` / `SplMaxHeap`) | абстрактная куча | то же |
+| **`SplObjectStorage`** | map/set с **объектами** в качестве ключей | hash через `spl_object_hash` |
+| **`SplFixedArray`** | массив фиксированного размера, только int-ключи | компактнее обычного array (миф об «в 5× меньше» сегодня устарел) |
+
+**Про `SplFixedArray` — частая ловушка собеса:**
+- легенда «экономит в 3-5×» — **из эпохи PHP 5**, когда HashTable был тяжёлым
+- в **PHP 7+** packed array хранится **сплошным блоком**, разница реально **~1.1-1.3×**
+- сегодняшняя польза — **жёсткая фиксация размера** и **невозможность нечисловых ключей**, а не радикальная экономия памяти
+
+**Итераторы (компонуемые потоки):**
+
+| Итератор | Что делает |
+| --- | --- |
+| **`ArrayIterator`** | обёртка над массивом → `Iterator` |
+| **`FilterIterator`** | фильтрация по callback |
+| **`LimitIterator`** | offset + limit (как SQL `LIMIT`) |
+| **`RecursiveIteratorIterator`** | плоский обход дерева |
+| **`RecursiveDirectoryIterator`** | рекурсивный обход файловой системы |
+| **`AppendIterator`** | конкатенация нескольких итераторов |
+| **`CallbackFilterIterator`** | filter с замыканием |
+
+**Где используется реально:**
+- **`SplPriorityQueue`** — реализация Dijkstra, шедулеры задач
+- **`SplObjectStorage`** — visitor-паттерн, отслеживание состояния объектов
+- **`SplQueue`** — in-memory очередь между корутинами
+- **`RecursiveDirectoryIterator` + `RecursiveIteratorIterator`** — обход проектов в Composer-сканерах, тестовых рунерах',
                 'difficulty' => 4,
                 'topic' => 'php.std_lib',
             ],

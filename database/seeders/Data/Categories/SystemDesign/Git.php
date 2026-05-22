@@ -10,7 +10,75 @@ class Git
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как git устроен внутри — что такое blob, tree, commit, tag?',
-                'answer' => 'Git — это content-addressable filesystem поверх directed acyclic graph (DAG) из четырёх типов объектов. Каждый объект идентифицируется SHA-1 (или SHA-256) хешем своего содержимого и хранится в .git/objects/. 1) Blob — содержимое одного файла (без имени, без прав). Один и тот же файл, лежащий в разных местах, хранится как один blob — отсюда эффективность по диску. 2) Tree — снимок каталога: список записей "права | тип | sha | имя", где sha указывает либо на blob (файл), либо на другое tree (подкаталог). Это рекурсивная структура. 3) Commit — объект с указателем на корневой tree (snapshot всего проекта), указателями на parent commit(s) (один для обычного, два+ для merge), author, committer, message. Содержит хеши, а не патчи — git хранит ПОЛНЫЕ снимки, а не diff. 4) Tag (annotated) — именованный указатель на commit с подписью и сообщением (lightweight tag — просто файл-ссылка в refs/tags/). Ветки и HEAD — это refs (файлы в .git/refs/), указывающие на commit-ы. История = DAG коммитов с parent-указателями. Когда вы делаете checkout, git восстанавливает рабочий каталог из tree корневого commit-а через blob-ы. Compression: packfile в .git/objects/pack/ дельта-сжимает похожие объекты, экономя место на диске.',
+                'answer' => '**Git** — это **content-addressable filesystem** поверх **DAG** (Directed Acyclic Graph) из **четырёх типов объектов**. Каждый объект идентифицируется **SHA-1** (или **SHA-256**) хешем своего содержимого и хранится в **`.git/objects/`**.
+
+**Четыре типа объектов:**
+
+| Тип | Содержит | Указывает на |
+|---|---|---|
+| **Blob** | содержимое **одного файла** (без имени, без прав) | — |
+| **Tree** | снимок каталога: список `права | тип | sha | имя` | blobs и другие trees |
+| **Commit** | snapshot проекта + метаданные | **один root tree** + N parent commits |
+| **Tag** (annotated) | подпись + сообщение + указатель | один commit |
+
+**1. Blob** — байты файла. Один файл в разных местах = **один blob** (дедупликация по содержимому). Имя файла **не часть blob-а** — оно в tree.
+
+**2. Tree** — рекурсивная структура каталога:
+
+```
+100644 blob a1b2c3...  README.md
+100755 blob d4e5f6...  scripts/run.sh
+040000 tree 9876ab...  src/
+```
+
+**3. Commit:**
+
+```
+tree 9876abcd...              ← snapshot всего проекта
+parent abc123...              ← предыдущий коммит (или 2+ для merge)
+author John <j@e.com> 1234567890 +0000
+committer John <j@e.com> 1234567890 +0000
+
+feat: add user authentication
+```
+
+**Ключевой факт:** commit содержит **хеши**, а не патчи. **Git хранит ПОЛНЫЕ снимки**, не diff. Diff показывается **вычислением** между tree-ями.
+
+**4. Tag (annotated):**
+
+```
+object abc123...
+type commit
+tag v1.0.0
+tagger John <j@e.com> 1234567890 +0000
+-----BEGIN PGP SIGNATURE-----
+...
+```
+
+Lightweight tag — **просто файл-ссылка** в `refs/tags/v1.0.0` с SHA.
+
+**Refs** — ветки и `HEAD`:
+
+- `refs/heads/main` → SHA коммита
+- `refs/remotes/origin/main` → SHA удалённого коммита
+- `HEAD` → `ref: refs/heads/main` (символическая ссылка)
+
+**История** = **DAG** коммитов с parent-указателями. Merge-commit имеет **2+** parent-а.
+
+**Compression (packfile):**
+
+- Loose objects (`.git/objects/xx/<sha>`) — каждый объект в отдельном файле
+- **Packfile** (`.git/objects/pack/pack-*.pack`) — упакованные с **дельта-сжатием** похожих объектов
+- `git gc` упаковывает loose → pack, экономит десятки раз места
+
+**Команды для исследования:**
+
+```bash
+git cat-file -p <sha>    # содержимое объекта
+git cat-file -t <sha>    # тип
+git ls-tree HEAD         # tree корня
+git log --pretty=raw     # внутреннее представление
+```',
                 'difficulty' => 4,
                 'topic' => 'system_design.git',
             ],
@@ -465,14 +533,136 @@ $ git branch recovered 4b1d8a2',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое git worktree и когда он лучше нескольких клонов?',
-                'answer' => 'git worktree позволяет иметь несколько РАБОЧИХ деревьев из одного репозитория одновременно — каждое со своей веткой и checked-out файлами, разделяя единый .git/objects (история, blob-ы, packfile-ы). Команды: git worktree add ../feature-x feature-x — создаёт каталог ../feature-x с checkout-ом ветки feature-x, дополнительный .git внутри — это просто ссылка на основной репозиторий. git worktree list — посмотреть все рабочие деревья. git worktree remove ../feature-x — удалить. Зачем: 1) Параллельная работа над двумя задачами — пишете фичу в ./repo на main, прилетел code review на чужой PR, делаете worktree add ../review-pr review-pr-branch и в другом терминале/окне IDE ревьюите и тестируете, не теряя контекста. 2) Длинный rebase или конфликтный merge — занимает основной checkout надолго. Worktree даёт продолжать работу. 3) Запуск тестов на одной ветке параллельно с разработкой на другой. Преимущества vs git clone: 1) Экономия места — общий .git/objects, иногда десятки гигабайт на больших монорепо (Linux kernel, Chromium). 2) Скорость — не нужно повторно скачивать всё. 3) Локальная отвязка — push/pull в одном worktree автоматически виден в других. Ограничения: одна и та же ветка не может быть checked out одновременно в двух worktree (git напоминает «branch is already checked out at ...»). main worktree удалить нельзя — это вся репа.',
+                'answer' => '**`git worktree`** позволяет иметь **несколько рабочих деревьев** из одного репозитория одновременно — каждое со своей веткой и checked-out файлами, **разделяя общий `.git/objects`** (история, blob-ы, packfile-ы).
+
+**Команды:**
+
+```bash
+git worktree add ../feature-x feature-x   # создать дерево
+git worktree list                          # посмотреть все
+git worktree remove ../feature-x           # удалить
+git worktree prune                         # очистить мусор после ручного rm
+```
+
+После `add ../feature-x feature-x` создаётся каталог `../feature-x` с checkout-ом ветки. Внутри `.git` — **не репозиторий**, а **указатель** на основной.
+
+**Зачем нужен:**
+
+1. **Параллельная работа над двумя задачами** — пишешь фичу в `./repo` на `main`, прилетел code review на чужой PR. Делаешь `worktree add ../review-pr review-pr-branch` и в другом терминале/IDE ревьюишь, **не теряя контекста**.
+2. **Длинный rebase или конфликтный merge** занимает основной checkout надолго — worktree даёт продолжать работу.
+3. **Параллельный запуск тестов** на разных ветках.
+4. **Hotfix во время разработки** — основная фича не теряется.
+
+**Преимущества vs `git clone`:**
+
+| | **worktree** | **git clone** |
+|---|---|---|
+| **Дисковое место** | общий `.git/objects` | **дубликат** `.git` (на Linux kernel ~5 ГБ × 2) |
+| **Скорость создания** | мгновенно | повторный download |
+| **Локальная отвязка** | push/pull виден везде сразу | независимы |
+| **Сложность** | один `.git`, несколько checkout | несколько независимых клонов |
+
+**Ограничения:**
+
+- **Одну ветку нельзя checkout в двух worktree** одновременно — git напоминает `«branch is already checked out at ...»`. Это **защита от двойного редактирования**
+- **Main worktree удалить нельзя** — это весь репозиторий
+- **Submodules** требуют отдельной инициализации в каждом worktree
+
+**Типичный workflow для большого монорепо:**
+
+```bash
+~/code/repo                     # main, основная разработка
+~/code/repo-review              # review-pr (другой PR на review)
+~/code/repo-hotfix              # hotfix-1.2.3 (срочный фикс)
+~/code/repo-ci-debug            # ci-debug (воспроизведение CI-bag-a)
+```
+
+**Незаменим в монорепо** (Linux kernel, Chromium, Google) — экономит десятки ГБ диска и минуты при переключении задач.',
                 'difficulty' => 4,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое submodule, в чём проблемы и какие альтернативы?',
-                'answer' => 'git submodule — способ включить ОТДЕЛЬНЫЙ git-репозиторий внутрь вашего как вложенный каталог, с привязкой к конкретному коммиту того репозитория. git submodule add <url> path/to/sub создаёт .gitmodules с URL и сохраняет SHA вложенного коммита. При клоне нужен --recursive или потом git submodule update --init --recursive. При обновлении вложенный репо checked-out на сохранённом SHA — НЕ на последний commit ветки. Чтобы подтянуть свежее, нужно cd в submodule, git pull, вернуться, git add path/to/sub, git commit — обновляется указатель в родителе. Проблемы: 1) Сложно для команды: новички постоянно забывают --recursive и видят пустые подкаталоги. 2) Detached HEAD по умолчанию внутри submodule — случайный коммит в submodule теряется. 3) Merge-конфликты в submodule-указателе (gitlink) — два человека обновили на разные коммиты, нужно вручную разрешать. 4) Branch-tracking сложен: submodule.<name>.branch + git submodule update --remote — но это редко настраивают. Альтернативы: 1) git subtree — буквально включает историю поддерева в основной репозиторий, проще для пользователей, сложнее для редких обновлений. 2) Monorepo + workspace tools (Yarn workspaces, pnpm workspaces, Nx, Turborepo) — всё лежит вместе, ничего не вкладывают. 3) Composer/npm пакеты — если общий код можно версионировать как библиотеку, это лучший путь — package versioning + lock-файл вместо git-привязки. Submodule оправдан, когда вложенный репо — настоящий внешний проект с собственной командой (vendor-овый, форк-овый).',
+                'answer' => '**`git submodule`** — способ включить **отдельный git-репозиторий внутрь** вашего как вложенный каталог, **с привязкой к конкретному коммиту**.
+
+**Как работает:**
+
+```bash
+git submodule add <url> libs/shared        # добавить
+# создаёт .gitmodules + gitlink на конкретный SHA
+
+git clone --recurse-submodules <url>       # клон с submodule-ами
+# или после обычного clone:
+git submodule update --init --recursive
+```
+
+При обновлении вложенного:
+
+```bash
+cd libs/shared
+git pull origin main                       # обновили внутри
+cd ..
+git add libs/shared                        # коммитим новый SHA
+git commit -m "bump shared lib to v2.0"
+```
+
+**Главные проблемы:**
+
+1. **Сложно для команды** — новички забывают `--recurse-submodules` и видят **пустые подкаталоги**
+2. **Detached HEAD по умолчанию** внутри submodule — случайные коммиты теряются
+3. **Merge-конфликты в gitlink** — два человека обновили на разные SHA, ручное разрешение
+4. **Branch tracking** сложен — `submodule.<name>.branch` + `git submodule update --remote`, **редко настраивают правильно**
+5. **CI overhead** — каждый job заново клонирует все submodule-ы
+
+**Альтернативы:**
+
+| Подход | Когда брать | Минусы |
+|---|---|---|
+| **`git subtree`** | редкие обновления, проще для users | сложнее push обратно |
+| **Monorepo** + workspace tools (`Yarn`/`pnpm` workspaces, `Nx`, `Turborepo`) | shared internal code | сложнее CI matrix |
+| **Composer / npm packages** | реальная переиспользуемая библиотека | overhead на pack/publish |
+| **Git LFS** для бинарей | вместо submodule для assets | стоимость хранилища |
+
+**1. `git subtree`** — буквально **включает историю** поддерева в основной репозиторий:
+
+```bash
+git subtree add --prefix=libs/shared <url> main --squash
+git subtree pull --prefix=libs/shared <url> main --squash
+```
+
+Проще для пользователей (нет `--recursive`), но **сложнее push** изменений обратно.
+
+**2. Monorepo** — всё лежит вместе:
+
+```
+my-monorepo/
+  apps/
+    frontend/
+    api/
+  libs/
+    shared-types/
+    auth-utils/
+  package.json (workspaces)
+```
+
+**`pnpm`** / **`Yarn workspaces`** / **`Nx`** / **`Turborepo`** дают локальные ссылки между пакетами.
+
+**3. Composer/npm** — если код можно версионировать как либу:
+
+```json
+"require": {"company/shared-lib": "^2.0"}
+```
+
+**lock-файл** + semver лучше git-привязки.
+
+**Когда submodule оправдан:**
+
+- Вложенный репо — **настоящий внешний проект** с собственной командой (vendor-овый, форк-овый)
+- **Невозможно** опубликовать как пакет (закрытый код, специфичный артефакт)
+- **Vendor драйверов**, форки upstream с патчами
+
+В большинстве случаев **submodule — плохое решение**, используется по инерции.',
                 'difficulty' => 4,
                 'topic' => 'system_design.git',
             ],
@@ -517,7 +707,79 @@ git config --global pull.ff only',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что делает interactive rebase (git rebase -i) и какие операции в нём есть?',
-                'answer' => 'git rebase -i HEAD~5 (или git rebase -i main) открывает редактор со списком коммитов и набором операций для каждого — можно переписать историю серии коммитов. Операции: 1) pick — оставить как есть (default). 2) reword — оставить изменения, изменить сообщение. 3) edit — пауза на этом коммите, можно добавить файлы (git add) или поправить и git commit --amend, потом git rebase --continue. 4) squash — слить с ПРЕДЫДУЩИМ коммитом, сообщения объединить (даст редактировать). 5) fixup — то же, что squash, но выкинуть сообщение текущего (оставить только предыдущее) — удобно для «fix typo» коммитов. 6) drop — выкинуть коммит совсем. 7) Можно ПОМЕНЯТЬ ПОРЯДОК — просто переставить строки в редакторе. Типовые сценарии: 1) Перед PR — schissel 7 «WIP», «fix», «more», «typo» коммитов в 2 осмысленных через squash/fixup. 2) Изменить сообщение старого коммита (reword). 3) Откатить случайно закоммиченный файл — edit на нужном коммите, git reset HEAD~ <file>, --continue. Подводные камни: 1) Только на личной ветке — переписывание уже push-нутой истории требует force-push и ломает чужие checkout-ы. 2) Конфликты по каждому шагу — можно --abort полностью или --skip отдельный коммит. 3) Эксклюзивный диапазон: rebase -i HEAD~3 редактирует ПОСЛЕДНИЕ 3 коммита (HEAD~3..HEAD), не включая HEAD~3. Современные удобства: --autosquash + commit --fixup=<sha> автоматически расставляет fixup-метки.',
+                'answer' => '**`git rebase -i HEAD~5`** (или `git rebase -i main`) открывает редактор со списком коммитов — можно **переписать историю серии коммитов**.
+
+**Операции (todo-list):**
+
+| Команда | Что делает |
+|---|---|
+| **`pick`** | оставить как есть *(default)* |
+| **`reword`** (`r`) | оставить изменения, **изменить сообщение** |
+| **`edit`** (`e`) | **пауза** — можно `git add`, `git commit --amend`, потом `--continue` |
+| **`squash`** (`s`) | слить с **предыдущим** коммитом, объединить сообщения |
+| **`fixup`** (`f`) | то же, что squash, но **выкинуть сообщение** текущего |
+| **`drop`** (`d`) | **выкинуть** коммит совсем |
+| **`exec`** | выполнить shell-команду между коммитами (тесты, lint) |
+| **переставить строки** | поменять **порядок** коммитов |
+
+**Типовые сценарии:**
+
+**1. Перед PR — почистить историю:**
+
+7 «WIP», «fix», «more», «typo» коммитов → 2 осмысленных через `squash`/`fixup`:
+
+```
+pick   abc123 feat: add user auth
+fixup  def456 fix typo
+fixup  ghi789 more fixes
+pick   jkl012 feat: add password reset
+fixup  mno345 WIP
+```
+
+**2. Изменить сообщение старого коммита:**
+
+```
+reword abc123 fix: handle null email
+```
+
+**3. Откатить случайно закоммиченный файл:**
+
+```
+edit   abc123 wip
+```
+
+После остановки:
+
+```bash
+git reset HEAD~ -- secrets.env
+rm secrets.env
+git commit --amend
+git rebase --continue
+```
+
+**Современное удобство — `--autosquash`:**
+
+```bash
+git commit --fixup=<sha>           # помечает коммит как fixup для <sha>
+git rebase -i --autosquash main     # автоматически расставляет fixup-метки
+```
+
+**Подводные камни:**
+
+1. **Только на личной ветке** — переписывание уже push-нутой истории требует **force-push** и ломает чужие checkout-ы. Используй **`--force-with-lease`** вместо `--force`
+2. **Конфликты на каждом шагу** — `--abort` (откатить всё) или `--skip` (пропустить один коммит)
+3. **Эксклюзивный диапазон** — `HEAD~3` редактирует **последние 3 коммита** (`HEAD~3..HEAD`), **не включая `HEAD~3`**
+4. **Reflog спасёт** при ошибке — `git reflog` найдёт ORIG_HEAD до rebase
+
+**Безопасный workflow:**
+
+```bash
+git checkout -b feature-backup       # страховка
+git checkout feature
+git rebase -i main
+# если плохо: git reset --hard feature-backup
+git push --force-with-lease origin feature
+```',
                 'difficulty' => 4,
                 'topic' => 'system_design.git',
             ],
@@ -1032,35 +1294,312 @@ git checkout v6.0    # blob-ы нужных файлов подкачаются 
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое git LFS и зачем он нужен?',
-                'answer' => 'Git LFS (Large File Storage) — расширение, для хранения больших бинарных файлов вне основного git-репозитория. Без LFS: каждое изменение бинарного файла (PSD, видео, ML-модель) добавляет ПОЛНУЮ его копию в .git/objects — репо растёт лавиной, клон становится медленным, packfile-сжатие на бинарях не работает. С LFS: в git коммитится не сам файл, а маленький pointer-file типа "version sha256 12345 size 100MB"; реальное содержимое лежит на отдельном LFS-сервере (GitHub LFS, GitLab LFS, S3, MinIO с lfs-bridge). При checkout LFS-клиент подтягивает нужные версии. Использование: git lfs install (один раз на машину), git lfs track "*.psd" (создаёт .gitattributes с правилом), git add файлы и .gitattributes, обычный commit/push. Когда нужен: 1) Дизайн-ассеты в репо разработки (макеты, видео). 2) ML-проекты с обученными моделями. 3) Game-development (текстуры, аудио). 4) Документация с большими PDF. Подводные камни: 1) LFS не бесплатен — GitHub/GitLab лимитируют размер и трафик; для большого LFS нужен план или self-hosted. 2) При clone нужен LFS клиент на машине — без него получите pointer-файлы вместо реальных. 3) Старые системы без LFS-поддержки не работают (CI/CD должен ставить git-lfs). 4) Переключение существующего файла на LFS требует rewriting history (git lfs migrate import) — это force-push. Альтернативы: 1) Хранить ассеты в S3, в репо только ссылки (как референсы в DAM). 2) DVC (Data Version Control) для ML — отдельный инструмент поверх git.',
+                'answer' => '**Git LFS** (Large File Storage) — расширение для хранения **больших бинарных файлов вне** основного git-репозитория.
+
+**Проблема без LFS:**
+
+Каждое изменение бинаря (PSD, видео, ML-модель) добавляет **полную копию** в `.git/objects`:
+
+- Репо **растёт лавиной**
+- Клон становится медленным
+- **Packfile дельта-сжатие на бинарях почти не работает**
+- Каждый разработчик качает всю историю всех бинарей
+
+**Решение — LFS:**
+
+В git коммитится **не сам файл**, а маленький **pointer-file**:
+
+```
+version https://git-lfs.github.com/spec/v1
+oid sha256:abc123def456...
+size 104857600
+```
+
+Реальное содержимое лежит на отдельном **LFS-сервере** (`GitHub LFS`, `GitLab LFS`, S3, MinIO с lfs-bridge). При **checkout** LFS-клиент подтягивает нужные версии.
+
+**Использование:**
+
+```bash
+git lfs install                  # один раз на машину
+git lfs track "*.psd"            # создаёт .gitattributes с правилом
+git lfs track "*.mp4" "*.model"
+git add .gitattributes *.psd
+git commit -m "add design assets"
+git push
+```
+
+**Когда нужен:**
+
+| Сценарий | Примеры |
+|---|---|
+| **Дизайн-ассеты** в репо разработки | Figma exports, PSD, sketch |
+| **ML-проекты** с обученными моделями | `.pt`, `.h5`, `.onnx` файлы |
+| **Game-development** | текстуры, аудио, fbx |
+| **Документация** с большими PDF | мануалы, презентации |
+
+**Подводные камни:**
+
+1. **Не бесплатен** — GitHub/GitLab лимитируют **размер и трафик** (`1 ГБ`/`1 ГБ-bandwidth/month` free); для большого LFS нужен платный план или self-hosted
+2. **Нужен LFS-клиент на машине** — без него получаешь pointer-файлы вместо реальных
+3. **CI/CD** должен ставить `git-lfs` — иначе билды получают pointer-файлы
+4. **Миграция существующего файла на LFS** требует **rewriting history** (`git lfs migrate import`) — это force-push, ломает всех
+
+**Альтернативы:**
+
+| Подход | Когда |
+|---|---|
+| **S3 + ссылки в репо** | редкие обновления, есть own DAM |
+| **DVC** (Data Version Control) | ML-pipelines, нужна data lineage |
+| **Artifactory / Nexus** | корпоративные binary artifacts |
+| **Pulp** для container/RPM | OS packages |
+
+**DVC** ценен в ML — хранит **метаданные о датасетах и моделях** с привязкой к git-коммитам, поддерживает remote storage (S3, GCS, Azure).',
                 'difficulty' => 4,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как настроить подписание коммитов GPG/SSH и зачем это нужно?',
-                'answer' => 'Без подписи коммита поле "Author" в git — это просто строка из git config user.email, которую любой может выставить любую. То есть «коммит от bill@gates.com» легко подделать. Подписание криптографически доказывает, что коммит сделан владельцем приватного ключа. Виды подписи: 1) GPG — старый стандарт, требует gpg-инфраструктуры (gpg --gen-key, экспорт публичного ключа на GitHub в Settings → SSH and GPG keys). git config commit.gpgsign true делает подпись автоматической. git commit -S явно. Verification на GitHub/GitLab показывает «Verified» бейдж. 2) SSH-keys (Git 2.34+) — современный простой путь: тот же SSH-ключ, который вы используете для git push, можно использовать для подписи. git config gpg.format ssh + git config user.signingkey ~/.ssh/id_ed25519.pub + git config commit.gpgsign true. Проще, чем GPG, не нужна отдельная инфраструктура. 3) S/MIME — для корпоративной PKI. Зачем подписывать: 1) Security-критичные проекты (Linux kernel, релизы СУБД) — must, иначе нельзя отличить malicious-коммит. 2) Compliance — некоторые регуляторные требования (SOC 2, ISO 27001) требуют криптографической атрибуции изменений. 3) Open-source — защита от спуфинга мейнтейнеров. 4) Защита от компрометации аккаунта — даже если злоумышленник получил GitHub-токен, без приватного ключа подписанные коммиты не сделает. GitHub branch protection может ТРЕБОВАТЬ verified-коммиты — тогда неподписанные просто не пройдут в main. Это становится дефолтом в зрелых командах. Боль: настройка для всей команды (особенно Windows-разработчиков с GPG), потеря приватного ключа = невозможность подписи под старым identity.',
+                'answer' => '**Проблема:** поле `Author` в git — это просто строка из `git config user.email`, которую любой может выставить любую. «Коммит от `bill@gates.com`» легко подделать. **Подписание криптографически доказывает**, что коммит сделан владельцем приватного ключа.
+
+**Виды подписи:**
+
+1. **`GPG`** — старый стандарт, требует gpg-инфраструктуры.
+   - `gpg --gen-key` → экспорт публичного ключа на GitHub (`Settings → SSH and GPG keys`).
+   - `git config commit.gpgsign true` — автоматическая подпись, либо `git commit -S` явно.
+   - На GitHub/GitLab появляется бейдж **«Verified»**.
+2. **`SSH-keys`** (Git **2.34+**) — современный простой путь: тот же SSH-ключ, который ты используешь для `git push`, можно использовать для подписи. Не нужна отдельная инфраструктура:
+   ```
+   git config gpg.format ssh
+   git config user.signingkey ~/.ssh/id_ed25519.pub
+   git config commit.gpgsign true
+   ```
+3. **`S/MIME`** — для корпоративной PKI.
+
+**Зачем подписывать:**
+- **Security-критичные проекты** (Linux kernel, релизы СУБД) — must, иначе нельзя отличить malicious-коммит.
+- **Compliance** — регуляторика (SOC 2, ISO 27001) требует криптографической атрибуции изменений.
+- **Open-source** — защита от спуфинга мейнтейнеров.
+- **Защита от компрометации аккаунта** — даже если злоумышленник получил GitHub-токен, без приватного ключа подписанные коммиты не сделает.
+
+**GitHub branch protection** может **требовать** verified-коммиты — тогда неподписанные просто не пройдут в `main`. Это становится дефолтом в зрелых командах.
+
+**Боль:**
+- настройка для всей команды (особенно Windows-разработчиков с `GPG`)
+- **потеря приватного ключа** = невозможность подписи под старым identity.',
                 'difficulty' => 4,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое git gc, packfile и почему репозиторий иногда нужно «сжать»?',
-                'answer' => 'Git хранит объекты двумя способами: loose objects (по файлу на объект в .git/objects/xx/<rest-of-sha>) и packfiles (.git/objects/pack/pack-*.pack — упакованные с дельта-сжатием). Каждая операция (commit, fetch, write-tree) создаёт loose objects. Со временем их становятся тысячи, диск занимают неэффективно, listing замедляется. git gc (garbage collect): 1) Упаковывает loose objects в новый packfile (огромная экономия места — похожие версии файлов хранятся как дельты). 2) Удаляет недостижимые объекты старше gc.pruneExpire (по умолчанию 2 недели). 3) Сжимает refs/. 4) Запускает packfiles repack для слияния маленьких pack-ов в большой. Запускается автоматически при некоторых операциях (gc.auto=6700 loose objects по умолчанию). Ручной запуск: git gc для штатного, git gc --aggressive --prune=now для полного — пересчитывает дельты с большими бюджетами времени, обычно даёт +5-15% экономии для давно живущих репо. Но --aggressive занимает часы на больших репо. Когда стоит вмешаться: 1) Репо ощутимо разросся (du -sh .git/), особенно после массовых перемещений файлов. 2) git операции (status, log) стали медленнее. 3) После git filter-repo или BFG — обязательно git gc --prune=now --aggressive, чтобы реально удалить старые объекты, иначе они физически останутся. Реальный практический случай: на CI shared cache git-репо может разрастись до десятков ГБ — периодический git gc по cron спасает место и скорость. На GitHub автоматически делается на их стороне; вы видите только клиентскую сторону.',
+                'answer' => 'Git хранит объекты **двумя способами**:
+
+| | **Loose objects** | **Packfile** |
+|---|---|---|
+| **Где** | `.git/objects/xx/<rest-of-sha>` | `.git/objects/pack/pack-*.pack` |
+| **Структура** | один файл на объект, zlib | **дельта-сжатие** похожих объектов |
+| **Эффективность** | низкая | **высокая** (10-100x экономии) |
+| **Создаётся при** | каждом commit, write-tree | `git gc`, `push`, fetch |
+
+**Каждая операция** (commit, fetch, write-tree) создаёт loose objects. Со временем их становятся тысячи — диск занимают неэффективно, listing замедляется.
+
+**`git gc` (garbage collect):**
+
+1. **Упаковывает loose objects** в новый packfile — огромная экономия места (похожие версии файлов хранятся как **дельты**)
+2. **Удаляет недостижимые объекты** старше `gc.pruneExpire` *(default 2 weeks)*
+3. **Сжимает `refs/`** — `packed-refs` файл вместо файлов в `refs/heads/`
+4. **Repack packfiles** — слияние маленьких pack-ов в большой
+
+Запускается **автоматически** при некоторых операциях (`gc.auto=6700` loose objects).
+
+**Ручной запуск:**
+
+```bash
+git gc                                # штатный
+git gc --aggressive --prune=now       # полный — пересчёт дельт с большими бюджетами
+git count-objects -v                  # статистика до/после
+du -sh .git/                          # размер репо
+```
+
+**`--aggressive`** даёт **+5-15%** экономии для давно живущих репо, но **занимает часы** на больших.
+
+**Когда стоит вмешаться:**
+
+1. **Репо разросся** (`du -sh .git/`), особенно после массовых перемещений файлов
+2. **git status/log замедлились** — миллионы loose objects
+3. **После `git filter-repo` или `BFG`** — **обязательно** `git gc --prune=now --aggressive`, иначе старые объекты физически остаются
+4. **Перед бэкапом** — packed репо в разы меньше
+
+**Практика:**
+
+- На CI **shared cache** git-репо может разрастись до десятков ГБ — периодический cron-`gc` спасает
+- GitHub делает gc на своей стороне автоматически
+- Microsoft **Scalar** (теперь часть git) — оптимизация для гигантских монорепо
+
+**`git maintenance`** (Git `2.30+`) — современная замена ручного `gc`:
+
+```bash
+git maintenance start                 # фоновая регулярная оптимизация
+```
+
+Запускает `gc`, prefetch, `commit-graph`, loose-objects-cleanup по расписанию.',
                 'difficulty' => 4,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое sparse checkout и когда он спасает в больших монорепо?',
-                'answer' => 'Обычный git checkout восстанавливает в working tree ВСЕ файлы из tree коммита. В монорепо на сотни тысяч файлов и десятки ГБ это значит долгий checkout, медленный git status, занят диск. Sparse checkout позволяет иметь в working tree только ПОДМНОЖЕСТВО файлов, при этом репо знает обо всех (история и индекс полные). Современный синтаксис (Git 2.25+): 1) git sparse-checkout init --cone — включить sparse-режим в cone-mode (быстрый). 2) git sparse-checkout set frontend/ services/api/ shared/ — checkout только эти каталоги (включая родительские файлы корня для контекста). 3) git sparse-checkout disable — вернуться к обычному режиму. Cone-mode оптимизирован под «целые каталоги» — git может быстро рассчитать, что выкладывать. Non-cone-mode позволяет gitignore-подобные паттерны (с *, !), но медленнее. Случаи использования: 1) Большие монорепо (Google, Microsoft, Meta) — разработчик одного сервиса не хочет тащить все 100 сервисов. 2) CI/CD job, который билдит только frontend, не нужен backend код. 3) Локальная экономия диска при ограниченном SSD. Ограничения: 1) git status и git log по-прежнему работают со всем индексом (хотя есть partial index для ускорения с Git 2.32+). 2) git pull может затронуть файлы за границей sparse-checkout, нужно следить. 3) Используется вместе с partial clone (--filter=blob:none) для максимальной экономии — не качаем blob-ы файлов, которые не выкладываем. Microsoft развивал scalar (теперь часть git) для гигантских репо — sparse-checkout — её ключевой компонент.',
+                'answer' => 'Обычный `git checkout` восстанавливает в working tree **все файлы** из tree коммита. В монорепо на **сотни тысяч файлов** и десятки ГБ это значит:
+
+- долгий **checkout**
+- медленный **`git status`** (сканирует все файлы)
+- **занят диск**
+
+**`Sparse checkout`** позволяет иметь в working tree только **подмножество файлов**, при этом репо **знает обо всех** (история и индекс полные).
+
+**Современный синтаксис (Git `2.25+`):**
+
+```bash
+git sparse-checkout init --cone                          # включить sparse в cone-mode
+git sparse-checkout set frontend/ services/api/ shared/  # checkout только эти каталоги
+git sparse-checkout list                                  # посмотреть текущие
+git sparse-checkout add tools/scripts/                    # добавить ещё
+git sparse-checkout disable                               # вернуться в обычный режим
+```
+
+**Два режима:**
+
+| Режим | Скорость | Гибкость |
+|---|---|---|
+| **`--cone`** | **быстро** (оптимизирован) | только «целые каталоги» |
+| **non-cone** | медленнее | gitignore-подобные паттерны (`*`, `!`) |
+
+`cone-mode` оптимизирован под целые каталоги — git **быстро рассчитывает**, что выкладывать. Для большинства задач `--cone` достаточен.
+
+**Случаи использования:**
+
+1. **Большие монорепо** (Google, Microsoft, Meta) — разработчик одного сервиса не хочет тащить все 100 сервисов
+2. **CI/CD job**, который билдит только frontend → не нужен backend код
+3. **Локальная экономия диска** при ограниченном SSD
+4. **Безопасность** — junior разработчик не должен видеть `payments/` код
+
+**Combined with partial clone — максимальная экономия:**
+
+```bash
+git clone --filter=blob:none --no-checkout <url> repo
+cd repo
+git sparse-checkout init --cone
+git sparse-checkout set apps/web/
+git checkout main
+```
+
+- `--filter=blob:none` — не качать **blobs** (только commits/trees), blobs тянутся on-demand
+- `sparse-checkout` — выкладывать только нужные
+
+В сумме на Linux kernel вместо `~5 ГБ` получается `~500 МБ`.
+
+**Ограничения:**
+
+1. **`git status` и `git log`** работают со всем **индексом** (хотя есть partial index с Git `2.32+` для ускорения)
+2. **`git pull`** может затронуть файлы за границей sparse-checkout — следить за `.gitattributes`/конфликтами
+3. **Тесты, билд-скрипты** могут ожидать определённые файлы в путях, которых нет
+4. **IDE indexing** не видит «скрытых» файлов — иногда это плюс, иногда минус
+
+**Microsoft Scalar** (теперь часть git) — отдельная утилита для гигантских репо, sparse-checkout — её **ключевой компонент**. Используется внутри Microsoft для `windows-build` (`200 ГБ+`).',
                 'difficulty' => 4,
                 'topic' => 'system_design.git',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как восстановить случайно удалённую ветку или сброшенные коммиты?',
-                'answer' => 'Самое успокаивающее свойство git: удалить что-то НАВСЕГДА на самом деле сложно. Сценарии и решения: 1) Удалили ветку (git branch -D feature), помните примерное содержимое. Команда: git reflog (или git reflog show --all) — найти последний коммит ветки. git branch feature <sha> — пересоздать ветку на этом коммите. Готово. 2) Сделали git reset --hard и потеряли последние коммиты. git reflog HEAD@{...} покажет позицию до reset. git reset --hard HEAD@{1} (или конкретный entry) — вернуть. 3) Промахнулись в rebase, всё переписали неправильно. git reflog → найти ORIG_HEAD (git сохраняет в нём состояние ДО rebase/merge). git reset --hard ORIG_HEAD — откатить весь rebase. 4) Закоммитили в detached HEAD и переключились на ветку, коммиты «потерялись». git reflog покажет их SHA. git branch save <sha> — создать ветку и спасти. 5) Файл случайно удалён и закоммичен. git log --all -- path/to/file найдёт коммиты, затронувшие его. git checkout <sha>^ -- path/to/file — восстановить версию до удаления. 6) Force-push снёс remote-ветку. На вашей машине: git reflog в порядке. На remote: GitHub/GitLab имеют API для восстановления (события push с прежним SHA доступны несколько недель). Без админ-доступа — у кого-то из команды есть локальная копия → git push --force-with-lease обратно. ПОСЛЕДНЯЯ надежда — git fsck --lost-found ищет все unreachable объекты в .git/objects (даже без reflog-записи) и складывает в .git/lost-found/. Профилактика: 1) git config --global rerere.enabled true (помнит решения конфликтов). 2) Перед опасной операцией: git branch backup-$(date +%s) — мгновенная страховка. 3) Не использовать --hard и --force без хотя бы --dry-run.',
+                'answer' => '**Самое успокаивающее свойство git** — удалить что-то **навсегда** на самом деле сложно. Объекты живут в `.git/objects/` пока не запустится `gc` (default 2 недели).
+
+**Главный инструмент — `git reflog`:**
+
+`reflog` — это **локальный журнал всех изменений `HEAD`** (commit, checkout, rebase, reset). Хранит SHA даже **«потерянных»** коммитов.
+
+```bash
+git reflog                    # история HEAD
+git reflog show --all         # история всех refs
+git reflog feature            # история конкретной ветки
+```
+
+**Сценарии и решения:**
+
+**1. Удалили ветку (`git branch -D feature`):**
+
+```bash
+git reflog                                # найти последний коммит
+abc123 HEAD@{5}: commit: last work on feature
+git branch feature abc123                  # пересоздать
+```
+
+**2. `git reset --hard` потерял коммиты:**
+
+```bash
+git reflog
+abc123 HEAD@{0}: reset: moving to HEAD~3
+def456 HEAD@{1}: commit: важный коммит
+git reset --hard HEAD@{1}                  # или git reset --hard def456
+```
+
+**3. Промахнулись в rebase:**
+
+```bash
+git reflog
+# git сохраняет ORIG_HEAD — состояние ДО rebase/merge
+git reset --hard ORIG_HEAD                 # откатить весь rebase
+```
+
+**4. Detached HEAD коммиты потерялись после `checkout main`:**
+
+```bash
+git reflog
+abc123 HEAD@{2}: commit: WIP experiment
+git branch save abc123                     # создать ветку из «потерянного»
+```
+
+**5. Файл случайно удалён и закоммичен:**
+
+```bash
+git log --all --diff-filter=D -- path/to/file       # найти коммит удаления
+git checkout <sha>^ -- path/to/file                  # восстановить из коммита до удаления
+```
+
+**6. Force-push снёс remote-ветку:**
+
+- **Локально:** `git reflog` в порядке, push обратно
+- **На GitHub/GitLab:** API/UI имеют **восстановление** (события push с прежним SHA доступны несколько недель)
+- **Без админа:** у кого-то в команде есть локальная копия → `git push --force-with-lease`
+
+**Последняя надежда — `git fsck`:**
+
+```bash
+git fsck --lost-found
+# ищет все unreachable объекты в .git/objects (даже без reflog)
+# складывает в .git/lost-found/
+ls .git/lost-found/commit/                 # список потерянных коммитов
+git show <sha>                              # посмотреть содержимое
+git branch recovered <sha>                  # восстановить
+```
+
+**Что НЕ восстановишь:**
+
+- **Незакоммиченные изменения** — не в git, нечему помочь
+- **Объекты после `gc --prune=now`** — реально удалены
+- **`git clean -fd`** удалённые файлы — не закоммичены, не отслежены
+
+**Профилактика:**
+
+```bash
+git config --global rerere.enabled true       # помнит решения конфликтов
+git config --global pull.ff only              # запрет случайных merge
+git branch backup-$(date +%s)                  # перед опасной операцией
+# alias gwip="git add -A && git commit -m WIP" # частые «save-points»
+```
+
+**Главное правило:** **никогда** не делай `--hard`/`--force` без хотя бы `--dry-run` или **бэкап-ветки**.',
                 'difficulty' => 4,
                 'topic' => 'system_design.git',
             ],

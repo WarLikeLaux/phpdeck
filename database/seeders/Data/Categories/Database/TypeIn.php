@@ -38,7 +38,28 @@ class TypeIn
             [
                 'category' => 'Базы данных',
                 'question' => 'Уровень изоляции, при котором допустимы non-repeatable reads и phantom reads.',
-                'answer' => 'READ COMMITTED - компромиссный уровень по умолчанию во многих БД (Postgres, Oracle).',
+                'answer' => '**`READ COMMITTED`** — компромиссный уровень изоляции **по умолчанию** в **PostgreSQL** и **Oracle**.
+
+**Что разрешено / запрещено:**
+
+| Аномалия | На `READ COMMITTED` |
+|---|---|
+| **Dirty read** | **запрещён** — никогда не видим незакоммиченные данные |
+| **Non-repeatable read** | **допустим** — один `SELECT` может вернуть строку, второй (после `COMMIT` другой транзакции) — её новую версию |
+| **Phantom read** | **допустим** — новые подходящие строки могут появиться между двумя `SELECT` |
+
+**Как работает в PG:** каждый `SELECT` берёт **свой свежий snapshot** (а не один на всю транзакцию).
+
+**Сравнение с другими уровнями:**
+
+| Уровень | Dirty | Non-repeatable | Phantom |
+|---|---|---|---|
+| `READ UNCOMMITTED` | да | да | да |
+| **`READ COMMITTED`** | **нет** | **да** | **да** |
+| `REPEATABLE READ` | нет | нет | в стандарте — да; в InnoDB/PG — **нет** |
+| `SERIALIZABLE` | нет | нет | нет |
+
+**В MySQL InnoDB** по умолчанию **`REPEATABLE READ`** (а не `READ COMMITTED`).',
                 'short_answer' => 'READ COMMITTED',
                 'difficulty' => 4,
                 'topic' => 'database.type_in',

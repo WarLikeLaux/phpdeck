@@ -128,14 +128,60 @@ php artisan queue:flush',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое ShouldBeUnique?',
-                'answer' => 'ShouldBeUnique - интерфейс, гарантирующий что в очереди в один момент есть только одна копия задачи с тем же ключом. Простыми словами: защита от дубликатов в очереди. Можно реализовать uniqueId() и uniqueFor() (TTL).',
-                'code_example' => 'class UpdateSearchIndex implements ShouldQueue, ShouldBeUnique {
-    public int $uniqueFor = 3600;
+                'answer' => '**`ShouldBeUnique`** — маркер-интерфейс на классе job, гарантирующий, что **в очереди одновременно живёт только одна копия** задачи с тем же уникальным ключом. Защита от дубликатов в горизонте `uniqueFor` секунд.
 
-    public function uniqueId(): string {
-        return $this->product->id;
+**Как работает под капотом:**
+
+- Перед `push()` Laravel берёт **`Cache::lock("laravel_unique_job:{class}:{uniqueId}", $uniqueFor)`**.
+- Lock взялся → job отправляется в очередь.
+- Lock **не взялся** → `dispatch` молча отбрасывается (никаких исключений).
+- Lock снимается **после успешного `handle()`** или по истечении `$uniqueFor`.
+
+**Что можно настроить на классе:**
+
+| Свойство/метод | Назначение |
+|---|---|
+| `public int $uniqueFor = 3600;` | **TTL** lock-а в секундах (страховка от висящего lock-а) |
+| `public function uniqueId(): string` | Уникальный ключ (по умолчанию — пустая строка → один job на класс) |
+| `public function uniqueVia(): Repository` | Какой cache-store использовать (по умолчанию — дефолтный) |
+
+**Варианты интерфейса:**
+
+- **`ShouldBeUnique`** — lock держится **до конца `handle()`** (другая копия может появиться, когда первая закончила).
+- **`ShouldBeUniqueUntilProcessing`** — lock снимается, **как только воркер взял** job в работу (новые dispatch можно ставить **во время** обработки).
+
+**Подводные камни:**
+
+- **Не путать с `WithoutOverlapping`**: первый — про **постановку в очередь**, второй — про **параллельное выполнение**. Обычно комбинируют оба.
+- `uniqueFor` **обязательно** ставить — без TTL зависший воркер заблокирует диспатч навсегда.
+- На `cache.store = database` lock работает, но медленнее — для high-load лучше `redis`.',
+                'code_example' => 'use Illuminate\\Contracts\\Queue\\ShouldBeUnique;
+
+class UpdateSearchIndex implements ShouldQueue, ShouldBeUnique
+{
+    public int $uniqueFor = 3600; // 1 час максимум
+
+    public function __construct(public Product $product) {}
+
+    public function uniqueId(): string
+    {
+        return (string) $this->product->id;
     }
-}',
+
+    public function handle(): void
+    {
+        // переиндексация продукта
+    }
+}
+
+// Два dispatch подряд — второй молча отброшен
+UpdateSearchIndex::dispatch($product); // OK, поставлен в очередь
+UpdateSearchIndex::dispatch($product); // дубликат — отброшен
+
+// ShouldBeUniqueUntilProcessing — lock снимается на старте handle()
+use Illuminate\\Contracts\\Queue\\ShouldBeUniqueUntilProcessing;
+
+class GenerateReport implements ShouldQueue, ShouldBeUniqueUntilProcessing {}',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.queues_jobs',
@@ -190,13 +236,65 @@ Bus::batch([
             [
                 'category' => 'Laravel',
                 'question' => 'Как обеспечить идемпотентность Job в очереди и что произойдёт при двойном запуске?',
-                'answer' => 'Очередь даёт at-least-once: при таймауте/падении воркера job перейдёт в attempts+1. Для идемпотентности используют ключ операции (заказ id, request id) и проверяют через WithoutOverlapping или БД-запись unique constraint, либо реализуют ShouldBeUnique. Альтернатива - middleware Throttled с уникальным ключом. Также важно ставить retry_after > timeout, чтобы не дублировать запуск из-за таймаута слушателя.',
+                'answer' => '**Очередь Laravel — это at-least-once**: при таймауте, падении воркера или OOM job вернётся в очередь и `attempts++`. Поэтому **любой job должен быть идемпотентным** — повторный запуск с теми же входными данными **не должен** давать побочный эффект дважды.
+
+**Что произойдёт при двойном запуске неидемпотентного job:**
+
+- `ChargePayment` спишет деньги дважды.
+- `SendInvoice` отправит письмо дважды.
+- `CreateOrder` создаст два заказа.
+
+**Способы сделать job идемпотентным (по возрастанию надёжности):**
+
+| Подход | Гарантия | Когда применять |
+|---|---|---|
+| **`ShouldBeUnique`** | Защита от **двойного диспатча** (lock на постановку) | Дедупликация по бизнес-ключу |
+| **`WithoutOverlapping`** | Защита от **параллельного выполнения** двух job-ов с одним ключом | Операции над одной сущностью (баланс, инвентарь) |
+| **`unique constraint` в БД** | Жёсткая гарантия в storage layer | Платежи, заказы — критичные данные |
+| **Idempotency-Key + audit-table** | Полная идемпотентность по бизнес-ключу | Платежи через внешний gateway (Stripe `Idempotency-Key`) |
+
+**Дополнительные правила:**
+
+- **`retry_after > $timeout`** в `config/queue.php` — иначе при таймауте воркера job задвоится.
+- **`$afterCommit = true`** — job не диспатчится, пока транзакция не закоммитилась.
+- Внешние API дёргать с **`Idempotency-Key`** (Stripe, Checkout) — gateway сам отбросит дубль.
+- В `handle()` проверять **состояние** в БД: `if ($order->paid_at) return;` — guard на повторный запуск.',
                 'code_example' => '<?php
-class ProcessPayment implements ShouldQueue, ShouldBeUnique {
+use Illuminate\\Contracts\\Queue\\ShouldBeUnique;
+use Illuminate\\Queue\\Middleware\\WithoutOverlapping;
+
+// 1) Защита от двойного диспатча через ShouldBeUnique
+class ProcessPayment implements ShouldQueue, ShouldBeUnique
+{
     public int $uniqueFor = 3600;
+
     public function __construct(public int $orderId) {}
-    public function uniqueId(): string { return (string) $this->orderId; }
-    public function handle() { /* charge once */ }
+
+    public function uniqueId(): string {
+        return (string) \$this->orderId;
+    }
+
+    public function handle(StripeClient \$stripe): void {
+        \$order = Order::find(\$this->orderId);
+
+        // 2) Idempotency guard в БД — повторный запуск ничего не сделает
+        if (\$order->paid_at) {
+            return;
+        }
+
+        // 3) Idempotency-Key для внешнего API
+        \$stripe->charges->create(
+            params: ["amount" => \$order->amount_cents],
+            options: ["idempotency_key" => "order-{\$order->id}"],
+        );
+
+        \$order->update(["paid_at" => now()]);
+    }
+
+    // 4) Защита от параллельного выполнения
+    public function middleware(): array {
+        return [(new WithoutOverlapping(\$this->orderId))->expireAfter(180)];
+    }
 }',
                 'code_language' => 'php',
                 'difficulty' => 4,
@@ -205,14 +303,72 @@ class ProcessPayment implements ShouldQueue, ShouldBeUnique {
             [
                 'category' => 'Laravel',
                 'question' => 'Как настроить экспоненциальный backoff и максимальное число попыток для Job?',
-                'answer' => 'Число попыток задаётся свойством $tries на классе Job, либо CLI-флагом queue:work --tries=N. Метод retryUntil(): \\DateTimeInterface задаёт абсолютный дедлайн (когда retryUntil вернул будущее время, число попыток игнорируется). backoff() возвращает int или массив задержек по каждой попытке (экспоненциальный backoff). Для долгих jobs нужна синхронизация $timeout (sec) и retry_after в конфиге queue, чтобы воркер не считал job упавшим. failed() вызывается после исчерпания tries - место для алертов.',
+                'answer' => '**Жизненный цикл job с ошибкой:** исключение в `handle()` → задача возвращается в очередь → через **backoff** секунд воркер пробует снова → когда `attempts > $tries` или `retryUntil` истёк → job попадает в **`failed_jobs`** и вызывается `failed(Throwable $e)`.
+
+**Где задаются параметры:**
+
+| Параметр | Где | Семантика |
+|---|---|---|
+| **`public int $tries = 5;`** | На классе Job или CLI `--tries=5` | Максимум попыток |
+| **`public function retryUntil(): DateTimeInterface`** | Метод класса | **Абсолютный дедлайн** — `$tries` игнорируется, пока возвращает будущее |
+| **`public int $backoff = 10;`** | Свойство | Фиксированная задержка между попытками (сек) |
+| **`public function backoff(): array`** | Метод | **Экспоненциальный** — массив задержек по попытке `[10, 30, 60, 120, 300]` |
+| **`public int $timeout = 120;`** | На классе или CLI `--timeout=120` | Hard kill процесса через N сек (требует **`pcntl`**) |
+| **`public function failed(Throwable $e)`** | Метод | Хук после **исчерпания** попыток — алерт, компенсация |
+
+**Критичное правило для долгих job-ов:**
+
+- **`retry_after` (в `config/queue.php`) > `$timeout`** — иначе очередь решит, что job упал, и отдаст его **второму воркеру**, пока первый ещё работает. Документация: «retry_after should always be at least several seconds shorter than timeout» (то есть retry_after **больше** timeout).
+
+**Экспоненциальный backoff — для нестабильных внешних API:**
+
+- `[10, 30, 60, 120, 300]` — даёт upstream-сервису время восстановиться.
+- Альтернатива: формула `backoff = (2 ** attempts) * 5 + rand(0, 5)` — **с jitter** против thundering herd.
+
+**Когда `failed()` НЕ вызовется:**
+
+- Job убит по `$timeout` без `$failOnTimeout = true` → просто перепланируется на следующий attempt.
+- Воркер убит `kill -9` / OOM до завершения handle().',
                 'code_example' => '<?php
-class SyncCrm implements ShouldQueue {
+class SyncCrm implements ShouldQueue
+{
     public int $tries = 5;
     public int $timeout = 120;
-    public function backoff(): array { return [10, 30, 60, 120, 300]; }
-    public function failed(Throwable $e): void { Log::critical("CRM sync gave up", ["e" => $e]); }
-}',
+    public bool $failOnTimeout = true;   // failed() вызовется и при таймауте
+
+    // Экспоненциальный backoff с jitter — против thundering herd
+    public function backoff(): array
+    {
+        return [10, 30, 60, 120, 300];
+    }
+
+    // Альтернатива — абсолютный дедлайн (приоритетнее $tries)
+    public function retryUntil(): \\DateTimeInterface
+    {
+        return now()->addHours(2);
+    }
+
+    public function handle(CrmClient \$crm): void
+    {
+        \$crm->push(\$this->payload);
+    }
+
+    public function failed(\\Throwable \$e): void
+    {
+        Log::critical("CRM sync gave up", ["error" => \$e->getMessage()]);
+        Slack::alert("CRM down — заявка ушла в failed_jobs");
+    }
+}
+
+// config/queue.php — retry_after > timeout
+"connections" => [
+    "redis" => [
+        "driver"      => "redis",
+        "queue"       => "default",
+        "retry_after" => 180,  // больше любого $timeout
+        "block_for"   => null,
+    ],
+],',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.queues_jobs',
@@ -220,11 +376,67 @@ class SyncCrm implements ShouldQueue {
             [
                 'category' => 'Laravel',
                 'question' => 'Что произойдёт при деплое, если воркеры очереди держат старый код?',
-                'answer' => 'Воркер бутстрапит фреймворк один раз и держит его в памяти. После деплоя он продолжит обрабатывать jobs со старыми сериализованными моделями и старыми классами. Решение - выполнять php artisan queue:restart, который выставляет таймстамп в кэше; воркеры периодически его проверяют и грейсфул-завершаются. Supervisor поднимет их с новым кодом. Также job-классы нельзя переименовывать без compatibility-shim, иначе сериализованные данные не десериализуются.',
-                'code_example' => '# deploy.sh
-php artisan queue:restart
+                'answer' => '**`queue:work` бутстрапит фреймворк один раз** и держит классы в памяти процесса PHP — это ускорение, но и **главная боль деплоя**.
+
+**Что сломается без `queue:restart` после деплоя:**
+
+| Симптом | Причина |
+|---|---|
+| Job выполняется со **старой версией `handle()`** | Класс уже автозагружен в воркере |
+| `ModelNotFoundException` на `__wakeup` | Сериализован старый класс модели, в новой версии переименовано свойство |
+| **Старые миграции** в коде воркера → запрос к **несуществующей колонке** | Воркер не перезагружен после `migrate` |
+| Job-класс **переименовали** → `Class App\\Jobs\\OldName not found` при unserialize | Старый payload в очереди ссылается на старое имя |
+| Конфиг ещё **старый** (`config/queue.php`) | Без `config:cache` старый конфиг закеширован в singleton |
+
+**Решение — graceful restart:**
+
+1. **`php artisan queue:restart`** — пишет timestamp в кеш (`illuminate:queue:restart`).
+2. Каждый воркер **между job-ами** проверяет timestamp и, если он новее старта воркера, **грейсфул-завершается** (текущий job дорабатывает).
+3. **Supervisor / k8s** автоматически поднимает новый процесс с новым кодом.
+
+**Полный deploy-скрипт:**
+
+- **`composer install --no-dev --optimize-autoloader`** — без dev-пакетов.
+- **`migrate --force`** — с флагом для прода.
+- **`config:cache route:cache event:cache view:cache`** — пересобрать кеши.
+- **`queue:restart`** — грейсфул-остановить старых воркеров.
+- Если есть **`Horizon`** — `horizon:terminate` (та же логика, но с UI).
+
+**Подводные камни:**
+
+- **Никогда не переименовывайте Job-классы без compatibility-shim** — оставьте старый класс наследником нового на 1-2 деплоя.
+- **Не добавляйте обязательные поля** в конструктор job — старые сериализованные payload их не содержат → fatal error в воркере.
+- **Removed-properties** — те же грабли с десериализацией, делайте deprecation через 2 релиза.',
+                'code_example' => '#!/bin/bash
+# deploy.sh — production deploy script
+
+set -e
+
+# 1) Подтянуть код
+git pull origin main
+
+# 2) Composer без dev
+composer install --no-dev --optimize-autoloader
+
+# 3) Миграции (--force для прода)
 php artisan migrate --force
-php artisan config:cache route:cache event:cache',
+
+# 4) Пересобрать кеши
+php artisan config:cache
+php artisan route:cache
+php artisan event:cache
+php artisan view:cache
+
+# 5) Грейсфул-рестарт воркеров — Supervisor поднимет с новым кодом
+php artisan queue:restart
+
+# Если используется Horizon
+# php artisan horizon:terminate
+
+# Опционально — прогрев OPcache
+# curl -fsS http://localhost/up > /dev/null
+
+echo "Deploy done."',
                 'code_language' => 'bash',
                 'difficulty' => 4,
                 'topic' => 'laravel.queues_jobs',
@@ -232,7 +444,34 @@ php artisan config:cache route:cache event:cache',
             [
                 'category' => 'Laravel',
                 'question' => 'Как правильно диспатчить jobs внутри DB::transaction и как включить afterCommit глобально?',
-                'answer' => 'Если внутри транзакции диспатчить job без оговорок, воркер может подхватить его ДО коммита внешней транзакции - и не найти ещё не закоммиченных строк (race-condition между приложением и воркером). Решения по возрастанию стоимости: 1) DB::afterCommit(fn() => Job::dispatch(...)) - точечно. 2) Свойство public bool $afterCommit = true; на классе Job - откладывает диспатч до фактического коммита САМОГО внешнего уровня (вложенные SAVEPOINT не считаются). 3) ГЛОБАЛЬНО для всего соединения очереди - в config/queue.php у нужного драйвера выставить "after_commit" => true; тогда КАЖДЫЙ job, отправленный в это соединение, ждёт коммита, и не нужно дублировать $afterCommit на каждом классе. Это удобно, когда вся команда работает в транзакциях и забывать про afterCommit опасно. Также важно: длинные транзакции внутри job блокируют строки и держат connection - предпочитайте short-lived транзакции и идемпотентные операции (см. ShouldBeUnique / WithoutOverlapping).',
+                'answer' => '**Проблема race-condition между приложением и воркером:** если внутри `DB::transaction` диспатчить job без оговорок, **воркер может подхватить его ДО коммита** внешней транзакции и не найти ещё не закоммиченных строк.
+
+**Типичный сценарий бага:**
+
+1. Контроллер начинает транзакцию.
+2. `Order::create([...])` — строка в БД, но **не закоммичена**.
+3. `SendInvoice::dispatch($order)` — job сразу в очереди.
+4. Воркер **мгновенно** подхватил job → `Order::find($id)` возвращает **`null`**.
+5. Транзакция коммитится — поздно, job уже упал.
+
+**Решения по возрастанию стоимости:**
+
+| Подход | Гранулярность | Когда применять |
+|---|---|---|
+| **`DB::afterCommit(fn () => Job::dispatch(...))`** | Точечно, **per call-site** | Один-два особых диспатча |
+| **`public bool $afterCommit = true;`** на классе job | Per-class | Job, который **всегда** диспатчится из транзакции |
+| **`after_commit => true`** в `config/queue.php` (per-connection) | **Глобально** на соединение | Когда вся команда работает в транзакциях |
+| **`->beforeCommit()`** на диспатче | Опт-аут | Если глобально `after_commit=true`, но один job нужен мгновенно |
+
+**Что важно понимать про вложенность:**
+
+- `$afterCommit` срабатывает после **самого внешнего** commit-а.
+- **Вложенные `SAVEPOINT`** (nested transactions) **не считаются** — job ждёт реальный commit корня.
+
+**Связанные паттерны:**
+
+- **Длинные транзакции внутри job-а блокируют строки** и держат connection. Делайте **short-lived транзакции** + идемпотентные операции (`ShouldBeUnique` / `WithoutOverlapping`).
+- В **тестах** при `RefreshDatabase` транзакция оборачивает весь тест — `$afterCommit` job-ов **не сработает**. Решение: `DB::commit()` вручную или `Bus::fake()`.',
                 'code_example' => '<?php
 // Вариант 1: точечно
 DB::transaction(function () use ($order) {
@@ -266,7 +505,43 @@ SendCriticalAlert::dispatch($incident)->beforeCommit();',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Job Middleware и какие встроенные middleware есть в Laravel?',
-                'answer' => 'Job Middleware - это middleware, оборачивающий выполнение Job-а; работает аналогично HTTP middleware, но для очередей. Позволяет вынести cross-cutting логику (rate limiting, дедупликацию, retry-стратегии) из самого Job. Подключается через метод middleware() на классе Job - возвращает массив объектов middleware. Встроенные классы: 1) WithoutOverlapping - блокирует параллельное выполнение Job-ов с одинаковым ключом через cache lock; критично для операций над одной сущностью (например, начисление баланса юзеру), чтобы две копии одного Job не выполнялись одновременно. 2) RateLimited - ограничивает частоту выполнения Job-ов (использует RateLimiter::for()); если лимит исчерпан, Job возвращается обратно в очередь с задержкой. 3) ThrottlesExceptions - если Job падает с исключениями слишком часто (например, внешний API лежит), middleware прекращает попытки на заданное время вместо того, чтобы выжигать retry-budget; полезно для интеграций с нестабильными сервисами. 4) SkipIfBatchCancelled - не выполнять Job, если batch отменён. Кастомные middleware - класс с методом handle($job, $next).',
+                'answer' => '**Job Middleware** — обёртка вокруг выполнения job-а, аналог **HTTP middleware**, но для очередей. Позволяет вынести **cross-cutting логику** (rate limiting, дедупликацию, retry-стратегии) из самого job-а.
+
+**Как подключается:**
+
+- Метод **`middleware(): array`** на классе job возвращает массив объектов middleware.
+- Каждый middleware — класс с **`handle($job, Closure $next)`**, как у HTTP.
+
+**Встроенные middleware:**
+
+| Класс | Что делает | Когда применять |
+|---|---|---|
+| **`WithoutOverlapping`** | Блокирует **параллельное** выполнение job-ов с одинаковым ключом (cache lock) | Операции над одной сущностью (начисление баланса, обновление инвентаря) |
+| **`RateLimited`** | Ограничивает **частоту** выполнения (использует `RateLimiter::for()`); при превышении job возвращается в очередь с задержкой | Лимит внешнего API (Stripe, Twilio) |
+| **`ThrottlesExceptions`** | При **N исключениях за период** — приостановить попытки на M секунд, не выжигая retry-budget | Нестабильные интеграции, downtime upstream |
+| **`SkipIfBatchCancelled`** | Не выполнять job, если **batch отменён** через `$batch->cancel()` | Batch с возможностью отмены пользователем |
+| **`Skip`** (L11+) | Условный skip job-а по предикату | Feature flags, maintenance mode |
+
+**API типичных middleware:**
+
+- **`WithoutOverlapping($key)`**:
+  - `->expireAfter(180)` — auto-release lock через 3 мин (если воркер упал).
+  - `->releaseAfter(60)` — вернуть job в очередь через 60 сек, если занято.
+  - `->dontRelease()` — отбросить job, если занято.
+- **`RateLimited("limiter-name")`** — `RateLimiter::for("limiter-name", ...)` в `AppServiceProvider`.
+- **`ThrottlesExceptions(maxAttempts, decayMinutes)`** + `->backoff(5)` — задержка после срабатывания.
+
+**Кастомный middleware:**
+
+```php
+class LogJobExecution {
+    public function handle($job, Closure $next) {
+        Log::info("Job start", ["class" => get_class($job)]);
+        $next($job);
+        Log::info("Job end");
+    }
+}
+```',
                 'code_example' => '<?php
 use Illuminate\\Queue\\Middleware\\WithoutOverlapping;
 use Illuminate\\Queue\\Middleware\\RateLimited;
@@ -307,7 +582,43 @@ RateLimiter::for("payments-api", fn () => Limit::perMinute(10));',
             [
                 'category' => 'Laravel',
                 'question' => 'Что делать, если воркер очереди завис? Чем отличается timeout от retry_after, и причём здесь pcntl?',
-                'answer' => 'Зависший job (бесконечный цикл, deadlock на внешнем API без таймаута) - типичная боль prod-очередей. Laravel предлагает два независимых механизма с разной семантикой. (1) --timeout=N в queue:work / queue:listen - это HARD KILL процесса воркера снаружи через сигнал SIGTERM/SIGKILL по истечении N секунд. КРИТИЧНОЕ требование из документации: "The PCNTL PHP extension must be installed in order to specify job timeouts". Без pcntl флаг --timeout молча игнорируется, и бесконечный цикл не прервётся ничем. PCNTL не работает на Windows нативно (нужен WSL/Docker). Когда job убит по таймауту НА ТЕКУЩЕЙ ПОПЫТКЕ - метод failed() в том же процессе НЕ успевает выполниться, потому что воркер получает SIGALRM из registerTimeoutHandler и тут же делает kill. Однако failed() всё-таки сработает при условиях: 1) на классе job задано $failOnTimeout = true - markJobAsFailedIfItShouldFailOnTimeout пометит job как failed на этой же попытке с TimeoutExceededException, и при следующем pickup воркер вызовет failed(); 2) попытки исчерпаны - markJobAsFailedIfWillExceedMaxAttempts пометит job как failed с MaxAttemptsExceededException. Без $failOnTimeout таймаут просто перепланирует job по retry_after, и failed() сработает только когда attempts кончатся - поэтому делать его обработчиком "каждого timeout-attempt" нельзя; для алертов на каждый таймаут нужны Horizon-метрики или supervisor-логи. (2) retry_after в config/queue.php - это TTL "видимости" job в очереди: если job не закоммитил delete за retry_after секунд, очередь считает его упавшим и выдаёт ВТОРОМУ воркеру. Если retry_after меньше или равно --timeout - job будет дублироваться: первый воркер ещё пишет данные, а второй уже взял ту же задачу. Документированное правило: "The --timeout value should always be at least several seconds shorter than your retry_after configuration value" - например, timeout=60, retry_after=90. После деплоя обязательно queue:restart, иначе старые воркеры держат старый код. Также для долгоиграющих jobs делайте идемпотентность (ShouldBeUnique / WithoutOverlapping), потому что at-least-once гарантия очереди = "когда-то выполнится дважды".',
+                'answer' => '**Зависший job** (бесконечный цикл, deadlock на внешнем API без таймаута) — типичная боль prod-очередей. Laravel даёт **два независимых механизма** с разной семантикой.
+
+**1) `--timeout=N` (или `public int $timeout` на job) — hard kill процесса воркера**
+
+- **Сигнал SIGTERM/SIGALRM** через `pcntl_alarm()` по истечении N секунд.
+- **Критичное требование документации:** `pcntl` **должен быть установлен**, иначе флаг `--timeout` **молча игнорируется** — бесконечный цикл не прервётся.
+- **Не работает на Windows нативно** — нужен WSL/Docker.
+- Проверка: **`php -m | grep pcntl`**.
+
+**2) `retry_after` в `config/queue.php` — TTL «видимости» job в очереди**
+
+- Если job не закоммитил `delete` за `retry_after` секунд → очередь считает его упавшим и **выдаёт второму воркеру**.
+- Документированное правило: **`retry_after` > `timeout`** на несколько секунд (например, `timeout=60`, `retry_after=90`).
+- **Иначе job задвоится:** первый воркер ещё пишет в БД, второй уже взял ту же задачу.
+
+**Когда `failed()` срабатывает при таймауте — таблица:**
+
+| Условие | Вызовется `failed()`? |
+|---|---|
+| Hard kill по `$timeout` на текущей попытке, **без `$failOnTimeout`** | **Нет** — job просто перепланируется на следующий attempt |
+| Hard kill по `$timeout`, **`$failOnTimeout = true`** | **Да** — `TimeoutExceededException`, при следующем pickup воркер вызовет `failed()` |
+| Попытки **исчерпаны** (`attempts > $tries`) | **Да** — `MaxAttemptsExceededException` |
+| Воркер убит `kill -9` / OOM | **Нет** — процесс умер до записи |
+
+**Правильная связка для критичных job-ов:**
+
+| Параметр | Значение | Зачем |
+|---|---|---|
+| `$timeout = 60` | На классе | Hard kill через 60 сек |
+| `retry_after = 90` | В `config/queue.php` | На 30 сек больше timeout |
+| `$failOnTimeout = true` | На классе | Чтобы `failed()` сработал и при таймауте |
+| `$tries = 3` | На классе | Лимит попыток |
+| `ShouldBeUnique` / `WithoutOverlapping` | Через `middleware()` | At-least-once → возможны повторы |
+
+**Что делать после деплоя:** обязательно **`php artisan queue:restart`** — иначе старые воркеры держат старый код в памяти.
+
+**Для алертов на каждый timeout-attempt:** `failed()` не подходит (вызывается только на финальном провале). Использовать **Horizon-метрики**, **Supervisor-логи** или собственный middleware с логированием.',
                 'code_example' => '<?php
 // На Job - per-job таймаут (требует pcntl)
 class GenerateMonthlyReport implements ShouldQueue

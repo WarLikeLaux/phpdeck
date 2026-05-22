@@ -62,13 +62,49 @@ class ServiceProviders
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое deferred providers (отложенные провайдеры)?',
-                'answer' => 'Deferred provider - это провайдер, который загружается только когда реально нужен один из его сервисов. Простыми словами: если вы зарегистрировали тяжёлый сервис, но он используется редко, отложенный провайдер не будет загружаться при каждом запросе. Нужно реализовать DeferrableProvider и вернуть массив provides().',
-                'code_example' => 'class HeavyServiceProvider extends ServiceProvider implements DeferrableProvider {
-    public function register(): void {
-        $this->app->singleton(HeavyService::class, fn() => new HeavyService());
+                'answer' => '**Deferred provider** — провайдер, **загружающийся только когда реально нужен** один из его сервисов.
+
+**Зачем:**
+
+- Тяжёлый сервис (платёжный SDK, поисковый клиент) **не должен** грузиться на **каждый** запрос.
+- Сокращает **cold start** приложения.
+- При `php artisan` команде, которая сервис не использует, провайдер вообще не выполнится.
+
+**Как сделать провайдер deferred:**
+
+| Шаг | Что |
+|---|---|
+| 1 | Реализовать **`Illuminate\\Contracts\\Support\\DeferrableProvider`** |
+| 2 | Вернуть из метода **`provides(): array`** список класс-имён, которые провайдер регистрирует |
+| 3 | Зарегистрировать как обычно — в `bootstrap/providers.php` |
+
+**Как работает под капотом:**
+
+- При **`artisan package:discover`** или **`config:cache`** Laravel вызывает `provides()` у каждого DeferrableProvider.
+- Список сервис → провайдер сохраняется в **`bootstrap/cache/services.php`** (manifest).
+- На запросе **manifest читается**, провайдер **не загружается**.
+- При первом `app(HeavyService::class)` контейнер видит manifest → загружает провайдер → резолвит сервис.
+
+**Когда НЕ делать deferred:** см. следующую карточку — есть критичные ограничения по `boot()`.',
+                'code_example' => '<?php
+use Illuminate\\Contracts\\Support\\DeferrableProvider;
+use Illuminate\\Support\\ServiceProvider;
+
+class HeavyServiceProvider extends ServiceProvider implements DeferrableProvider
+{
+    public function register(): void
+    {
+        \$this->app->singleton(HeavyService::class, function (\$app) {
+            return new HeavyService(
+                config("services.heavy.endpoint"),
+                config("services.heavy.key"),
+            );
+        });
     }
 
-    public function provides(): array {
+    // Список сервисов — manifest для lazy-loading
+    public function provides(): array
+    {
         return [HeavyService::class];
     }
 }',
@@ -79,7 +115,41 @@ class ServiceProviders
             [
                 'category' => 'Laravel',
                 'question' => 'Как работают deferred service providers и какие у них ограничения?',
-                'answer' => 'Deferred provider не загружается при бутстрапе; в кэшированном manifest (bootstrap/cache/services.php) указано, какие сервисы он предоставляет. Когда контейнер впервые резолвит один из этих сервисов, провайдер регистрируется и загружается лениво. Это сокращает cold-start: тяжёлые провайдеры (платёжные SDK, поисковые движки) не запускаются, если не нужны. Условия: реализовать DeferrableProvider, метод provides() возвращает список биндов. ВАЖНОЕ ОГРАНИЧЕНИЕ из официальной документации: "If your provider is ONLY registering bindings in the service container, you may choose to defer its registration". То есть deferred-провайдер пригоден ИСКЛЮЧИТЕЛЬНО для регистрации биндингов в контейнере. Любая логика в boot() (регистрация роутов, вьюшек, blade-директив, event listeners, view composers, gates/policies) НЕ выполнится при бутстрапе - она запустится только если кто-то явно резолвит один из сервисов из provides(). Поэтому если в провайдере есть и тяжёлый bind, и регистрация роутов - его НЕЛЬЗЯ делать deferred, иначе роуты молча перестанут работать.',
+                'answer' => '**Deferred provider** не загружается при бутстрапе; в **кэшированном manifest** (`bootstrap/cache/services.php`) указано, какие сервисы он предоставляет. Когда контейнер **впервые резолвит** один из этих сервисов, провайдер регистрируется и загружается лениво.
+
+**Что это даёт:**
+
+- Сокращение **cold-start**: тяжёлые провайдеры не запускаются, если сервис не нужен.
+- Запросы, не использующие сервис (например, артизан-команды) — **не платят** за инициализацию.
+
+**Условия использования:**
+
+- Реализовать **`Illuminate\\Contracts\\Support\\DeferrableProvider`**.
+- Метод **`provides(): array`** возвращает список класс-имён биндов.
+
+**КРИТИЧНОЕ ОГРАНИЧЕНИЕ из официальной документации:**
+
+> «If your provider is **ONLY** registering bindings in the service container, you may choose to defer its registration.»
+
+**Deferred-провайдер пригоден ИСКЛЮЧИТЕЛЬНО для регистрации биндингов в контейнере.**
+
+**Что НЕ выполнится при бутстрапе у deferred-провайдера:**
+
+| Действие в `boot()` | Что сломается |
+|---|---|
+| **`Route::get(...)`** | Маршрут не зарегистрирован |
+| **`Event::listen(...)`** | Listener не подписан |
+| **`Blade::directive(...)`** | Директива недоступна в шаблонах |
+| **`View::composer(...)`** | Composer не вызывается |
+| **`Validator::extend(...)`** | Кастомное правило не работает |
+| **`Gate::define(...)`** | Gate не зарегистрирован |
+| **`Schema::defaultStringLength(...)`** | Не применится к миграциям |
+
+**Всё это «оживёт» только если кто-то явно резолвит сервис из `provides()`.**
+
+**Правило:** если в провайдере есть **и тяжёлый bind, и регистрация роутов/евентов** — **НЕЛЬЗЯ** делать deferred. Иначе роуты молча перестанут работать.
+
+**Решение:** разделить на два провайдера — `HeavyServiceProvider` (deferred, только binding) и `HeavyRoutesProvider` (обычный, регистрация роутов).',
                 'code_example' => '<?php
 // OK: только container bindings - можно делать deferred
 class StripeServiceProvider extends ServiceProvider implements DeferrableProvider

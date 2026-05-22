@@ -205,7 +205,46 @@ $this->instance(PaymentService::class, new FakePaymentService());',
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между Mock, Stub, Spy, Fake и Dummy? (классификация Мешароса/Фаулера)',
-                'answer' => 'Test doubles - объекты-заглушки для зависимостей в тестах. Классификация Мешароса (xUnit Patterns), популяризованная Фаулером ("Mocks Aren\'t Stubs"). 1) Dummy - просто заполняет параметр, никогда не используется. Когда метод требует Logger в конструкторе, но в этом тесте логирование не вызывается. 2) Stub - возвращает заранее заданные ответы (canned), НИКАКОГО verify по вызовам. Вопрос "что вернёт getUser(1)?" → "User Tom". State-based testing: проверяем итоговое состояние SUT, не вызовы. 3) Spy - как stub, но дополнительно ЗАПИСЫВАЕТ все вызовы (что вызвали, с какими аргументами, сколько раз). После теста ассерт делается ПОСТФАКТУМ: assertCalled / assertCalledWith. 4) Mock - заранее ОЖИДАЕТ конкретные вызовы (expect()), и сам провалит тест, если ожидание не выполнено или вызвано что-то лишнее. Behavior-based testing: проверяем взаимодействия. Главное отличие от spy: expectation задаётся ДО действия, проверяется автоматически. 5) Fake - рабочая, упрощённая реализация (in-memory репозиторий вместо БД, FakeMailer вместо SMTP). Фактически работает, но не подходит для прода (потеря данных при рестарте, нет транзакций). В Mockery (используется в Laravel): shouldReceive("foo")->andReturn(...) - stub; shouldReceive("foo")->once()->with(42) - mock; spy() + shouldHaveReceived(...) - spy. Senior-практика: предпочитать stubs/fakes для большинства тестов (прочнее к рефакторингу), mocks использовать когда взаимодействие ЯВЛЯЕТСЯ предметом теста (event dispatched, http request sent). Чрезмерное использование mocks даёт хрупкие тесты, ломающиеся при невинном рефакторинге.',
+                'answer' => '**Test doubles** — объекты-заглушки для зависимостей в тестах. Классификация **Мешароса** (xUnit Patterns), популяризованная **Фаулером** в статье «Mocks Aren\'t Stubs».
+
+**Пять типов double:**
+
+| Тип | Что делает | Проверка | Стиль тестирования |
+|---|---|---|---|
+| **Dummy** | Просто заполняет параметр, **никогда не используется** | Нет | — |
+| **Stub** | Возвращает **canned ответы**, никакого verify по вызовам | Через состояние SUT | **State-based** |
+| **Spy** | Как stub, но **записывает все вызовы** (что/с чем/сколько раз) | **Постфактум** через `assertCalled` | State + behavior |
+| **Mock** | Заранее **ожидает** конкретные вызовы через `expect()` | **Автоматически** при `Mockery::close()` | **Behavior-based** |
+| **Fake** | **Рабочая упрощённая реализация** (in-memory вместо БД) | Через состояние SUT | State-based |
+
+**Детальное сравнение Stub vs Mock vs Spy:**
+
+| | **Stub** | **Spy** | **Mock** |
+|---|---|---|---|
+| Возвращает значение | Да | Да | Да |
+| Записывает вызовы | Нет | Да | Да |
+| Где задаётся expectation | Не задаётся | После действия (`shouldHaveReceived`) | До действия (`expects()`) |
+| Кто валит тест | Сам тест (через assert) | Сам тест (через assert) | **Сам double** в `Mockery::close()` |
+
+**Mockery API (используется в Laravel):**
+
+| Что нужно | Код |
+|---|---|
+| **Stub** | `$m->shouldReceive("foo")->andReturn(...)` |
+| **Mock** | `$m->shouldReceive("foo")->once()->with(42)` |
+| **Spy** | `Mockery::spy(Cls::class)` + `$spy->shouldHaveReceived(...)` |
+| **Dummy** | Просто `new NullLogger()` или `Mockery::mock(Cls::class)` без expectations |
+
+**Laravel-специфичные fakes:**
+
+- **`Mail::fake()`**, **`Queue::fake()`**, **`Event::fake()`** — под капотом это **spy** (записывает + `assertSent`).
+- **`Storage::fake()`** — это **fake** (in-memory диск, реально работает).
+
+**Senior-практика:**
+
+- **Предпочитать stubs/fakes** для большинства тестов — **прочнее к рефакторингу**.
+- **Mocks использовать**, когда взаимодействие **ЯВЛЯЕТСЯ предметом теста** (event dispatched, http request sent, audit log written).
+- **Чрезмерное использование mocks** даёт хрупкие тесты, ломающиеся при невинном рефакторинге.',
                 'code_example' => '<?php
 use Mockery;
 
@@ -539,7 +578,75 @@ Schedule::command("pulse:clean --before=\\"7 days ago\\"")->daily();',
             [
                 'category' => 'Laravel',
                 'question' => 'Почему Laravel Telescope не рекомендуется держать включённым на продакшене?',
-                'answer' => 'Telescope пишет каждое событие (запрос, query, job, exception, mail) в отдельную таблицу telescope_entries — на нагруженном проде это быстро раздувает БД и тормозит запросы. Также записи содержат payload запросов и могут стать утечкой PII. На проде включают только при необходимости, ограничивают через TelescopeServiceProvider::filter и регулярно запускают telescope:prune; для постоянного мониторинга используют Pulse.',
+                'answer' => '**Telescope пишет каждое событие построчно** — на нагруженном проде это превращается в боль.
+
+**Что именно пишет в `telescope_entries`:**
+
+- Каждый **HTTP-запрос** с URL/method/status/headers/payload.
+- Каждый **SQL-query** с bindings.
+- Каждый **диспатченный job** с serialized payload.
+- Каждое **отправленное письмо** с получателем и body.
+- Каждое **exception** со stack trace.
+- Каждое **обращение к кешу** (get/put/forget).
+
+**Главные проблемы на проде:**
+
+| Проблема | Последствие |
+|---|---|
+| **Раздувание БД** | Таблица `telescope_entries` растёт на GB/день при нормальной нагрузке |
+| **Тормоза** | Лишний `INSERT` на каждое событие → +5-20% latency запросов |
+| **Утечка PII** | Payload содержит email/password/credit card → попадает в БД и backup |
+| **Дублирование секретов** | API-ключи в HTTP-запросах сохраняются в telescope_entries |
+| **Доступ через `/telescope`** | Если забыли gate — публичный доступ к внутренней кухне |
+
+**Правильная стратегия на проде:**
+
+1. **`TELESCOPE_ENABLED=false`** в `.env.production` — выключить совсем.
+2. Если **нужно временно** включить для диагностики:
+   - **`Telescope::filter(fn ($entry) => ...)`** — сэмплить (например, 10% запросов).
+   - **`Telescope::auth(fn ($user) => $user?->isAdmin())`** — обязательный gate.
+   - Расписать **`schedule->command("telescope:prune --hours=48")`** в cron.
+3. Для **постоянного мониторинга — Laravel Pulse**: легче, считает агрегаты, не пишет каждое событие.
+
+**Сравнение:**
+
+| | **Telescope** | **Pulse** |
+|---|---|---|
+| Назначение | **Debug в dev** | **Мониторинг в prod** |
+| Запись | Каждое событие | Агрегаты с sampling |
+| Объём | GB/день | MB/день |
+| Production | **Не рекомендуется** | Дефолтный путь |',
+                'code_example' => '<?php
+// .env.production
+TELESCOPE_ENABLED=false
+
+// Если временно включаем - обязательно ограничения
+// app/Providers/TelescopeServiceProvider.php
+
+public function register(): void
+{
+    Telescope::night();   // тёмная тема :)
+
+    // Sampling - только 10% запросов
+    Telescope::filter(function (IncomingEntry \$entry) {
+        if (app()->isLocal()) return true;
+        return \$entry->isReportableException()
+            || \$entry->isFailedRequest()
+            || \$entry->isFailedJob()
+            || \$entry->isSlowQuery()
+            || random_int(1, 100) <= 10;
+    });
+}
+
+// Gate доступа
+protected function gate(): void
+{
+    Gate::define("viewTelescope", fn (\$user) => \$user?->is_admin);
+}
+
+// routes/console.php - автопрюнинг
+Schedule::command("telescope:prune --hours=48")->daily();',
+                'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.testing',
             ],

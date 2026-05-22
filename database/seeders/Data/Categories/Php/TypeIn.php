@@ -87,7 +87,29 @@ class TypeIn
             [
                 'category' => 'PHP',
                 'question' => 'SPL-класс - двусвязный список с push/pop/shift/unshift на обоих концах (deque), основа для SplStack и SplQueue.',
-                'answer' => 'SplDoublyLinkedList - двусвязный список с операциями на обоих концах. На его базе реализованы SplQueue (FIFO, разрешает enqueue/dequeue) и SplStack (LIFO).',
+                'answer' => '**`SplDoublyLinkedList`** — двусвязный список с операциями **на обоих концах** (deque).
+
+**Операции и сложность:**
+
+| Метод | Что делает | Сложность |
+| --- | --- | --- |
+| **`push($v)`** | добавить в конец | **O(1)** |
+| **`pop()`** | снять с конца | **O(1)** |
+| **`unshift($v)`** | добавить в начало | **O(1)** |
+| **`shift()`** | снять с начала | **O(1)** |
+| **`offsetGet($i)`** | доступ по индексу | **O(N)** — список, не массив |
+
+**Наследники:**
+
+| Класс | Семантика | Чем отличается |
+| --- | --- | --- |
+| **`SplQueue`** extends DoublyLinkedList | **FIFO** | алиасы `enqueue()` / `dequeue()` |
+| **`SplStack`** extends DoublyLinkedList | **LIFO** | переопределяет режим итерации |
+
+**Зачем брать вместо обычного `array`:**
+- **`array_shift` / `array_unshift`** на обычном array — **O(N)** (сдвиг integer-ключей)
+- `SplDoublyLinkedList` даёт **гарантированный O(1)** на оба конца
+- стандарт для **очередей задач** in-memory, **circular buffer**, undo/redo стеков',
                 'short_answer' => 'SplDoublyLinkedList',
                 'difficulty' => 4,
                 'topic' => 'php.type_in',

@@ -55,11 +55,59 @@ public function __construct(PaymentInterface $payment) {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между bind, singleton, scoped и instance в Service Container?',
-                'answer' => 'bind - каждый раз создаётся новый объект при resolve. singleton - объект создаётся один раз в рамках жизненного цикла приложения (т.е. одного запроса в FPM, всего воркера в Octane/RoadRunner). scoped - объект живёт в рамках одного запроса/job (Octane сбрасывает scoped между запросами, singleton - нет). instance - регистрирует уже созданный объект как singleton.',
-                'code_example' => '$this->app->bind(Foo::class, fn() => new Foo());
-$this->app->singleton(Bar::class, fn() => new Bar());
-$this->app->scoped(Baz::class, fn() => new Baz());
-$this->app->instance(Qux::class, new Qux());',
+                'answer' => '**Четыре способа** регистрации сервиса в контейнере — отличаются **жизненным циклом** объекта.
+
+**Сравнение:**
+
+| Метод | Когда создаётся объект | Жизненный цикл |
+|---|---|---|
+| **`bind`** | **Каждый** `resolve` | Новый объект на каждый вызов |
+| **`singleton`** | При первом `resolve`, переиспользуется | На весь жизненный цикл приложения |
+| **`scoped`** | При первом `resolve`, **сбрасывается между запросами** | На один request/job |
+| **`instance`** | **Уже создан** — просто регистрируем | Как singleton (заранее построенный) |
+
+**Что значит «жизненный цикл приложения»:**
+
+- В **обычном PHP-FPM** — один HTTP-запрос (новый процесс на каждый запрос).
+- В **Octane / RoadRunner / Swoole / FrankenPHP** — **весь воркер**, тысячи запросов.
+
+**Почему `scoped` появился (Laravel 9+):**
+
+- В Octane `singleton` живёт **между запросами** → request-зависимый state «протекает» к следующему юзеру.
+- **`scoped`** — это singleton-семантика, но Octane **сам сбрасывает** scoped-биндинги между запросами.
+
+**Когда что брать:**
+
+| Сценарий | Метод |
+|---|---|
+| Без shared state, дешёво создавать | **`bind`** |
+| Тяжёлая инициализация (HTTP-клиент, parser) | **`singleton`** |
+| **Request-зависимый** state (текущий tenant, trace_id), Octane | **`scoped`** |
+| Mock в тестах | **`instance`** (`$this->instance(Cls::class, $mock)`) |
+
+**Все четыре метода возвращают `Container` для цепочки**, регистрация обычно в **`AppServiceProvider::register()`**.',
+                'code_example' => '<?php
+// bind - новый объект на каждый resolve
+\$this->app->bind(Foo::class, fn () => new Foo());
+
+// singleton - один объект на жизненный цикл (в Octane = весь воркер!)
+\$this->app->singleton(StripeClient::class, fn (\$app) =>
+    new StripeClient(config("services.stripe.key"))
+);
+
+// scoped - singleton с автосбросом между запросами (для Octane)
+\$this->app->scoped(CurrentTenant::class, fn (\$app) =>
+    new CurrentTenant(\$app->make("request")->header("X-Tenant-Id"))
+);
+
+// instance - регистрируем уже созданный объект
+\$mock = new FakeMailer();
+\$this->app->instance(Mailer::class, \$mock);
+
+// Получение - одинаково для всех
+\$foo = app(Foo::class);
+\$stripe = app(StripeClient::class);  // тот же объект на N вызовов
+\$tenant = app(CurrentTenant::class); // в Octane — свежий на каждый request',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.service_container',
@@ -67,15 +115,81 @@ $this->app->instance(Qux::class, new Qux());',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое contextual binding и приведите кейс из реального проекта.',
-                'answer' => 'Contextual binding позволяет внедрять разные реализации интерфейса в зависимости от потребляющего класса. Пример: PhotoController должен использовать LocalFilesystem, а VideoController - S3, оба зависят от Filesystem. Без contextual binding пришлось бы вводить именованные интерфейсы или конкреты в типах. when()->needs()->give() решает это в одном месте.',
-                'code_example' => '<?php
-$this->app->when(PhotoController::class)
-    ->needs(Filesystem::class)
-    ->give(fn() => Storage::disk("local"));
+                'answer' => '**Contextual binding** — механизм контейнера, позволяющий **внедрять разные реализации одного интерфейса** в зависимости от **потребляющего класса**.
 
-$this->app->when(VideoController::class)
+**API:**
+
+```php
+$this->app->when(Consumer::class)
+    ->needs(Dependency::class)
+    ->give(fn ($app) => new ConcreteImpl());
+```
+
+**Типичные кейсы:**
+
+| Сценарий | Решение |
+|---|---|
+| `PhotoController` хочет `LocalFilesystem`, `VideoController` — `S3` | `when(...)->needs(Filesystem::class)->give(...)` |
+| Один `PaymentProcessor` для `subscription`-флоу, другой для `one-time` | `when(SubscriptionController::class)->needs(PaymentProcessor::class)->give(...)` |
+| **Параметр-примитив** в конструкторе (`$apiKey`) | `when(...)->needs("$apiKey")->give(env("...."))` |
+| **Tag-based binding** — много реализаций под одним тегом | `$app->tag([ChatPolicy::class, EmailPolicy::class], "channels")` + `$app->tagged("channels")` |
+
+**Альтернативы без contextual binding:**
+
+- **Именованные интерфейсы** (`LocalFilesystem`, `S3Filesystem`) — больше классов, ломает principle of least surprise.
+- **Конкретные классы в type-hints** — теряем абстракцию, нельзя подменить в тестах.
+- **Передача через конструктор фабрикой** — больше boilerplate.
+
+**Расширенные возможности:**
+
+- **`giveTagged("channels")`** — отдать все сервисы с тегом.
+- **`giveConfig("services.stripe.key")`** — внедрить значение из конфига.
+- **`needs(\\$variableName)`** — для named-параметров примитивных типов.
+
+**Подвох:** работает **только при резолве через контейнер** — если делать `new PhotoController(...)` напрямую, contextual binding **не сработает**. Это редко проблема (Laravel сам резолвит контроллеры/jobs/команды через DI).',
+                'code_example' => '<?php
+use Illuminate\\Contracts\\Filesystem\\Filesystem;
+
+// AppServiceProvider::register()
+
+// 1) Разные диски для разных контроллеров
+\$this->app->when(PhotoController::class)
     ->needs(Filesystem::class)
-    ->give(fn() => Storage::disk("s3"));',
+    ->give(fn () => Storage::disk("local"));
+
+\$this->app->when(VideoController::class)
+    ->needs(Filesystem::class)
+    ->give(fn () => Storage::disk("s3"));
+
+// 2) Разный platform-key для разных Action
+\$this->app->when(SubscriptionAction::class)
+    ->needs("\$stripeKey")
+    ->give(fn () => config("services.stripe.subscription_key"));
+
+\$this->app->when(OneTimeChargeAction::class)
+    ->needs("\$stripeKey")
+    ->give(fn () => config("services.stripe.one_time_key"));
+
+// 3) Tag-based — все policy-классы одним вызовом
+\$this->app->bind(EmailPolicy::class);
+\$this->app->bind(SmsPolicy::class);
+\$this->app->bind(PushPolicy::class);
+\$this->app->tag([EmailPolicy::class, SmsPolicy::class, PushPolicy::class], "channel-policies");
+
+\$this->app->when(NotificationDispatcher::class)
+    ->needs(NotificationPolicy::class)
+    ->giveTagged("channel-policies");
+
+// Использование - в контроллере ничего не меняется
+class PhotoController
+{
+    public function __construct(private Filesystem \$disk) {}  // получит local
+}
+
+class VideoController
+{
+    public function __construct(private Filesystem \$disk) {}  // получит s3
+}',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.service_container',
@@ -83,7 +197,39 @@ $this->app->when(VideoController::class)
             [
                 'category' => 'Laravel',
                 'question' => 'Как обернуть сервис в Decorator через Service Container? ($app->extend)',
-                'answer' => '$app->extend(string $abstract, Closure $callback) - метод контейнера, который "перехватывает" уже зарезолвленный экземпляр и заменяет его на обёртку. Контейнер сначала строит оригинальный объект (по биндингу или авторезолву), затем передаёт его в callback вместе с самим контейнером, и то, что callback вернёт - становится новой версией сервиса в контейнере. Это идеальный механизм для применения паттерна Decorator без правки исходного класса (особенно полезно с вендорными сервисами, до которых нельзя дотянуться). Можно компоновать несколько extend - они применяются в порядке регистрации, образуя стек декораторов. Применение: добавить кеширование вокруг репозитория, логирование вокруг http-клиента, метрики/трейсинг, feature-flag-обёртки. Альтернативные подходы и когда они лучше: 1) Просто bind вашу реализацию вместо оригинала - если не нужна делегация в оригинал. 2) Контекстный binding ($app->when()->needs()->give()) - когда декорация нужна только для конкретного потребителя, а не глобально. 3) Pipeline - для пошаговой трансформации значения. extend - именно для оборачивания инстанса.',
+                'answer' => '**`$app->extend($abstract, Closure $callback)`** — метод контейнера, «перехватывающий» уже зарезолвленный экземпляр и заменяющий его на **обёртку**.
+
+**Как работает:**
+
+1. Контейнер строит **оригинальный объект** (по биндингу или авторезолву).
+2. Передаёт его в **callback** вместе с самим контейнером.
+3. То, что callback **вернёт**, становится **новой версией** сервиса в контейнере.
+
+**Это идеальный механизм для паттерна Decorator** — без правки исходного класса (особенно полезно с **вендорными сервисами**, до которых нельзя дотянуться).
+
+**Композиция нескольких `extend`:**
+
+- Применяются **в порядке регистрации**, образуя стек декораторов:
+- `Metrics(Logging(Original))` — последний `extend` оказывается **снаружи**.
+
+**Типичное применение:**
+
+- **Кеширование** вокруг репозитория (`CachedUserRepository`).
+- **Логирование** вокруг HTTP-клиента.
+- **Метрики / трейсинг** вокруг бизнес-сервиса.
+- **Feature-flag** обёртки (toggle между старой и новой реализацией).
+- **Retry-обёртки** вокруг flaky-сервиса.
+
+**Альтернативы и когда они лучше:**
+
+| Подход | Когда брать |
+|---|---|
+| **`$app->bind(Abstract, MyImpl)`** | Если **не нужна делегация** в оригинал |
+| **`$app->when()->needs()->give()`** | Декорация только для **конкретного потребителя** |
+| **`Pipeline`** | Пошаговая трансформация **значения**, не оборачивание инстанса |
+| **`$app->extend()`** | Именно **оборачивание** инстанса, делегирующее вызовы в оригинал |
+
+**Подвох с singleton:** если оригинал зарегистрирован как `singleton`, `extend` тоже даёт singleton — декоратор строится **один раз** при первом резолве.',
                 'code_example' => '<?php
 // AppServiceProvider::register()
 

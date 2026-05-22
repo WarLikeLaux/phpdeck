@@ -84,21 +84,111 @@ event(new OrderCreated($order));
             [
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между RabbitMQ и Kafka?',
-                'answer' => 'RabbitMQ - классический message broker по AMQP 0.9.1: маршрутизация через exchanges (direct/topic/fanout/headers), сообщение удаляется после ack, push-модель, сложная routing-логика, ordering на уровне очереди. Kafka - распределённый append-only лог: сообщения хранятся по retention (часы/дни/forever), ничего не удаляется по факту чтения, consumer сам держит offset (pull), горизонтально масштабируется через partitions, ordering гарантируется только внутри partition. SQS - managed AWS-очередь, Standard (at-least-once, без порядка) и FIFO (порядок внутри MessageGroupId + дедупликация по MessageDeduplicationId в 5-минутном окне; AWS позиционирует это как "exactly-once" на уровне доставки, но end-to-end для side-effects всё равно нужен идемпотентный consumer; пропускная способность ~300 TPS на FIFO-queue без батчинга, до 3000 msg/s с batching по 10 сообщений; в режиме High Throughput for FIFO квоты считаются на partition (message group) и общий потолок поднимается до 70 000+ msg/s/queue). Производительность - типичная цифра, которую часто путают: 1) Classic Mirrored Queues RabbitMQ давали ~30-50k msg/s на узел и были замечательны для классического AMQP-кейса, но deprecated в 3.13 и удалены в 4.0. 2) Quorum Queues (RabbitMQ 3.8+, на Raft) - сотни тысяч msg/s, durable, replicated. 3) Streams (RabbitMQ 3.9+, log-based как Kafka) - миллионы msg/s, замысел был догнать Kafka на сходных юзкейсах. Так что в нишах, где RabbitMQ Streams применим, он догоняет Kafka по throughput - но это именно log-based вариант для event-streaming сценариев, а не альтернатива классическим/quorum очередям. Classic и Quorum queues - это broker/task-queue модель с ack/routing/priority, которая по чистой пропускной способности не конкурирует с log-based Kafka и не должна напрямую с ней сравниваться. Выбор делается по семантике: если нужна богатая routing-логика, per-message ack, priority queues, RPC - RabbitMQ classic/quorum; event streaming, infinite retention, replay, log compaction, partition-параллелизм - Kafka или RabbitMQ Streams. Kafka типично - миллионы msg/s/брокер. Выбор: RabbitMQ для task queue с богатой routing; Kafka для event streaming, аналитики, CDC, replay; SQS - serverless AWS.',
+                'answer' => 'Это **разные по архитектуре** инструменты, которые лишь поверхностно выглядят похоже.
+
+| Аспект | **`RabbitMQ`** (classic/quorum) | **`Kafka`** |
+|---|---|---|
+| **Модель** | broker + queue + `ack` | **append-only log** + offset |
+| **Протокол** | `AMQP 0.9.1` | свой бинарный |
+| **Routing** | через **exchanges** (`direct`/`topic`/`fanout`/`headers`) | по **partition** = `hash(key)` |
+| **Удаление** | после `ack` | **по retention** (часы/дни/forever) |
+| **Модель доставки** | **push** consumer-у | **pull** consumer-ом |
+| **Replay** | нет | **да** — по offset |
+| **Порядок** | в пределах очереди | **в пределах partition** |
+| **Throughput** | сотни тысяч msg/s (quorum) | **миллионы** msg/s/брокер |
+| **Типичный use case** | task queue, RPC, priority | event streaming, аналитика, `CDC` |
+
+**Подвох с «производительностью RabbitMQ»** — три разных типа очередей:
+
+1. **`Classic Mirrored Queues`** — давали `30-50k msg/s` на узел, **deprecated** в `3.13`, **удалены** в `4.0`.
+2. **`Quorum Queues`** (`3.8+`, на `Raft`) — сотни тысяч msg/s, **durable**, **replicated** — стандарт для классического task-queue.
+3. **`Streams`** (`3.9+`, log-based как Kafka) — **миллионы msg/s**, нацелены догнать Kafka в event-streaming.
+
+**Важно:** сравнивать чистый throughput Classic/Quorum с Kafka **некорректно** — это разные модели (broker/task-queue vs log). Sравнимы только `RabbitMQ Streams` ↔ `Kafka`.
+
+**`SQS` (managed AWS)** — третий частый вариант:
+
+- **`Standard`** — at-least-once, **без порядка**, очень дёшево
+- **`FIFO`** — порядок внутри `MessageGroupId` + дедупликация по `MessageDeduplicationId` (5-минутное окно)
+- Throughput: `~300 TPS` на FIFO без батчинга, до `3000 msg/s` с batch=10, **High Throughput** для FIFO — `70 000+ msg/s/queue`
+- AWS называет это «exactly-once», но **end-to-end** для side-effects всё равно нужен идемпотентный consumer
+
+**Выбор по семантике, не по бенчмаркам:**
+
+- **`RabbitMQ` classic/quorum** — task queue с богатой routing-логикой, per-message ack, priority, RPC
+- **`Kafka`** или **`RabbitMQ Streams`** — event streaming, infinite retention, replay, log compaction, partition-параллелизм
+- **`SQS`** — serverless AWS, минимум эксплуатации',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое at-most-once, at-least-once, exactly-once в очередях?',
-                'answer' => 'At-most-once - сообщение доставится 0 или 1 раз (можно потерять при сбое), реализуется через fire-and-forget без ack. At-least-once - 1 или больше раз: producer ретраит при отсутствии ack, consumer ack-ает после обработки; стандарт SQS Standard, RabbitMQ с ack, Kafka с acks=all. Дубли возможны - нужна идемпотентность. Exactly-once строго в распределённой системе недостижимо (Two Generals Problem). На практике достигается комбинацией at-least-once + идемпотентный consumer (dedup по message-id) - это называется "effectively-once". Kafka даёт transactional EOS внутри своих топиков (idempotent producer + transactions + isolation.level=read_committed), но при выходе наружу (БД, HTTP) ответственность ложится на consumer. SQS FIFO в пределах 5-минутного окна дедуплицирует сообщения с одинаковым MessageDeduplicationId и сохраняет порядок внутри MessageGroupId - это НЕ end-to-end exactly-once для side-effects в БД/HTTP. Consumer всё равно должен быть идемпотентным: visibility timeout может истечь до ack, при сбое consumer-а сообщение вернётся другому, и ваш код увидит повтор.',
+                'answer' => 'Три **семантики доставки** сообщений — главный архитектурный выбор для любой очереди.
+
+| Семантика | Сколько раз доставится | Когда теряем | Когда дублим |
+|---|---|---|---|
+| **`at-most-once`** | **0 или 1** | при сбое до обработки | никогда |
+| **`at-least-once`** | **1 или больше** | никогда | при сбое до `ack` |
+| **`exactly-once`** | **строго 1** | никогда | никогда |
+
+**`at-most-once`** — fire-and-forget без `ack`:
+
+- producer кинул и забыл
+- consumer не подтверждает обработку
+- **подходит** для метрик, телеметрии, логов — где потеря пары сообщений не критична
+
+**`at-least-once`** — стандарт почти везде:
+
+- `Kafka` с `acks=all`, `RabbitMQ` с `ack`, `SQS Standard`
+- producer **ретраит** при отсутствии ack, consumer **ack-ает после обработки**
+- **дубли возможны** — нужен **идемпотентный consumer**
+
+**`exactly-once`** — **в распределённой системе строго недостижимо** (теорема **Two Generals Problem**). На практике:
+
+- **«effectively-once»** = `at-least-once` + **идемпотентный consumer** (dedup по `message_id` / `idempotency_key`)
+- **`Kafka EOS`** (Exactly-Once Semantics) — `idempotent producer` + `transactions` + `isolation.level=read_committed`. Работает **внутри Kafka** в схеме read-process-write.
+- **За пределами Kafka** (БД, HTTP) — транзакция Kafka не помогает, ответственность на consumer.
+
+**Подводный камень `SQS FIFO`:** дедупликация по `MessageDeduplicationId` в 5-минутном окне и порядок в `MessageGroupId` — это **НЕ** end-to-end exactly-once для записи в БД/HTTP. `visibility timeout` может истечь до ack → сообщение вернётся другому consumer-у → ваш код увидит повтор.
+
+**Главное правило:** проектируйте **идемпотентный handler** и не пытайтесь добиться exactly-once на уровне инфраструктуры — это всегда дешевле и надёжнее.',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Какие гарантии порядка сообщений дают разные брокеры?',
-                'answer' => 'Kafka: строгий порядок только внутри partition; partition выбирается по hash(key), поэтому сообщения с одним key всегда в одной partition (используется для "все события заказа №42 в одном порядке"). При нескольких partition между ними порядка нет. RabbitMQ: порядок в пределах одной очереди при одном consumer; при нескольких consumer-ах порядок ломается из-за параллельной обработки и redelivery. SQS Standard - порядок не гарантируется вообще; SQS FIFO - порядок в пределах MessageGroupId. Если важен порядок - выбирай ключ группировки осознанно (по entity_id) и держи parallelism=1 на ключ (single-active consumer в RabbitMQ, partition=consumer в Kafka).',
+                'answer' => '**Гарантии порядка — всегда локальны**, глобального порядка в распределённой очереди не бывает.
+
+| Брокер | Где порядок гарантирован | Где ломается |
+|---|---|---|
+| **`Kafka`** | внутри **partition** | между partitions — нет |
+| **`RabbitMQ`** | в одной очереди при **1 consumer** | при нескольких consumer-ах + redelivery |
+| **`SQS Standard`** | **нигде** | везде |
+| **`SQS FIFO`** | внутри **`MessageGroupId`** | между группами — нет |
+
+**`Kafka` — порядок по partition:**
+
+- partition выбирается через `partition = hash(key) % num_partitions`
+- все сообщения с одинаковым `key` → **одна partition** → строгий порядок
+- типичный кейс: `key = order_id` — все события заказа №42 (`Created` → `Paid` → `Shipped`) обрабатываются **последовательно**
+
+**`RabbitMQ` — порядок ломают:**
+
+- **параллельные consumer-ы** на одной очереди (work queue)
+- **redelivery** после `nack` — сообщение возвращается, но уже после следующих
+- `priority queues` — высокоприоритетные обгоняют
+
+**`SQS FIFO`** — `MessageGroupId` = аналог partition key, дедупликация в 5-минутном окне.
+
+**Главное правило проектирования:** если **важен порядок** — выбирай **ключ группировки осознанно** по `entity_id` и держи **parallelism=1 на ключ**:
+
+- **`Kafka`** — partition обрабатывается **одним consumer-ом** в группе
+- **`RabbitMQ`** — `x-single-active-consumer` на очереди
+- **`SQS FIFO`** — один consumer на `MessageGroupId`
+
+**Подвох hot key:** если `key = country_id`, в России много трафика → одна partition перегружена, остальные простаивают. Берите более гранулярный ключ (`user_id`, `order_id`).',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
@@ -166,14 +256,62 @@ if (!Redis::set("processed:{$msg->id}", 1, "EX", 86400, "NX")) {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Idempotency-Key и как использовать в платежах?',
-                'answer' => 'Idempotency-Key - уникальный токен от клиента в HTTP-заголовке. Сервер хранит маппинг ключ → результат на N часов. Если приходит повторный запрос с тем же ключом - возвращаем кэшированный ответ, реально не выполняя операцию. Это защита от двойных списаний при сетевых ретраях. Stripe, AWS, Twilio - все так делают для платёжных API.',
+                'answer' => '**`Idempotency-Key`** — уникальный токен **от клиента** в HTTP-заголовке, под который сервер **кэширует результат** операции на N часов.
+
+**Поток обработки:**
+
+1. Клиент генерирует `UUID` и шлёт в `Idempotency-Key: <uuid>` при `POST /payments`
+2. Сервер ищет ключ в хранилище:
+   - **есть и `completed`** → возвращает **сохранённый ответ**, не делая операцию
+   - **есть и `pending`** → возвращает `409 Conflict` или текущий статус
+   - **нет** → создаёт запись `pending`, выполняет операцию, сохраняет ответ
+3. Клиент ретраит при таймауте сети **с тем же ключом** — двойного списания не будет
+
+**Зачем критично в платежах:**
+
+- **сетевые таймауты** — клиент не знает, прошёл ли `POST /charge` или ответ потерялся
+- **retry на стороне клиента** без идемпотентности списывает деньги дважды
+- **at-least-once** в очередях даёт дубли при сбое consumer
+
+**Кто так делает в проде:** `Stripe`, `AWS`, `Twilio`, `PayPal`, `Adyen` — стандарт для платёжных API.
+
+**Подводные камни:**
+
+- **TTL ключа** — обычно `24h`, дольше — раздувает хранилище, короче — клиент не успеет ретрайнуть
+- **`UNIQUE`-индекс на ключе** в БД — единственный надёжный способ обработать гонку двух одновременных запросов
+- **Никогда не делать внешний HTTP-вызов внутри транзакции** — блокировки висят на время задержки шлюза
+- **Webhook от шлюза** тоже должен быть идемпотентен — по своему `event_id`',
                 'code_example' => '<?php
 $key = $request->header("Idempotency-Key");
-if ($cached = Cache::get("idemp:$key")) {
-    return response()->json($cached);
+if (! $key) {
+    abort(400, "Idempotency-Key header required");
 }
-$result = $payment->charge($amount);
-Cache::put("idemp:$key", $result, 86400);
+
+// 1. Атомарный INSERT — гонка решается UNIQUE-индексом
+try {
+    DB::table("idempotency_keys")->insert([
+        "key" => $key,
+        "status" => "pending",
+        "created_at" => now(),
+    ]);
+} catch (QueryException $e) {
+    // ключ уже есть — возвращаем кэшированный ответ
+    $row = DB::table("idempotency_keys")->where("key", $key)->first();
+    if ($row->status === "completed") {
+        return response()->json(json_decode($row->response, true));
+    }
+    return response()->json(["status" => "pending"], 202);
+}
+
+// 2. ВНЕ транзакции — внешний вызов
+$result = $gateway->charge($amount);
+
+// 3. Сохраняем результат
+DB::table("idempotency_keys")->where("key", $key)->update([
+    "status" => "completed",
+    "response" => json_encode($result),
+]);
+
 return response()->json($result);',
                 'code_language' => 'php',
                 'difficulty' => 4,
@@ -479,24 +617,118 @@ final class Account
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое CQRS простыми словами?',
-                'answer' => 'CQRS (Command Query Responsibility Segregation) - разделение модели чтения и записи. Команды (write) меняют состояние, не возвращают данных. Запросы (read) только читают и могут использовать денормализованную модель для скорости. Простыми словами: для записи в банк используешь форму с полным набором полей (write-модель), для просмотра выписки - удобно отформатированный отчёт (read-модель). ВАЖНОЕ заблуждение: CQRS и Event Sourcing - РАЗНЫЕ паттерны, их часто упоминают вместе и путают. CQRS можно (и обычно стоит) применять БЕЗ Event Sourcing: типичный продакшен-сетап - запись через Eloquent-агрегаты в Postgres-master, чтение через read-only реплики или денормализованную таблицу/Elasticsearch/Redis-индекс - это уже полноценный CQRS, никаких событий хранить не надо. Event Sourcing - лишь один из способов хранить write-модель (как лог событий вместо текущего state), и его можно использовать без CQRS (хотя на практике без CQRS он почти не имеет смысла из-за плохой производительности чтения текущего состояния). Когда CQRS оправдан: разные требования к нагрузке на чтение и запись (read >> write), сложные read-модели (агрегации, поисковая выдача), нужно несколько read-проекций одних данных. Когда не нужен: простой CRUD - CQRS добавляет сложность без выгоды.',
+                'answer' => '**`CQRS`** (Command Query Responsibility Segregation) — **разделение модели чтения и записи**.
+
+| | **Command** (write) | **Query** (read) |
+|---|---|---|
+| **Назначение** | менять состояние | читать данные |
+| **Возвращает** | `void` / `id` / ack | данные / DTO |
+| **Модель** | агрегат с инвариантами | плоская денормализованная |
+| **Хранилище** | OLTP (Postgres, Eloquent) | реплика / `Elasticsearch` / `Redis` |
+| **Оптимизация под** | целостность, транзакции | скорость, агрегации |
+
+**Аналогия:** банк. **Write-модель** — форма перевода с полным набором полей и валидацией. **Read-модель** — выписка, удобно отформатированный отчёт.
+
+**Важное заблуждение — `CQRS` и `Event Sourcing` это РАЗНЫЕ паттерны:**
+
+- **`CQRS` без `Event Sourcing`** — типичный прод-сетап: запись через Eloquent-агрегаты в Postgres-master, чтение через read-replicas / денормализованную таблицу / `Elasticsearch` / `Redis`-индекс. Это **уже полноценный `CQRS`**, никаких событий хранить не надо.
+- **`Event Sourcing` без `CQRS`** — теоретически возможно, но **почти не имеет смысла**: чтение текущего состояния через replay медленное.
+- **`Event Sourcing` — лишь один из способов** хранить write-модель (как лог событий вместо текущего state).
+
+**Когда `CQRS` оправдан:**
+
+- **`read >> write`** — нагрузка на чтение в десятки раз выше
+- **Сложные read-модели** — агрегации, поисковая выдача, дашборды
+- **Несколько read-проекций** одних данных (карточка / список / экспорт)
+- **Разные SLA** на чтение и запись
+
+**Когда НЕ нужен:**
+
+- Простой CRUD — `CQRS` добавит сложность без выгоды
+- Нет проблем с производительностью чтения
+- Команда не готова к eventual consistency между write и read моделями
+
+**Подвох:** read-модель **всегда чуть отстаёт** от write — нужна стратегия обновления (sync через события, async через `CDC`/Debezium, периодическая re-projection).',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Outbox pattern?',
-                'answer' => 'Outbox - паттерн для надёжной отправки событий в очередь из транзакции. Проблема: если в транзакции и пишем в БД, и шлём в Kafka - могут разойтись (БД сохранила, Kafka упала). Решение: пишем событие в таблицу outbox в той же транзакции что и бизнес-данные. Отдельный процесс читает outbox и шлёт в Kafka, помечая как отправленные. Гарантирует at-least-once и атомарность с БД-операцией.',
+                'answer' => '**`outbox pattern`** — решение проблемы **dual write** при надёжной отправке событий в очередь из транзакции БД.
+
+**Проблема dual write:**
+
+```
+DB::transaction(function () use ($order) {
+    $order->save();           // 1. записали в БД
+    Kafka::publish($event);   // 2. отправили в Kafka
+});
+```
+
+**Что может пойти не так:**
+
+- БД сохранила → Kafka **упала** → событие **потеряно**, downstream не узнает
+- Kafka получила → БД **откатилась** → событие **есть**, заказа нет (фантом)
+- Между БД и Kafka **нет распределённой транзакции** — атомарности не существует
+
+**Решение outbox — две записи в одной БД-транзакции:**
+
+1. Бизнес-данные пишутся в основную таблицу (`orders`)
+2. **Событие** пишется в **таблицу `outbox`** (`type`, `payload`, `sent_at = null`) — в **той же транзакции**
+3. **Отдельный relay-процесс** читает `outbox WHERE sent_at IS NULL`, шлёт в Kafka, помечает `sent_at = NOW()`
+4. Сбой relay → следующая итерация **доберёт** непосланные
+
+**Что гарантирует:**
+
+- **Атомарность** — событие записывается **только** если бизнес-транзакция закоммитилась
+- **`at-least-once`** доставка — relay переотправит при сбое
+- **Порядок** — relay читает по `id` ASC (или с `FOR UPDATE SKIP LOCKED` для параллелизма)
+
+**Comsumer должен быть идемпотентным** — дубли возможны при retry relay.
+
+**Варианты реализации relay:**
+
+- **Polling** — простой `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 100` каждые `N` мс
+- **`CDC`** через **`Debezium`** — читает `WAL` Postgres, публикует в Kafka **без polling** (production-grade)
+
+**Альтернатива** — **`Transactional Outbox + CDC`** (best of both worlds): сервис пишет в outbox, Debezium читает WAL и публикует — нет polling-нагрузки, есть доменные события.',
                 'code_example' => '<?php
+// 1. Запись в БД + outbox в одной транзакции
 DB::transaction(function () use ($order) {
     $order->save();
+
     OutboxEvent::create([
+        "aggregate_type" => "Order",
+        "aggregate_id" => $order->id,
         "type" => "OrderCreated",
         "payload" => json_encode($order->toArray()),
         "sent_at" => null,
     ]);
 });
-// Отдельный воркер читает unsent события и шлёт в Kafka',
+
+// 2. Relay-воркер: периодически читает unsent и шлёт в Kafka
+class OutboxRelay
+{
+    public function handle(): void
+    {
+        DB::transaction(function () {
+            // SKIP LOCKED — параллельные relay не дерутся за строки
+            $events = OutboxEvent::whereNull("sent_at")
+                ->orderBy("id")
+                ->limit(100)
+                ->lockForUpdate()
+                ->get(); // SELECT ... FOR UPDATE SKIP LOCKED
+
+            foreach ($events as $event) {
+                Kafka::publish("orders", $event->payload, key: $event->aggregate_id);
+                $event->update(["sent_at" => now()]);
+            }
+        });
+    }
+}
+
+// 3. Или Debezium читает WAL Postgres и публикует в Kafka сам',
                 'code_language' => 'php',
                 'difficulty' => 5,
                 'topic' => 'system_design.messaging_queues',
@@ -504,7 +736,50 @@ DB::transaction(function () use ($order) {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Change Data Capture (CDC) и зачем он нужен?',
-                'answer' => 'Change Data Capture - паттерн для извлечения изменений из БД и стрима их в другую систему (Kafka, Elasticsearch, ClickHouse, дата-озеро) без изменения исходного приложения. Решает классическую проблему dual write: когда сервис должен записать в основную БД И в очередь/индекс одновременно - между ними нет распределённой транзакции, и одна из записей может пропасть при сбое. Outbox-паттерн решает это с помощью изменений в коде (запись в outbox-таблицу в той же транзакции), а CDC - вообще без правки кода. Как работает: инструмент (Debezium - стандарт де-факто, или AWS DMS, Maxwell, GoldenGate) подключается к транзакционному логу СУБД: WAL (write-ahead log) в PostgreSQL через logical replication, binlog в MySQL, change tracking в SQL Server, oplog в MongoDB. WAL хранит каждое INSERT/UPDATE/DELETE в порядке коммита; CDC-агент читает его, конвертирует строки в JSON-сообщения и публикует в Kafka-топик "db.public.users" с before/after состояниями. Преимущества: 1) Нулевое влияние на код приложения - монолиту вообще не надо знать про Kafka. 2) Гарантия at-least-once - WAL хранит все изменения; CDC-агент может перечитать с нужного offset после рестарта. 3) Транзакционная консистентность - в Kafka попадают только закоммиченные изменения, в правильном порядке. 4) Нет dual-write - изменение либо записалось в БД (и попадёт в Kafka), либо нет. Недостатки: 1) Структура сообщений привязана к схеме БД - переименование колонки сломает downstream consumers, нужна осторожная schema evolution и версионирование событий через Outbox-таблицу как промежуточный слой. 2) Сложность в эксплуатации (мониторинг replication slot lag в PG, дисковое место под WAL, перезапуск Debezium). 3) Не подходит для отправки бизнес-событий ("OrderShipped") - CDC видит изменения rows, не доменные события; для этого нужен явный outbox с domain-событиями. Применение: репликация монолит → микросервис без передачи нагрузки на исходный сервис, обновление поискового индекса (Elasticsearch), стриминг в data warehouse (Snowflake, BigQuery), создание audit-лога, сине-зелёные миграции БД.',
+                'answer' => '**`Change Data Capture`** — паттерн извлечения **изменений из транзакционного лога БД** и стрима их в другую систему (`Kafka`, `Elasticsearch`, `ClickHouse`, data lake) **без правки исходного приложения**.
+
+**Решает проблему dual write:** сервис должен записать в основную БД **И** в очередь — между ними нет распределённой транзакции, одна из записей может пропасть. **`outbox pattern`** решает это правкой кода, **`CDC`** — вообще без неё.
+
+**Как работает:**
+
+1. CDC-агент подключается к **транзакционному логу** СУБД:
+   - **PostgreSQL** — `WAL` (Write-Ahead Log) через **logical replication**
+   - **MySQL** — `binlog`
+   - **SQL Server** — change tracking
+   - **MongoDB** — `oplog`
+2. WAL хранит каждое `INSERT`/`UPDATE`/`DELETE` **в порядке коммита**
+3. Агент **читает лог**, конвертирует в JSON, публикует в Kafka-топик `db.public.orders` с `before`/`after`
+4. Сохраняет позицию — после рестарта **догоняет** с нужного offset
+
+**Инструменты:**
+
+- **`Debezium`** — стандарт де-факто (Kafka Connect)
+- **`AWS DMS`** — managed
+- **`Maxwell`** — для MySQL
+- **`Oracle GoldenGate`** — enterprise
+
+**Преимущества:**
+
+- **Нулевое влияние на код** — монолиту не нужно знать про Kafka
+- **`at-least-once`** — WAL хранит всё, можно перечитать после рестарта
+- **Транзакционная консистентность** — в Kafka попадают **только закоммиченные** изменения, в правильном порядке
+- **Нет dual-write** — изменение либо есть в БД (и попадёт в Kafka), либо нет
+
+**Недостатки:**
+
+- **Структура сообщений привязана к схеме БД** — переименование колонки сломает downstream. Нужна осторожная schema evolution или **`outbox`-таблица как промежуточный слой**.
+- **Сложность эксплуатации** — мониторинг **replication slot lag**, дисковое место под `WAL`, перезапуск Debezium
+- **Видит строки, не доменные события** — `UPDATE orders SET status=\'shipped\'` ≠ `OrderShipped`. Для бизнес-событий нужен явный outbox.
+
+**Применение:**
+
+- Репликация монолит → микросервис **без нагрузки** на исходный сервис
+- Обновление поискового индекса (`Elasticsearch`)
+- Стриминг в data warehouse (`Snowflake`, `BigQuery`)
+- Audit log
+- Сине-зелёные миграции БД
+
+**Best practice:** **`Outbox + CDC`** — сервис в той же транзакции пишет **доменное событие** в outbox-таблицу, Debezium читает WAL и публикует events. Получаем domain events + транзакционную гарантию + zero dual-write.',
                 'code_example' => '-- PostgreSQL: включить logical replication
 -- postgresql.conf:
 --   wal_level = logical
@@ -802,42 +1077,211 @@ kafka-topics.sh --create --topic orders \\
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое ISR (In-Sync Replicas) в Kafka и зачем нужен min.insync.replicas?',
-                'answer' => 'ISR — это набор реплик партиции (включая лидера), которые догнали лидера в пределах допустимого отставания и считаются синхронными. Только реплика из ISR может быть выбрана новым лидером при failover, поэтому от размера ISR напрямую зависит durability. Параметр min.insync.replicas задаёт, сколько ISR должно подтвердить запись при acks=all: если их меньше, продюсер получит ошибку NotEnoughReplicas и запись остановится. Это страховка от тихой потери данных, когда реплики массово отстали.',
+                'answer' => '**`ISR`** (In-Sync Replicas) — набор реплик партиции **(включая лидера)**, которые **догнали лидера** в пределах `replica.lag.time.max.ms` и считаются **синхронными**.
+
+**Ключевое свойство:** **только реплика из `ISR`** может быть выбрана **новым лидером** при failover. Поэтому от размера `ISR` напрямую зависит **durability**.
+
+**`min.insync.replicas`** — параметр на стороне топика:
+
+- Задаёт, **сколько `ISR`** должно подтвердить запись при `acks=all`
+- Если `ISR < min.insync.replicas` → продюсер получает **`NotEnoughReplicasException`**, запись **останавливается**
+- Это **страховка от тихой потери данных** — лучше отказ записи, чем «успех» без репликации
+
+**Боевая комбинация:**
+
+| Параметр | Значение |
+|---|---|
+| `replication.factor` | `3` |
+| `min.insync.replicas` | `2` |
+| `acks` | `all` |
+
+Эта тройка переживает падение **1 брокера** (остаются 2 ISR ≥ min=2). Падение 2 брокеров **остановит запись**, но не **потеряет** уже записанное.
+
+**Антипаттерн:** `min.insync.replicas=1` при `acks=all` — формально acks=all, но достаточно одного лидера → при unclean leader election теряем данные.',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое High-Water Mark в Kafka и какие данные видит потребитель?',
-                'answer' => 'High-Water Mark (HW) — это offset последнего сообщения, которое уже подтверждено всеми ISR и считается «зафиксированным». Потребители видят только данные до HW; всё, что выше, — записано на лидера, но ещё не реплицировано и может пропасть при failover. Это и есть механизм согласованности: читатель не увидит сообщение, которое потом исчезнет. Если лидер упадёт до обновления HW, новый лидер начнёт с прежнего HW, и часть лидер-only данных откатится.',
+                'answer' => '**`High-Water Mark`** (`HW`) — **offset последнего сообщения**, **подтверждённого всеми `ISR`** и считающегося **«зафиксированным»** (committed).
+
+**Что видит consumer:**
+
+- **Только данные до `HW`** — это и есть **механизм согласованности**
+- Всё **выше `HW`** — записано на лидера, но **ещё не реплицировано** и может пропасть при failover
+- Читатель **никогда не увидит** сообщение, которое потом исчезнет
+
+**Что происходит при падении лидера:**
+
+1. Лидер упал **до обновления `HW`**
+2. Новый лидер выбирается из оставшихся `ISR`
+3. Новый лидер **начинает с прежнего `HW`**
+4. Часть **«лидер-only»** данных (между старым HW и log-end) **откатывается** (truncated)
+
+**Зачем такая модель:**
+
+- **Durability** — `HW` гарантирует, что прочитанное **точно реплицировано**
+- **No phantom reads** — consumer не увидит данных, которые потом исчезнут
+- **Безопасное failover** — новый лидер не теряет того, что уже видел читатель
+
+**Связь с `LSO`:** для транзакций есть отдельный **`Last Stable Offset`** — выше него видны только сообщения из закоммиченных транзакций (при `isolation.level=read_committed`).',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как работает идемпотентный продюсер Kafka и от чего он защищает?',
-                'answer' => 'При enable.idempotence=true продюсер получает уникальный Producer ID (PID), а каждому сообщению в рамках партиции присваивается монотонный sequence number. Брокер запоминает последний подтверждённый sequence на PID и при ретрае молча отбрасывает дубликаты. Это закрывает классический сценарий «брокер записал, но ack потерялся в сети» — без идемпотентности продюсер повторил бы и получил два одинаковых сообщения. Идемпотентность работает в пределах одной сессии продюсера и одной партиции, для exactly-once между топиками нужны транзакции.',
+                'answer' => 'При **`enable.idempotence=true`** продюсер работает с двумя метаданными:
+
+- **`PID`** (Producer ID) — уникальный идентификатор сессии продюсера, выдаётся брокером
+- **`sequence number`** — **монотонный** номер сообщения в пределах **`(PID, partition)`**
+
+**Как работает дедупликация:**
+
+1. Producer шлёт сообщение с `(PID=42, partition=3, seq=100)`
+2. Брокер **запоминает** последний `seq` для `(PID, partition)`
+3. При ретрае с тем же `seq` брокер **молча отбрасывает дубликат** и возвращает ack
+4. Если приходит `seq > last+1` → **gap** → `OutOfOrderSequenceException`
+
+**От чего защищает:**
+
+- **Классический сценарий** — «брокер записал, ack потерялся в сети» → без идемпотентности producer повторил бы → **два одинаковых сообщения** в логе
+- **Несколько in-flight requests** при `max.in.flight.requests.per.connection > 1` — порядок сохраняется
+
+**Что обязательно идёт с `enable.idempotence=true`:**
+
+- **`acks=all`** — иначе невозможно гарантировать порядок
+- **`retries > 0`** — иначе нечего дедуплицировать
+- **`max.in.flight.requests.per.connection ≤ 5`** — лимит inflight для гарантии порядка
+
+**Ограничения:**
+
+- Работает **в пределах одной сессии producer-а** — после рестарта новый `PID`, прежняя дедупликация недоступна
+- **В пределах одной partition** — между partitions гарантий нет
+- **`exactly-once` между топиками** — нужны **транзакции** (`transactional.id`)
+
+**С Kafka 3.0:** `enable.idempotence=true` стал **дефолтом** — сообщество признало, что безопасность важнее legacy-совместимости.',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как Kafka реализует exactly-once семантику и какова её цена?',
-                'answer' => 'Exactly-once в Kafka собирается из трёх кусков: идемпотентный продюсер (acks=all + enable.idempotence) убирает дубликаты при ретраях; транзакции через transactional.id атомарно записывают в несколько партиций/топиков; transactional consumer фиксирует offsets внутри той же транзакции, что и результат обработки. Это работает в схеме read-process-write внутри Kafka. Цена — рост латентности из-за двухфазного коммита через transaction coordinator и обязательная idempotency на стороне внешних сайд-эффектов, которые в транзакцию Kafka не входят.',
+                'answer' => '**`EOS`** (Exactly-Once Semantics) в Kafka собирается из **трёх компонентов**:
+
+1. **Идемпотентный продюсер** (`acks=all` + `enable.idempotence=true`) — убирает дубликаты при ретраях через `PID + sequence`
+2. **Транзакции** через **`transactional.id`** — атомарно записывают в **несколько партиций/топиков**:
+   - `producer.beginTransaction()`
+   - `producer.send(...)` в N топиков
+   - `producer.commitTransaction()` или `abortTransaction()`
+3. **Transactional consumer** — фиксирует **offsets внутри той же транзакции**, что и результат обработки (`sendOffsetsToTransaction()`)
+
+**Где работает — read-process-write внутри Kafka:**
+
+```
+Topic A → consumer → process → producer → Topic B
+                       ↑                     ↓
+                       └──── offset commit ──┘
+                          (одна транзакция)
+```
+
+**Что видит downstream:** при `isolation.level=read_committed` потребитель **не видит** сообщений из aborted-транзакций и сообщений выше `Last Stable Offset`.
+
+**Цена:**
+
+- **Рост латентности** из-за **двухфазного коммита** через **transaction coordinator** (специальный брокер с топиком `__transaction_state`)
+- **Снижение throughput** на `10-30%` при коротких транзакциях
+- **Сложность отладки** — повисшие транзакции блокируют LSO
+
+**Главное ограничение — внешние side-effects:**
+
+- Запись в **БД**, **HTTP**, **email** — **НЕ** часть транзакции Kafka
+- Эти side-effects **обязательно** должны быть **идемпотентными** на своей стороне
+- Для них работает связка **`at-least-once` + dedup** = **«effectively-once»**
+
+**Когда брать `EOS`:** stream-processing внутри Kafka (Kafka Streams, аналитика), репликация topic→topic, аудит. **Когда не брать:** микросервисы с side-effects в БД/API — там проще идемпотентный consumer.',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое log compaction в Kafka и чем отличается от retention по времени?',
-                'answer' => 'Retention по времени или размеру (log.retention.ms, log.retention.bytes) удаляет старые сообщения целиком, независимо от их содержимого. Log compaction работает по ключу: для каждого ключа гарантированно сохраняется как минимум последняя версия, более старые версии того же ключа со временем вычищаются фоновым процессом. Это превращает топик в материализованный «текущий снимок» состояния — типичный кейс для changelog-топиков Kafka Streams и event-sourcing snapshot. Удаление выражается tombstone-сообщением (значение null).',
+                'answer' => '**Две стратегии очистки** топика в Kafka — `cleanup.policy=delete` (по умолчанию) и `cleanup.policy=compact`.
+
+| | **Retention** (`delete`) | **Log compaction** (`compact`) |
+|---|---|---|
+| **Критерий** | возраст / размер | ключ сообщения |
+| **Параметры** | `log.retention.ms`, `log.retention.bytes` | `min.cleanable.dirty.ratio`, `segment.ms` |
+| **Что сохраняется** | сообщения новее N | **последняя версия каждого ключа** |
+| **Что удаляется** | старые целиком | старые версии того же ключа |
+| **Удаление по ключу** | нет | **tombstone** (`value = null`) |
+| **Use case** | event stream, логи | changelog, snapshot |
+
+**Retention по времени/размеру** — простой механизм:
+
+- `log.retention.ms=604800000` — хранить 7 дней
+- `log.retention.bytes=1073741824` — хранить до 1 ГБ
+- При превышении **старые сегменты удаляются целиком**, независимо от содержимого
+
+**Log compaction** — **«материализованный снимок» по ключу**:
+
+- Для каждого `key` **гарантированно** остаётся **как минимум последняя версия**
+- Фоновый **`log cleaner`** периодически проходит по old segments и **схлопывает** дубликаты ключей
+- **Tombstone** (`value=null`) — специальное сообщение, помечающее ключ к удалению; после `delete.retention.ms` исчезает физически
+
+**Типичные кейсы compact:**
+
+- **`changelog`-топики Kafka Streams** — restore состояния RocksDB после рестарта
+- **Event sourcing snapshots** — текущее состояние агрегата по `aggregate_id`
+- **Configuration / metadata topic** — `__consumer_offsets` использует compact
+
+**Гибрид:** `cleanup.policy=compact,delete` — compaction **плюс** retention по времени для **`__consumer_offsets`** (compact текущие, удалять древние группы).
+
+**Подвох:** compact **не гарантирует** удаление промежуточных версий **немедленно** — только «когда-нибудь», по параметрам `min.cleanable.dirty.ratio` и расписанию cleaner-а.',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Чем опасен unclean leader election в Kafka?',
-                'answer' => 'Когда unclean.leader.election.enable=true, лидером может стать реплика вне ISR — то есть отстающая. Она не знает о части последних зафиксированных сообщений, и при её повышении эти сообщения теряются, а потребители, которые их уже прочитали, окажутся «впереди» нового лидера — это разрыв согласованности. По умолчанию опция выключена: при отказе всех ISR Kafka лучше остановит запись, чем нарушит durability. Включают её только когда доступность важнее консистентности (например, телеметрия).',
+                'answer' => '**`unclean.leader.election.enable`** — параметр на стороне топика, разрешающий повышать **отстающую реплику** (вне `ISR`) в лидеры при отказе всех ISR.
+
+**Что происходит при `=true`:**
+
+1. Все `ISR` упали, остаётся только **отстающая** реплика (out-of-sync)
+2. Kafka **выбирает её** новым лидером ради доступности
+3. **Она не знает** о части последних зафиксированных сообщений
+4. Эти сообщения **теряются** навсегда
+5. Consumer-ы, которые их **уже прочитали**, окажутся **«впереди»** нового лидера — **разрыв согласованности**
+
+**Два неприятных последствия:**
+
+- **Потеря данных** — `OrderPaid` событие исчезло после failover
+- **Phantom reads у consumer-ов** — `committed_offset` указывает на несуществующее сообщение, при `seek()` получим `OFFSET_OUT_OF_RANGE`
+
+**По умолчанию — `=false`:**
+
+- При отказе всех `ISR` **запись останавливается**, кластер ждёт восстановления хотя бы одной ISR-реплики
+- Kafka выбирает **`durability` > `availability`** (`CP` в терминах CAP)
+- Лучше **отказ записи**, чем **тихая потеря**
+
+**Когда включают `=true`:**
+
+- **Availability > consistency** — например, **телеметрия**, **логи**, **метрики**
+- Маленький кластер (`replication.factor=2`), где падение одной реплики типично
+- Готовы пожертвовать данными ради того, чтобы pipeline не вставал
+
+**Безопасный пресет для прода:**
+
+```
+unclean.leader.election.enable=false   # default
+replication.factor=3
+min.insync.replicas=2
+acks=all
+```
+
+Этот набор переживает падение 1 брокера **без потери данных**, при падении 2 — **останавливает запись** до восстановления.',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
@@ -908,28 +1352,199 @@ kafka-consumer-groups.sh --bootstrap-server kafka:9092 \\
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое rebalance в consumer group Kafka и почему он бывает болезненным?',
-                'answer' => 'Rebalance — это перераспределение партиций между потребителями в группе при добавлении, уходе или таймауте участника. На время rebalance в классическом протоколе stop-the-world группа не потребляет вообще — это и есть главная боль: при флакающих сетях или долгих GC-паузах группа постоянно ребалансируется и стоит. Лечат через cooperative-sticky assignor (incremental rebalance, переезжают только нужные партиции), увеличение session.timeout.ms и max.poll.interval.ms, static membership (group.instance.id), который не выкидывает потребителя при кратковременном уходе.',
+                'answer' => '**`rebalance`** — **перераспределение partitions** между consumer-ами в группе при изменении её состава.
+
+**Триггеры rebalance:**
+
+- Добавили consumer-а в группу
+- Consumer ушёл штатно (graceful)
+- Consumer **не прислал heartbeat** за `session.timeout.ms` (default `45 сек`)
+- Consumer **не вызвал `poll()`** за `max.poll.interval.ms` (default `5 мин`) — посчитан зависшим
+- Добавили/удалили partitions в топике
+
+**Главная боль — `stop-the-world` в классическом протоколе:**
+
+- На время rebalance **вся группа НЕ потребляет**
+- Длительность: **секунды на здоровом кластере**, **минуты при проблемах**
+- При **флакающих сетях** или **долгих GC-паузах** — группа постоянно ребалансируется и **стоит**
+
+**Сценарий «rebalance storm»:**
+
+```
+GC pause 30s → пропустили heartbeat → выкинули из группы →
+rebalance → кто-то ещё пропустил → ещё rebalance → ...
+```
+
+**Лечение:**
+
+| Решение | Что делает |
+|---|---|
+| **`cooperative-sticky` assignor** | **incremental rebalance** — переезжают только нужные partitions, не stop-the-world (Kafka 2.4+) |
+| **`session.timeout.ms ↑`** (60-120s) | терпим более долгие GC-паузы |
+| **`max.poll.interval.ms ↑`** (10-30 мин) | даём больше времени на обработку батча |
+| **`max.poll.records ↓`** | меньший батч обрабатывается быстрее, не выпадаем по таймауту |
+| **`group.instance.id`** | **static membership** — не выкидываем при кратковременном уходе (rolling restart, k8s reschedule) |
+
+**Best practice:** `partition.assignment.strategy=cooperative-sticky` + `group.instance.id=<pod-name>` для k8s — большинство rolling restart-ов вообще не вызовут rebalance.',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Чем KRaft режим Kafka отличается от классической схемы с ZooKeeper?',
-                'answer' => 'Исторически Kafka использовала ZooKeeper для хранения метаданных кластера, выбора контроллера и leader election партиций — это отдельный кластер, который надо администрировать. KRaft (Kafka Raft) встроил консенсус Raft прямо в брокеров: метаданные хранятся в специальном внутреннем топике, контроллеры — это выделенные узлы Kafka. Плюсы — одна система вместо двух, быстрее восстановление после сбоев, поддержка миллионов партиций. С Kafka 3.3 KRaft GA, в 4.0 ZooKeeper полностью удалён.',
+                'answer' => 'Исторически Kafka использовала **`ZooKeeper`** для координации, **`KRaft`** заменил его встроенным консенсусом.
+
+| Аспект | **ZooKeeper-режим** (legacy) | **`KRaft`** (`Kafka Raft`) |
+|---|---|---|
+| **Метаданные** | в ZooKeeper | в **внутреннем топике** Kafka |
+| **Консенсус** | ZAB (свой алгоритм) | **`Raft`** (стандартный) |
+| **Координация** | внешний кластер ZK (3-5 узлов) | **встроена** в брокеров |
+| **Что администрировать** | Kafka + ZooKeeper | **только Kafka** |
+| **Контроллер** | один из брокеров через ZK | **выделенные controller-узлы** |
+| **Восстановление** | минуты | **секунды** |
+| **Лимит partitions** | сотни тысяч | **миллионы** |
+| **Статус** | удалён в 4.0 | **GA с 3.3** |
+
+**Что давало ZooKeeper:**
+
+- Хранение метаданных (топики, ACL, конфиги)
+- Выбор контроллера
+- Leader election partitions
+- Membership брокеров
+
+**Проблемы ZooKeeper:**
+
+- **Отдельный кластер** для администрирования и мониторинга
+- **Bottleneck при большом числе partitions** — метаданные читаются через ZK
+- **Долгое восстановление** после сбоя контроллера (пересоздание watch-ей)
+- **Усложнённая эксплуатация** — два разных consensus-протокола
+
+**Что даёт `KRaft`:**
+
+- **Одна система** вместо двух — меньше moving parts
+- **Быстрее failover** — controller-quorum уже в Kafka
+- **Масштабируемость** — миллионы partitions без деградации
+- **Стандартный Raft** — лучше документирован, меньше surprises
+
+**Roadmap:**
+
+- **Kafka 2.8** (2021) — KRaft preview
+- **Kafka 3.3** (2022) — **KRaft GA**
+- **Kafka 3.5+** — рекомендуют миграцию
+- **Kafka 4.0** — **ZooKeeper полностью удалён**
+
+**Для новых кластеров** — выбор очевидный: **только `KRaft`**.',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Kafka Streams и зачем нужны changelog-топики?',
-                'answer' => 'Kafka Streams — это библиотека для stream-processing поверх Kafka, без отдельного кластера: приложение само читает топик, обрабатывает и пишет результат. Состояние (агрегаты, joins, window) хранится локально в RocksDB у каждого инстанса. Чтобы не потерять его при падении или ребалансе, каждое изменение state store параллельно пишется в специальный compacted-топик — changelog; при перезапуске инстанс восстанавливает RocksDB, проигрывая changelog. Если этот топик удалить, всё локальное состояние придётся пересчитывать с нуля.',
+                'answer' => '**`Kafka Streams`** — **библиотека** для stream-processing **поверх Kafka**, без отдельного кластера обработки.
+
+**Главное отличие от Flink/Spark Streaming:**
+
+- **Нет отдельного cluster manager** — Kafka Streams = просто JVM-приложение
+- **Масштабируется через consumer group** — больше инстансов = больше партиций обрабатывается параллельно
+- **Stateful operations локальны** — состояние в RocksDB на диске инстанса
+
+**Что умеет:**
+
+- **Stateless** — `map`, `filter`, `flatMap`
+- **Stateful** — `count`, `aggregate`, `reduce`
+- **Windowed** — tumbling/hopping/session windows
+- **Joins** — stream-stream, stream-table, table-table
+- **Materialized state** — `KTable` = view над топиком
+
+**Состояние и проблема его потери:**
+
+- Каждый инстанс держит **локальный state store** в **`RocksDB`**
+- При **падении** или **rebalance** партиция уезжает к другому инстансу
+- Если состояние **только локальное** — теряется или нужно **пересчитать с нуля** (минуты-часы)
+
+**Решение — changelog-топики:**
+
+1. Каждое изменение state store **параллельно пишется** в специальный **`compacted` топик** `<app-id>-<store-name>-changelog`
+2. При перезапуске или rebalance инстанс **восстанавливает RocksDB**, **проигрывая changelog**
+3. Топик `compact` → хранит **только последнее значение** на ключ → размер ограничен
+
+**Почему compaction обязательна:**
+
+- Без неё changelog рос бы бесконечно → restore занимал часы
+- С compaction restore = размер актуального state, **не вся история**
+
+**Если changelog-топик удалить — всё локальное состояние пересчитывается с нуля** через `application.reset` и replay входных топиков. На больших stateful-приложениях это часы downtime.
+
+**Best practice:** мониторить **`records-lag-max`** для changelog-топика — отстающий changelog = долгий restore при failover.',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как реализовать обратное давление в Kafka-потребителе на PHP?',
-                'answer' => 'Сам Kafka не пушит сообщения — потребитель опрашивает их сам через poll/consume, поэтому при перегрузке достаточно замедлить вызовы. В php-rdkafka используют pause()/resume() на конкретных партициях: пока внутренняя очередь обработчика заполнена, ставят паузу, после освобождения — снимают. Параллельно тюнят max.poll.records и fetch.max.bytes, чтобы не выгребать больше, чем сможет обработать воркер за max.poll.interval.ms. Иначе rebalance посчитает воркера зависшим и заберёт партиции.',
+                'answer' => 'У Kafka **pull-модель** — потребитель сам опрашивает брокера через `poll`/`consume`. Поэтому **backpressure встроен**: при перегрузке достаточно **замедлить вызовы**.
+
+**Главный механизм — `pause()` / `resume()` на partition:**
+
+- Пока внутренняя очередь обработчика **заполнена** — вызываем `pause(partitions)`
+- При освобождении буфера — `resume(partitions)`
+- На `pause` poll **продолжает работать** (нужен для heartbeat!), но **не выдаёт сообщений** с этих partitions
+
+**Что тюнить параллельно:**
+
+| Параметр | Зачем |
+|---|---|
+| **`max.poll.records`** | сколько сообщений за один `poll()`; меньший батч = быстрее обработка, меньше шанс таймаута |
+| **`fetch.max.bytes`** | объём данных за `poll()` в байтах |
+| **`max.poll.interval.ms`** | **сколько максимум** может идти обработка между poll-ами (default `5 мин`) |
+| **`max.partition.fetch.bytes`** | лимит на partition |
+
+**Главный подвох — `max.poll.interval.ms`:**
+
+- Если обработка **батча длится дольше**, чем `max.poll.interval.ms` → consumer **посчитан зависшим**
+- Rebalance заберёт partitions, при следующем commit будет `CommitFailedException`
+- **Лечение**: уменьшить `max.poll.records` или увеличить `max.poll.interval.ms`
+
+**`heartbeat` vs `poll`:**
+
+- **`heartbeat.interval.ms`** (default `3s`) — фоновый поток шлёт heartbeat, **не зависит** от обработки
+- **`session.timeout.ms`** (default `45s`) — если heartbeat пропал → выкидывают из группы
+- **`max.poll.interval.ms`** — отдельная проверка «poll вообще вызывается?»
+
+**Best practice для PHP-консьюмера:** работать с **маленьким батчем** (`max.poll.records=10-100`), обрабатывать **до конца** перед следующим `poll()`, **не делать тяжёлую обработку в фоне** — иначе сложно отслеживать backpressure.',
+                'code_example' => '<?php
+// php-rdkafka: backpressure через pause/resume
+$conf = new RdKafka\\Conf();
+$conf->set("group.id", "order-processor");
+$conf->set("enable.auto.commit", "false");
+$conf->set("max.poll.interval.ms", "600000"); // 10 мин на батч
+$conf->set("max.poll.records", "50");
+$conf->set("partition.assignment.strategy", "cooperative-sticky");
+
+$consumer = new RdKafka\\KafkaConsumer($conf);
+$consumer->subscribe(["orders"]);
+
+$buffer = [];
+$maxBuffer = 1000;
+
+while (true) {
+    $message = $consumer->consume(1000);
+    if ($message->err !== RD_KAFKA_RESP_ERR_NO_ERROR) continue;
+
+    $buffer[] = $message;
+
+    // Backpressure: буфер забит → pause
+    if (count($buffer) >= $maxBuffer) {
+        $consumer->pause($consumer->getAssignment());
+        processBatch($buffer);
+        $buffer = [];
+        $consumer->resume($consumer->getAssignment());
+    }
+
+    // Коммитим offset только после обработки
+    $consumer->commit($message);
+}',
+                'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'system_design.messaging_queues',
             ],

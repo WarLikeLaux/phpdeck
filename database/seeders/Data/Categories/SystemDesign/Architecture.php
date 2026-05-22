@@ -185,7 +185,48 @@ class Architecture
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое гексагональная архитектура (Ports and Adapters)?',
-                'answer' => 'Hexagonal architecture - подход, где доменная логика в центре, а вокруг "порты" (интерфейсы) и "адаптеры" (конкретные реализации: HTTP, БД, очередь). Простыми словами: ядро приложения не знает, откуда пришёл запрос (CLI, HTTP, тест) и куда сохраняются данные (Postgres, файл). Это даёт тестируемость и возможность менять инфраструктуру не трогая бизнес-логику.',
+                'answer' => '**Hexagonal architecture** (Alistair Cockburn, 2005) — подход, где **доменная логика в центре**, а вокруг **порты** (интерфейсы) и **адаптеры** (конкретные реализации).
+
+**Ключевая идея:** ядро приложения **не знает**:
+
+- **откуда** пришёл запрос (`CLI`, `HTTP`, тест, очередь, scheduler)
+- **куда** сохраняются данные (`Postgres`, файл, in-memory, S3)
+
+**Структура:**
+
+- **Domain (центр)** — entity, value objects, бизнес-правила. **Чистый PHP**, без `Eloquent`/`HTTP`
+- **Application services** — use-cases, оркестрация
+- **Ports (интерфейсы)** — контракты для внешнего мира (`OrderRepository`, `PaymentGateway`, `EmailSender`)
+- **Adapters (реализации)** — `PgOrderRepository`, `StripePaymentGateway`, `MailgunEmailSender`
+
+**Driving vs Driven (Primary vs Secondary):**
+
+| | **Driving (primary)** | **Driven (secondary)** |
+|---|---|---|
+| **Кто инициирует** | внешний мир → приложение | приложение → внешний мир |
+| **Примеры** | HTTP-контроллер, CLI-команда, queue-listener | DB-репозиторий, email-sender, payment-gateway |
+| **Зависимость** | вызывает port | реализует port |
+
+**Что даёт:**
+
+- **Тестируемость** — подмена адаптеров на in-memory (mock БД, fake email)
+- **Можно менять инфраструктуру** не трогая бизнес-логику
+- **Несколько входов** — один use-case доступен через HTTP и CLI одновременно
+- **Чистая граница** между domain и фреймворком
+
+**Когда брать:**
+
+- Сложная **доменная модель**
+- Много **интеграций** с разными внешними системами
+- Долгоживущий проект (5+ лет)
+
+**Когда НЕ брать:**
+
+- CRUD-приложение
+- Прототип, MVP
+- Маленькая команда (overhead изоляции > benefit)
+
+**Связь с другими подходами:** **Onion** Architecture — иерархическая вариация. **Clean Architecture** (Uncle Bob) — обобщение Hexagonal + Onion с явными слоями.',
                 'code_example' => '<?php
 // Порт (интерфейс)
 interface OrderRepository {
@@ -209,21 +250,148 @@ class InMemoryOrderRepository implements OrderRepository {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Clean Architecture?',
-                'answer' => 'Clean Architecture (Дядя Боб) - концентрические слои, зависимости направлены только внутрь. Слои снаружи внутрь: Frameworks & Drivers, Interface Adapters, Use Cases, Entities. Простыми словами: бизнес-правила (entities, use cases) не зависят от Laravel, Postgres или REST - можно переключить любой внешний слой не трогая ядро. Чем-то похоже на гексагональную, но с явной иерархией слоёв.',
+                'answer' => '**Clean Architecture** (Robert «Uncle Bob» Martin, 2012) — **концентрические слои** с **правилом зависимостей**: зависимости направлены **только внутрь**. Внутренний слой **ничего не знает** о внешнем.
+
+**Слои снаружи внутрь:**
+
+| Слой | Что | Зависит от |
+|---|---|---|
+| **Frameworks & Drivers** | Laravel, Postgres, Stripe SDK, web framework | всего внутреннего |
+| **Interface Adapters** | Controllers, Presenters, Repositories | Use Cases + Entities |
+| **Use Cases** (Application Business Rules) | application-specific бизнес-логика | только Entities |
+| **Entities** (Enterprise Business Rules) | домен, правила бизнеса организации | **ничего** |
+
+**Главное правило (Dependency Rule):**
+
+> **Source code dependencies могут указывать только внутрь.**
+
+`Entities` ничего не знают о `Use Cases`. `Use Cases` ничего не знают о `Controllers`. `Controllers` ничего не знают о Laravel-deployment.
+
+**Что это даёт:**
+
+- **Бизнес-правила (entities, use cases) не зависят** от Laravel, Postgres или REST
+- **Можно переключить любой внешний слой** не трогая ядро (с Laravel на Symfony, с MySQL на Postgres)
+- **Тестируется без поднятой инфраструктуры**
+- **Долго живёт** при смене технологий
+
+**Сравнение с Hexagonal и Onion:**
+
+| | **Hexagonal** | **Onion** | **Clean** |
+|---|---|---|---|
+| **Год** | 2005 | 2008 | 2012 |
+| **Геометрия** | шестиугольник | концентрические кольца | **концентрические + 4 явных слоя** |
+| **Иерархия слоёв** | не диктует | да | **да, жёстко** |
+| **Правило зависимостей** | через ports | внутрь | **внутрь** |
+
+**Clean = синтез Hexagonal + Onion** + явное разделение Use Cases vs Entities (DDD-влияние).
+
+**Практическое следствие:**
+
+- Use case `RegisterUser` — чистый PHP, тестируется без Laravel
+- `UserRepository` — интерфейс в Use Cases, реализация в Frameworks
+- Контроллер — **тонкий**, только распаковка запроса и вызов Use Case
+
+**Боль:**
+
+- **Overhead** — много интерфейсов и DTO
+- **Для CRUD избыточно** — Active Record (Eloquent) проще
+- **Команда должна знать паттерн** — иначе деградирует в обычный MVC
+
+**Когда брать:** сложный домен (банкинг, медицина, ERP), долгоживущий проект, большая команда с разделением слоёв.',
                 'difficulty' => 4,
                 'topic' => 'system_design.architecture',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Onion Architecture?',
-                'answer' => 'Onion Architecture - вариация Clean Architecture со слоями-кольцами луковицы. Центр - Domain Model (сущности), вокруг Domain Services, Application Services, на периферии Infrastructure (БД, UI, тесты). Зависимости направлены внутрь: внешние слои знают о внутренних, но не наоборот. Идея: бизнес-логика стабильна, инфраструктура меняется - значит инфраструктура должна зависеть от логики, а не наоборот.',
+                'answer' => '**Onion Architecture** (Jeffrey Palermo, 2008) — слои-кольца луковицы с **зависимостями, направленными внутрь**.
+
+**Слои (от центра к периферии):**
+
+| Слой | Что | Зависит от |
+|---|---|---|
+| **Domain Model** *(центр)* | entities, value objects, domain events | **ничего** |
+| **Domain Services** | логика, выходящая за один entity | Domain Model |
+| **Application Services** | use-cases, оркестрация | Domain Services + Model |
+| **Infrastructure** *(периферия)* | БД, UI, тесты, внешние API | всех внутренних |
+
+**Ключевая идея:**
+
+> **Бизнес-логика стабильна, инфраструктура меняется** — значит **инфраструктура должна зависеть от логики**, а не наоборот.
+
+Postgres сменится через 5 лет, REST → gRPC через 10 лет, но **«заказ должен иметь хотя бы одну позицию»** — правило бизнеса, оно вечное. Зависимости должны это отражать.
+
+**Сравнение с Hexagonal и Clean:**
+
+| | **Hexagonal** | **Onion** | **Clean** |
+|---|---|---|---|
+| **Геометрия** | шестиугольник | **кольца** | кольца с явными именами слоёв |
+| **Симметрия** | **симметричен** (вход = выход) | иерархичен | иерархичен |
+| **Структуру слоёв диктует** | нет | **да** | да, ещё строже |
+| **Фокус** | интеграции на границе | **изоляция домена** | синтез обоих |
+
+**Domain Services vs Application Services:**
+
+- **Domain Service** — логика, **не принадлежащая** одному entity, но всё ещё **доменная**: `TransferMoneyService` (между двумя `Account`)
+- **Application Service** — оркестрация use-case, **не доменная** логика: загрузить, провалидировать, вызвать domain, сохранить
+
+**На практике:**
+
+- **Domain Model** — `final class Order { ... }` без Eloquent, чистый PHP с methods (`addItem`, `calculateTotal`)
+- **Domain Services** — `PricingService`, `TaxCalculator`
+- **Application Services** — `PlaceOrderUseCase` (вызывает domain + сохраняет через repository interface)
+- **Infrastructure** — `EloquentOrderRepository implements OrderRepository`, controllers, Laravel-инфра
+
+**Связь с DDD:** Onion часто используется как **техническое воплощение** Domain-Driven Design — bounded context = одна «луковица».
+
+**Когда брать:** богатая доменная модель (`Order`, `Account`, `Transfer`), долгоживущая система. **Когда НЕ брать:** CRUD с минимальной логикой.',
                 'difficulty' => 4,
                 'topic' => 'system_design.architecture',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Anti-Corruption Layer?',
-                'answer' => 'Anti-Corruption Layer (ACL) - прослойка между двумя bounded contexts, которая транслирует данные и не даёт чужой модели "испортить" твою. Простыми словами: переводчик на границе, который превращает данные внешнего сервиса (например, легаси-CRM) в чистые объекты твоего домена. Если завтра CRM поменяют - правишь только ACL, остальной код не трогаешь.',
+                'answer' => '**Anti-Corruption Layer (ACL)** — прослойка между **двумя bounded contexts** (или твоим доменом и внешним сервисом), которая **транслирует данные** и **не даёт чужой модели «испортить» твою**.
+
+Термин из **DDD** (Eric Evans, 2003). Аналогия: **переводчик на границе** между странами — данные на одном языке/формате идут к тебе, на другом возвращаются.
+
+**Зачем нужен:**
+
+1. **Изоляция от legacy** — старая CRM с косыми именами полей (`full_name`, `client_id`, `contact_email`) не должна засорять твой чистый домен
+2. **Защита от изменений внешнего API** — Stripe поменял формат webhook → правишь только ACL, остальной код не трогаешь
+3. **Bounded context separation** — у каждого микросервиса своя модель `User`, ACL транслирует между ними
+4. **Семантический мостик** — `client_data` в legacy = `Customer` в твоём домене с дополнительной валидацией
+
+**Что внутри ACL:**
+
+- **Mapper** — преобразование DTO ↔ domain object
+- **Translator** — семантический перевод (статусы, enum)
+- **Adapter** — технический мостик (HTTP-клиент, SOAP-парсер)
+- **Validator** — отсев невалидных данных от external
+
+**Когда нужен ACL:**
+
+- **Интеграция с legacy** монолитом / CRM / ERP с устоявшейся моделью
+- **Внешний публичный API** (Stripe, Twilio, GitHub API) с непостоянным контрактом
+- **Strangler Fig** — новый сервис разговаривает с монолитом только через ACL
+- **Между bounded contexts** в монорепо
+
+**Когда НЕ нужен:**
+
+- **Прямой контроль** над обеими сторонами + согласованная модель
+- **Простой CRUD** без доменной логики
+- **Внутренний API** с гарантированным контрактом
+
+**Пример переводов:**
+
+| Legacy (CRM) | Domain |
+|---|---|
+| `client_id: 42` | `Customer::id` |
+| `full_name: "John Doe"` | `Customer::name` |
+| `contact_email: "j@e.com"` | `Customer::email` (после валидации) |
+| `status_code: "A"` | `CustomerStatus::Active` (enum) |
+
+**Гранулярность:** ACL может быть **тонкой** (просто mapper) или **толстой** (целый bounded context с собственными moeded entities, ведущий «двойной учёт» — внутреннюю модель и legacy-вид).',
                 'code_example' => '<?php
 class LegacyCrmAcl {
     public function __construct(private LegacyCrmClient $crm) {}
@@ -459,7 +627,67 @@ class LegacyCrmAcl {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Saga: чем отличается choreography (хореография) от orchestration (оркестрация)?',
-                'answer' => 'Saga - паттерн распределённых транзакций, где локальные транзакции каждого сервиса связываются цепочкой, и при сбое одного шага запускаются compensating actions (обратные операции). Реализуется в двух стилях. Choreography (хореография): нет центрального координатора - каждый сервис слушает события и решает сам, что делать дальше. Order создан → publish OrderCreated → Payment слушает, списывает деньги → publish PaymentCharged → Inventory слушает, резервирует товар → publish InventoryReserved → ... При сбое сервис publish-ит компенсирующее событие (например, PaymentFailed), на которое подписаны все, кому нужно откатить свою часть. Плюсы: слабая связность, нет SPOF, легко добавлять новых участников. Минусы: бизнес-процесс "размазан" по сервисам - трудно понять текущее состояние саги; сложно отслеживать и дебажить (нужен distributed tracing); легко получить циклы и неявные зависимости. Orchestration (оркестрация): есть центральный сервис-оркестратор (saga orchestrator/manager), который явно вызывает шаги и обрабатывает их результаты, ведя state machine саги. Order Saga: оркестратор шлёт ChargePaymentCommand → ждёт ответа → шлёт ReserveInventoryCommand → ... При сбое оркестратор шлёт компенсации в обратном порядке. Плюсы: бизнес-логика в одном месте, явная state machine, проще debug. Минусы: оркестратор - SPOF и узкое место по нагрузке; сильная связь сервисов с оркестратором. Когда что: choreography - простые саги из 2-3 шагов, событийная архитектура. Orchestration - сложные саги (5+ шагов, ветвления, retry-логика), регулируемые домены. Реализации: Temporal, Camunda, AWS Step Functions для orchestration; Kafka/RabbitMQ + outbox для choreography.',
+                'answer' => '**Saga** — паттерн **распределённых транзакций**, где локальные транзакции каждого сервиса связываются цепочкой, и при сбое одного шага запускаются **compensating actions** (обратные операции). Распределённый ACID невозможен — Saga даёт **eventual consistency** с компенсациями.
+
+Реализуется в **двух стилях**:
+
+| | **Choreography** (хореография) | **Orchestration** (оркестрация) |
+|---|---|---|
+| **Координатор** | **нет**, каждый сервис сам решает | **центральный orchestrator** |
+| **Связь** | через события (event bus) | через команды от orchestrator |
+| **State machine** | размазана по сервисам | явная, в orchestrator |
+| **Дебаг** | сложный (нужен distributed tracing) | проще (state в одном месте) |
+| **SPOF** | нет | orchestrator (нужен HA) |
+| **Связность** | слабая | сильная (все знают orchestrator) |
+| **Подходит для** | 2-3 шага, простой flow | 5+ шагов, ветвления, retry |
+
+**Choreography (хореография):**
+
+Каждый сервис **слушает события** и решает сам, что делать.
+
+```
+Order создан → publish OrderCreated
+  → Payment слушает → списывает → publish PaymentCharged
+  → Inventory слушает → резервирует → publish InventoryReserved
+  → Shipping слушает → планирует → publish OrderConfirmed
+```
+
+При сбое сервис publish-ит **компенсирующее событие** (`PaymentFailed`), на которое подписаны все, кому нужно откатить свою часть.
+
+**Плюсы:** loose coupling, нет SPOF, легко добавлять новых участников
+**Минусы:** бизнес-процесс **размазан** по сервисам, трудно понять текущее состояние саги, легко получить **циклы** и неявные зависимости
+
+**Orchestration (оркестрация):**
+
+Центральный **orchestrator** явно вызывает шаги и обрабатывает результаты, ведя state machine.
+
+```
+OrderSagaOrchestrator:
+  ChargePaymentCommand → response
+  ReserveInventoryCommand → response
+  ScheduleShippingCommand → response
+  → SagaCompleted
+
+При сбое — компенсации в ОБРАТНОМ порядке:
+  CancelShipping → ReleaseInventory → RefundPayment
+```
+
+**Плюсы:** бизнес-логика в **одном месте**, явная state machine, проще debug
+**Минусы:** orchestrator — SPOF и узкое место по нагрузке, сильная связь сервисов с orchestrator
+
+**Когда что:**
+
+- **Choreography** — простые саги из 2-3 шагов, event-driven архитектура, нет центрального владельца процесса
+- **Orchestration** — сложные саги (5+ шагов, ветвления, retry-логика), регулируемые домены (банкинг, страховка), нужен audit trail
+
+**Реализации:**
+
+| Тип | Инструменты |
+|---|---|
+| **Orchestration** | **Temporal**, **Camunda**, **AWS Step Functions**, **Netflix Conductor** |
+| **Choreography** | `Kafka`/`RabbitMQ` + **Transactional Outbox** + idempotent consumers |
+
+**Outbox pattern** обязателен для choreography — гарантирует, что event опубликуется **iff** локальная транзакция закоммитилась.',
                 'code_example' => '<?php
 // CHOREOGRAPHY (события)
 class PaymentService
@@ -515,7 +743,59 @@ class OrderSagaOrchestrator
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Strangler Fig pattern и как им безопасно распилить монолит?',
-                'answer' => 'Strangler Fig (Strangler Application) - паттерн от Мартина Фаулера для постепенной замены legacy-системы новой, без полного переписывания "всё с нуля" (Big Bang rewrite, который проваливается в большинстве случаев из-за scope creep, потерянной бизнес-логики и год без релизов). Аналогия из природы: фиговое дерево обвивает старое дерево, постепенно "душит" его и в конце концов занимает его место - старое дерево становится опорой и в итоге погибает. В коде так же: новая система растёт вокруг старой, забирая по одной функции, пока legacy не остаётся пустой оболочкой. Механика: 1) Перед монолитом ставится фасад - API Gateway, reverse-proxy (nginx/HAProxy/Envoy), service mesh, или просто роутер на уровне фреймворка. 2) Все запросы пока идут в монолит как обычно. 3) Создаётся новый сервис с одной (!) функциональностью - например, "регистрация пользователей". 4) На фасаде роут "POST /users" переключается с монолита на новый сервис. Все остальные роуты по-прежнему идут в монолит. 5) Шаг повторяется для других областей: каждый раз - один эндпоинт, один use-case, один bounded context. Месяцами и годами. 6) В конце монолит больше ничего не обслуживает - его выключают. Плюсы: 1) Постоянная работа с прода - можно откатить любой шаг. 2) Бизнес продолжает релизить фичи параллельно. 3) Снижение риска - на любом этапе можно остановиться. 4) Легко обоснуется бизнесу (incremental value). Подводные камни: 1) Общая БД - часто новый сервис вынужден читать монолитную БД, создаётся anti-corruption layer / replicated read-store через CDC. 2) Аутентификация и сессии - решается через единый Auth-сервис или валидацию JWT в обоих. 3) Транзакции, которые были одной DB-транзакцией в монолите, становятся распределёнными - нужны Saga/Outbox. 4) Дольше живёт суммарно (год legacy + год переписывания), но риск меньше. 5) Команда должна быть дисциплинированной - иначе новые фичи будут добавляться и в монолит, и в микросервис, и удушения не произойдёт.',
+                'answer' => '**Strangler Fig** (Strangler Application) — паттерн от **Мартина Фаулера** (2004) для **постепенной замены** legacy-системы новой, без полного переписывания **«всё с нуля»**.
+
+**Почему не Big Bang rewrite:**
+
+- **Scope creep** — оригинальная функциональность за годы обросла кейсами, которых нет в спеке
+- **Потерянная бизнес-логика** — недокументированные edge cases
+- **Год без релизов** — бизнес против
+- **Все провалы 2nd-system effect** (Joel Spolsky: «Things You Should Never Do, Part I»)
+
+**Аналогия из природы:** фиговое дерево **обвивает** старое дерево, постепенно «душит» его и в конце концов занимает его место. В коде так же: новая система **растёт вокруг старой**, забирая по одной функции, пока legacy не остаётся пустой оболочкой.
+
+**Механика:**
+
+1. **Фасад перед монолитом** — API Gateway, reverse proxy (`nginx`/`HAProxy`/`Envoy`), service mesh, или роутер фреймворка
+2. **Все запросы пока идут в монолит** как обычно
+3. **Новый сервис** с **одной** функциональностью (например, «регистрация пользователей»)
+4. **На фасаде роут переключается** — `POST /users` → новый сервис, остальное → монолит
+5. **Шаг повторяется** — один эндпоинт, один use-case, один bounded context. **Месяцами и годами**
+6. **В конце монолит выключается**
+
+**Плюсы:**
+
+- **Постоянная работа с прода** — можно откатить любой шаг
+- **Бизнес продолжает релизить** фичи параллельно
+- **Снижение риска** — на любом этапе можно остановиться
+- **Легко обосновать бизнесу** (incremental value)
+
+**Подводные камни:**
+
+| Проблема | Решение |
+|---|---|
+| **Общая БД** — новый сервис читает монолитную БД | Anti-Corruption Layer / replicated read-store через **CDC** (Debezium) |
+| **Auth/сессии** | Единый Auth-сервис, JWT для обоих |
+| **Distributed transactions** | **Saga + Outbox** вместо одной DB-транзакции |
+| **Дольше живёт суммарно** | Принимаем — риск меньше Big Bang |
+| **Дисциплина команды** | Запрет добавлять фичи в legacy после старта удушения |
+
+**Branch-by-abstraction (внутри монолита):**
+
+1. Интерфейс `UserService` (абстракция)
+2. Две реализации: `LegacyUserService` (DB monolith) и `RemoteUserService` (HTTP к новому)
+3. **Feature flag** (`Laravel Pennant`) переключает между ними
+4. Сначала `1%` юзеров на Remote, потом `50%`, потом `100%`
+5. Удаляется `LegacyUserService`
+
+**Anti-corruption layer (DDD):** новый сервис общается со старым через **адаптер**, который переводит legacy data model в чистую domain-модель нового сервиса. **Legacy не загрязняет** новый код своей семантикой.
+
+**Когда НЕ работает Strangler:**
+
+- **Монолит без явных границ** — невозможно вырезать один use-case
+- **Сильно связанная общая БД** с FK везде
+- **Нет фасада на входе** (нельзя поставить proxy)
+- **Команда не дисциплинирована** — фичи продолжают писаться в монолит',
                 'code_example' => '# Шаг 0: всё в монолите
 # nginx.conf
 location / { proxy_pass http://monolith; }
@@ -621,14 +901,140 @@ location /     { proxy_pass http://monolith; }   # последние 5% - repor
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое service mesh?',
-                'answer' => 'Service mesh - инфраструктурный слой для взаимодействия микросервисов. Прокси (sidecar) рядом с каждым сервисом перехватывает весь сетевой трафик и обеспечивает: retry, circuit breaker, mTLS, tracing, traffic splitting (canary), rate limiting - без изменений в коде сервисов. Простыми словами: общий "сетевой стек" для всех сервисов вынесен в инфраструктуру. Реализации: Istio, Linkerd, Consul Connect. Sidecar обычно Envoy.',
+                'answer' => '**Service mesh** — инфраструктурный слой для взаимодействия микросервисов. **Прокси (sidecar) рядом с каждым сервисом** перехватывает весь сетевой трафик и предоставляет **сетевые возможности из коробки**, **без изменений в коде сервисов**.
+
+**Идея:** «общий сетевой стек» для всех сервисов **вынесен в инфраструктуру** — каждый сервис общается с локальным `127.0.0.1:proxy`, а тот разруливает всё остальное.
+
+**Архитектура:**
+
+| Plane | Что | Примеры |
+|---|---|---|
+| **Data plane** | sidecar-прокси рядом с каждым сервисом | **`Envoy`**, `Linkerd2-proxy` |
+| **Control plane** | управление всеми sidecar-ами, политики | `Istio`, `Linkerd`, `Consul Connect` |
+
+**Что даёт без изменений кода:**
+
+- **`mTLS`** — взаимная TLS-аутентификация между всеми сервисами (zero-trust сеть)
+- **Retry с backoff** — авто-повтор failed запросов
+- **Circuit breaker** — отрубить мёртвый сервис
+- **Timeout enforcement** — ни один запрос не висит больше N
+- **Rate limiting** между сервисами
+- **Traffic splitting** — `90%` в `v1`, `10%` в `v2` (canary)
+- **Distributed tracing** — авто-инжект `traceparent`
+- **Observability** — метрики L4/L7 без инструментирования кода
+- **Access policies** — `service A` может вызывать `B`, но не `C`
+
+**Популярные реализации:**
+
+| | **Istio** | **Linkerd** | **Consul Connect** |
+|---|---|---|---|
+| **Sidecar** | Envoy | linkerd2-proxy (Rust) | Envoy |
+| **Сложность** | **высокая** | **низкая** | средняя |
+| **Performance** | средняя | **лучшая** | средняя |
+| **Features** | **максимум** | минимум, но всё нужное | средне |
+| **Ambient mode** (без sidecar) | да (новое) | нет | нет |
+
+**Плюсы:**
+
+- **Полиглот** — `Java`, `Go`, `PHP`, `Python` получают одинаковые capabilities
+- **Centralized policy** — security/traffic правила в одном месте
+- **Zero-trust** в сети
+
+**Минусы:**
+
+- **Overhead** — каждый запрос идёт через sidecar (`+1-3ms` latency, `+CPU/memory`)
+- **Сложность** — управление mesh-ом сравнимо с управлением микросервисами
+- **Debugging** — добавляется ещё один hop
+- **Cost** — `100 pods × 100 МБ sidecar = 10 ГБ` overhead
+
+**Когда брать:**
+
+- **20+ микросервисов** на разных языках
+- **Zero-trust security** требование
+- **Compliance** требует mTLS
+
+**Когда НЕ брать:**
+
+- Монолит / `<10` сервисов
+- Один язык — проще библиотека (`Polly` в .NET, `Resilience4j` в Java)
+- Маленькая команда без SRE
+
+**Ambient mode (Istio 2024+):** новый подход **без sidecar-ов** — общий ztunnel на ноду + waypoint proxy для L7. Снижает overhead, упрощает upgrade.',
                 'difficulty' => 5,
                 'topic' => 'system_design.architecture',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое event-driven architecture?',
-                'answer' => 'Event-driven architecture - сервисы общаются через события вместо прямых вызовов. Сервис A публикует "OrderCreated" в шину (Kafka, RabbitMQ), сервисы B, C, D подписываются и реагируют каждый по-своему. Простыми словами: вместо телефонных звонков - публикация новостей в газете. Плюсы: loose coupling, легко добавить нового подписчика, асинхронность. Минусы: сложнее дебажить, eventual consistency, нужна хорошая обсервабилити для трассировки.',
+                'answer' => '**Event-Driven Architecture (EDA)** — сервисы общаются через **события вместо прямых вызовов**. Один сервис **публикует** событие, остальные подписываются и реагируют асинхронно.
+
+Аналогия: **публикация новостей в газете** вместо телефонных звонков. Издатель не знает, кто читает; читатели сами решают, на что реагировать.
+
+**Поток:**
+
+```
+Order Service → publish OrderCreated event → Event Bus (Kafka/RabbitMQ)
+                                                ↓
+                              ┌─────────────────┼─────────────────┐
+                              ↓                 ↓                 ↓
+                       Inventory Service  Payment Service   Email Service
+                       (резервирует)      (списывает)       (шлёт письмо)
+```
+
+**Виды событий:**
+
+| Тип | Что | Пример |
+|---|---|---|
+| **Domain events** | факт изменения в домене | `OrderCreated`, `PaymentReceived` |
+| **Integration events** | для внешних подписчиков | `OrderShipped` (с PII фильтрацией) |
+| **Event-carried state transfer** | событие содержит **полный snapshot** | весь Order в payload |
+| **Event notification** | только указатель «иди забери» | `id=42 changed` |
+
+**Стили event-driven:**
+
+| Стиль | Что | Когда |
+|---|---|---|
+| **Publish-Subscribe** | broadcast, fire-and-forget | уведомления, audit log |
+| **Event Sourcing** | event store как source of truth | финансы, аудит, time-travel |
+| **CQRS + events** | разделение write/read через события | сложные read-views |
+| **Saga (choreography)** | распределённые транзакции через события | мульти-сервис flow |
+| **Event streaming** | log-based processing (Kafka) | analytics, ML, real-time |
+
+**Плюсы:**
+
+- **Loose coupling** — publisher не знает о subscribers
+- **Легко добавить нового подписчика** — без правок publisher-а
+- **Асинхронность** — publisher не ждёт consumers
+- **Scalability** — каждый consumer масштабируется независимо
+- **Replay** — Kafka позволяет переиграть события (debug, миграция)
+- **Resilience** — упавший consumer догонит из очереди
+
+**Минусы:**
+
+- **Сложнее дебажить** — нет stack trace через всю систему
+- **Eventual consistency** — данные **временно** несогласованны
+- **Нужна observability** для трассировки (`distributed tracing`)
+- **Out-of-order delivery** — event B может прийти раньше A
+- **Duplicate delivery** — at-least-once требует idempotent consumers
+- **Schema evolution** — изменение event-payload ломает старых consumers
+
+**Обязательные практики:**
+
+- **Transactional Outbox** — гарантия, что event опубликуется **iff** локальная транзакция закоммитилась
+- **Idempotent consumers** — повторная обработка не ломает state
+- **Event versioning** — `OrderCreatedV1`, `OrderCreatedV2`, schema registry
+- **Distributed tracing** — `traceparent` пробрасывается через события
+- **Dead Letter Queue (DLQ)** — для невозможно обработанных событий
+
+**Инструменты:**
+
+- **Kafka** — log-based, replay, высокий throughput
+- **RabbitMQ** — message broker, гибкие routing rules
+- **AWS EventBridge** / **GCP Pub/Sub** — managed
+- **NATS** — лёгкий, высокая скорость
+- **Redis Streams** — если Redis уже есть
+
+**Когда брать:** микросервисы с асинхронными flow, sporadic high load, нужна resilience. **Когда НЕ брать:** простой sync flow с двумя сервисами — REST/gRPC проще.',
                 'difficulty' => 4,
                 'topic' => 'system_design.architecture',
             ],

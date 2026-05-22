@@ -66,7 +66,42 @@ class Assemble
             [
                 'category' => 'Laravel',
                 'question' => 'Собери транзакцию с retry на 3 попытки.',
-                'answer' => 'DB::transaction(closure, attempts: N) сам повторяет транзакцию при ошибках конкуренции (deadlock, serialization failure, lock wait timeout - всё, что ConcurrencyErrorDetector считает таковым). На constraint violation, syntax error и обычный QueryException ретрая нет - исключение пробрасывается сразу.',
+                'answer' => '**`DB::transaction($closure, $attempts)`** — обёртка над `BEGIN/COMMIT/ROLLBACK` с **автоматическим retry при ошибках конкуренции**.
+
+**Поведение:**
+
+1. Открывает транзакцию.
+2. Выполняет closure.
+3. Если closure кинул исключение **типа concurrency error** — откат, **повтор** до `$attempts` раз.
+4. Если closure прошёл успешно — `COMMIT`.
+5. Если исключение **не concurrency** — пробрасывается **сразу**, без retry.
+
+**Что считается concurrency error (ретраится):**
+
+| Ошибка | Когда |
+|---|---|
+| **Deadlock** (SQLSTATE 40001 / 40P01) | Два транзакции взаимно ждут друг друга |
+| **Serialization failure** | PostgreSQL Serializable isolation conflict |
+| **Lock wait timeout** | MySQL — `innodb_lock_wait_timeout` |
+
+**Что НЕ ретраится (бросается сразу):**
+
+- **Constraint violation** (unique, foreign key) — SQLSTATE 23xxx.
+- **Syntax error** — баг кода.
+- **Обычный `QueryException`** на missing-таблице и т.п.
+- **Бизнес-исключения** в closure.
+
+**Полезные паттерны внутри:**
+
+- **`lockForUpdate()`** — `SELECT ... FOR UPDATE`, блокирует строку до commit-а (защита от race).
+- **`sharedLock()`** — `SELECT ... FOR SHARE`, чтение с защитой от изменений.
+- **`DB::afterCommit(fn () => ...)`** — отложить действие до успешного commit (диспатч job, отправка письма).
+
+**Подводные камни:**
+
+- **Не использовать `try/catch` ВНУТРИ** closure для подавления — поломаете retry-логику.
+- **Не делать долгие HTTP-вызовы** внутри транзакции — держите connection-пул и блокировки строк.
+- **`$attempts` стандартный = 1** (без retry) — для критичных операций задавайте `3-5`.',
                 'assemble_chunks' => [
                     'DB::',
                     'transaction(function () {',

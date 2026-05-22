@@ -47,7 +47,79 @@ User::all()
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между Collection и LazyCollection и когда её использовать?',
-                'answer' => 'Collection держит все элементы в памяти сразу - O(N) RAM. LazyCollection обёртывает PHP-Generator: операции (map/filter/take) не выполняются до первого forEach/reduce и не материализуют весь поток - O(1) память. Идеальна для построчной обработки больших файлов, cursor()-выборок Eloquent, импорта CSV. КРИТИЧЕСКАЯ ОСОБЕННОСТЬ - short-circuit на first()/take(): LazyCollection->filter(...)->first() остановит генератор на первом совпадении, тогда как обычная Collection->filter()->first() сначала отфильтрует ВЕСЬ массив, потом возьмёт первый элемент. То же для take(N) - lazy завершает обход после N совпадений. Ограничение: итератор однопроходный, count() или повторная итерация требуют remember()/eager(), что снова грузит в память.',
+                'answer' => '**Сравнение по памяти и lazy-семантике:**
+
+| | **`Collection`** | **`LazyCollection`** |
+|---|---|---|
+| Память | **O(N) RAM** — все элементы сразу | **O(1)** — обёртка над `Generator` |
+| Когда выполняются операции | Сразу (eager) | **Отложенно** до `forEach`/`reduce`/`first` |
+| Source | Массив | Generator / yield |
+| Short-circuit на `first()`/`take()` | **Нет** — обходит весь массив | **Да** — стоп на первом совпадении |
+| Повторная итерация | **Да** | **Нет** (только через `remember()`) |
+| `count()` | O(1) если массив | **Материализует** — снова N память |
+
+**КРИТИЧЕСКАЯ ОСОБЕННОСТЬ — short-circuit:**
+
+- **`Collection->filter(...)->first()`** — сначала отфильтрует **ВЕСЬ** массив, потом возьмёт первый элемент.
+- **`LazyCollection->filter(...)->first()`** — остановит генератор **на первом** совпадении.
+- Аналогично **`take(N)`** — lazy завершает обход после N совпадений.
+
+**Где применять `LazyCollection`:**
+
+| Сценарий | Источник |
+|---|---|
+| **Построчная обработка больших файлов** | `fopen` + `yield $line` |
+| **`Model::cursor()`** / **`Model::lazy()`** | Eloquent с миллионами строк |
+| **CSV-импорт** | `fgetcsv` + `yield` |
+| **`LazyCollection::times(INF)`** | Бесконечные последовательности |
+| **`Model::lazyById($chunkSize)`** | Batch-обработка с chunkById под капотом |
+
+**Ограничения:**
+
+- **Однопроходный итератор** — после полного обхода нельзя вернуться к началу.
+- **`count()`** или повторная итерация требуют **`remember()`** / **`eager()`** — что снова грузит в память (фактически конвертирует в обычную Collection).
+- **Нельзя индексировать** — нет `$lazy[5]`.
+
+**Альтернативы:**
+
+- **`chunk(1000)`** на обычной Collection — компромисс: чанк в памяти, но не весь массив.
+- **`chunkById()`** на Eloquent — то же на уровне БД.',
+                'code_example' => '<?php
+use Illuminate\\Support\\LazyCollection;
+
+// 1) Big-file streaming + take(10) — читает только до 10-й ERROR-строки
+LazyCollection::make(function () {
+    \$handle = fopen("huge.log", "r");
+    while ((\$line = fgets(\$handle)) !== false) {
+        yield \$line;
+    }
+    fclose(\$handle);
+})
+->filter(fn (\$l) => str_contains(\$l, "ERROR"))
+->take(10)
+->each(fn (\$l) => print \$l);
+
+// 2) Short-circuit на first() — expensiveCheck вызовется не INF раз
+LazyCollection::times(INF)
+    ->map(fn (\$n) => expensiveCheck(\$n))
+    ->first(fn (\$v) => \$v === "match");
+
+// 3) CSV-импорт чанками без памяти на весь файл
+LazyCollection::make(function () {
+    \$h = fopen("big.csv", "r");
+    while ((\$row = fgetcsv(\$h)) !== false) yield \$row;
+    fclose(\$h);
+})
+->chunk(1000)
+->each(fn (\$chunk) => Order::insert(\$chunk->toArray()));
+
+// 4) Eloquent lazy() — миллион строк без памяти
+User::lazy()->each(fn (\$u) => \$u->recalculateStats());
+
+// 5) Eloquent lazyById() — батч-обработка с пагинацией по PK
+User::where("status", "active")
+    ->lazyById(1000)
+    ->each(fn (\$u) => SendReminderJob::dispatch(\$u));',
                 'code_example' => 'use Illuminate\Support\LazyCollection;
 
 // Big-file streaming + take(10) - читает только до 10-й ERROR-строки

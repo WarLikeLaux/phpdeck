@@ -177,28 +177,372 @@ Then он видит главную страницу
             [
                 'category' => 'PHP',
                 'question' => 'Что такое mutation testing и зачем оно нужно при высоком coverage?',
-                'answer' => 'Mutation testing вносит маленькие правки в исходный код (меняет + на -, true на false, удаляет return) и прогоняет существующие тесты на каждой такой мутации. Если тесты проходят — мутант «выжил», значит тесты не проверяют это поведение, даже если строка считается покрытой. Метрика mutation score показывает реальную силу набора тестов; в PHP-экосистеме стандартный инструмент — Infection.',
+                'answer' => '**Mutation testing** проверяет **силу набора тестов**, а не только наличие выполнения кода. **Coverage** показывает «строка прошла» — а mutation testing отвечает на вопрос «**если я сломаю эту строку, тесты упадут?**».
+
+**Как работает:**
+
+1. Инструмент берёт исходный код и вносит **маленькие синтаксические правки** — **мутации**:
+
+| Тип мутации | Что меняет |
+| --- | --- |
+| `+` → `-` | арифметика |
+| `<` → `<=`, `>` → `>=` | границы сравнений |
+| `true` → `false`, `&&` → `\\|\\|` | булева логика |
+| удалить **`return`** | контроль потока |
+| `if (\$x)` → `if (! \$x)` | инверсия условия |
+| убрать вызов метода (особенно `void`-сеттеров) | side-effects |
+
+2. На **каждой мутации отдельно** прогоняется весь набор тестов
+3. **Возможные исходы для одной мутации:**
+
+| Исход | Что значит |
+| --- | --- |
+| **Killed** (хорошо) | тесты упали → они **реально проверяют** эту строку |
+| **Survived** (плохо) | тесты прошли несмотря на сломанный код → **пробел в тестах** |
+| **Timeout** | мутация ввела бесконечный цикл — считается killed |
+| **Not Covered** | строку никакой тест вообще не выполнял → нужно повышать coverage |
+| **Equivalent** | мутация не меняет поведение (например, `i++` → `++i`) — нормально |
+
+**Метрика — Mutation Score Indicator (MSI):**
+
+```
+MSI = killed_mutations / total_mutations * 100%
+```
+
+**Шкала качества:**
+
+| MSI | Состояние тестов |
+| --- | --- |
+| < 50% | **плохо** — большинство тестов «проходят без проверок» |
+| 50-70% | средне — есть пробелы |
+| 70-85% | **хорошо** — тесты ловят реальные баги |
+| > 85% | очень хорошо, дальше — diminishing returns |
+| 100% | подозрительно — либо очень узкий код, либо тесты переоптимизированы под коверу |
+
+**Стандартный инструмент в PHP — Infection:**
+
+```
+composer require --dev infection/infection
+vendor/bin/infection --min-msi=70 --threads=4
+```
+
+**Конфиг (`infection.json5`):**
+
+```json5
+{
+  source: { directories: ["src"] },
+  mutators: { "@default": true },
+  logs: { html: "infection.html", text: "infection.txt" },
+  testFramework: "phpunit",
+  threads: 4,
+}
+```
+
+**Канонический пример пропуска coverage:**
+
+```php
+function discount(int \$age): float {
+    if (\$age >= 18) {
+        return 0.1;  // 10% для взрослых
+    }
+    return 0.2;
+}
+
+// Тест проверяет только возврат для \$age=20
+public function test_adult(): void {
+    \$this->assertSame(0.1, discount(20));
+}
+```
+
+- **Line coverage** покажет: `100%` (обе строки выполнились в каком-то прогоне)
+- **Mutation testing** покажет: мутация `>=` → `>` **выжила** — тест `\$age=20` ничего не заметит, ведь `20 > 18` всё равно `true`. Нужен тест на `\$age=18` или `\$age=17`.
+
+**Когда внедрять:**
+
+- проект **зрелый**, базовый coverage 70%+
+- есть **CI-бюджет** — Infection в 10× медленнее PHPUnit (каждая мутация — отдельный прогон)
+- команда готова **читать survived-отчёты** и дописывать тесты
+
+**Подводные камни:**
+
+- очень дорогое по CPU — обычно гоняют только на изменённых файлах в PR
+- **Equivalent mutations** — мутации, не меняющие поведения; Infection не всегда их распознаёт, дают false-negative
+- **`@mutator-ignore`** аннотация для исключения частей кода (например, генерируемого)',
                 'difficulty' => 4,
                 'topic' => 'php.testing',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Чем мок отличается от стаба и от спая?',
-                'answer' => 'Стаб (stub) просто возвращает заранее заданные значения и нужен, чтобы прокормить тестируемый код данными. Мок (mock) дополнительно содержит ожидания относительно вызовов — какие методы, с какими аргументами и сколько раз должны быть вызваны, и тест падает, если ожидания не выполнены. Spy похож на стаб, но запоминает фактические вызовы для проверки постфактум, без жёстких ожиданий заранее.',
+                'answer' => '**Терминология Gerard Meszaros — «xUnit Test Patterns».** Все три — **test doubles** (подмены), но отличаются **назначением и точкой проверки**.
+
+| Свойство | **Stub** | **Mock** | **Spy** |
+| --- | --- | --- | --- |
+| **Зачем** | дать данные | проверить вызов | записать вызовы |
+| **Когда задаются ожидания** | нет ожиданий | **до** действия (`expect`) | нет (проверяем после) |
+| **Где проверка** | в `assertEquals` на результат | сам мок падает, если не вызвали | `assert*Called` **после** действия |
+| **Кто падает** | assertion в тесте | сам мок (`expectation failed`) | assertion в тесте |
+| **Стиль** | state verification | behavior verification | state + history |
+| **Риск зелёного теста без проверки** | низкий | низкий | **высокий** (забыли assert — тест зелёный) |
+| **PHPUnit** | `createStub()`, `createMock()->method()->willReturn()` | `expects(\$this->once())->method(...)` | `expects(\$this->any())` + `getInvocations()` |
+| **Mockery** | `mock()->shouldReceive("x")->andReturn("y")` | `shouldReceive(...)->once()->with(...)` | `spy(Class::class)` + `shouldHaveReceived("x")` |
+
+**Канонические примеры:**
+
+**Stub — кормим данными:**
+
+```php
+\$repo = \$this->createStub(UserRepository::class);
+\$repo->method("find")->willReturn(new User("Иван"));
+
+\$service = new UserService(\$repo);
+\$result = \$service->greet(42);
+
+\$this->assertSame("Привет, Иван", \$result);  // проверяем СОСТОЯНИЕ
+```
+
+**Mock — проверяем взаимодействие:**
+
+```php
+\$mailer = \$this->createMock(Mailer::class);
+\$mailer
+    ->expects(\$this->once())
+    ->method("send")
+    ->with(\$this->equalTo("user@example.com"), \$this->stringContains("welcome"));
+
+(new RegisterService(\$mailer))->register("user@example.com");
+// мок САМ упадёт, если send не вызван или с другими аргументами
+```
+
+**Spy — постфактум-проверка (Laravel `Bus::fake()` стиль):**
+
+```php
+Bus::fake();
+\$this->controller->dispatch();
+
+Bus::assertDispatched(SendEmailJob::class);   // ← assertion ПОСЛЕ
+Bus::assertDispatchedTimes(SendEmailJob::class, 1);
+```
+
+**Когда что выбирать:**
+
+| Сценарий | Что брать |
+| --- | --- |
+| Тестируемый код **возвращает результат** | **Stub** + проверка результата |
+| Тестируемый код **должен вызвать** зависимость (Mailer, Logger, EventDispatcher) | **Mock** |
+| Хочу **гибкую** проверку «вызывали или нет, сколько раз, с чем» | **Spy** |
+| Нужно **изолировать** дорогую зависимость без проверок | **Dummy** или **Stub** |
+
+**Антипаттерн с моками — `MockObsession`:**
+
+- 5+ моков в одном тесте → код слишком тесно связан, нужен рефакторинг
+- мокаются собственные классы → лучше **классическая школа TDD** (Detroit-style): мокать только границы (БД, HTTP, время)
+- мокать `Eloquent::find` — это тестирование **PHPUnit**, а не вашей логики
+
+**Дополнительные test doubles:**
+
+| Тип | Назначение |
+| --- | --- |
+| **Dummy** | передаётся, но не используется (заглушка для типа) |
+| **Fake** | рабочая, но упрощённая реализация (in-memory repository) |
+| **Stub** | возвращает константы |
+| **Spy** | записывает вызовы |
+| **Mock** | проверяет вызовы заранее |',
                 'difficulty' => 4,
                 'topic' => 'php.testing',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Почему статические методы и final-классы тяжело мокировать и что с этим делать?',
-                'answer' => 'PHPUnit мокирует через подкласс с переопределением методов, поэтому final-класс и статический метод подменить штатно не получится. Решения — DG/bypass-finals, Mockery с alias/overload, или инструменты, переписывающие байткод/файлы тестов перед запуском. Но это симптом проблемы дизайна: если приходится мокировать static, лучше спрятать зависимость за интерфейсом и внедрять её через DI — тогда мок становится тривиальным.',
+                'answer' => '**Корневая причина:** PHPUnit реализует моки **через автогенерированный подкласс** с переопределёнными методами.
+
+**Что блокирует:**
+
+| Конструкция | Почему не мокается |
+| --- | --- |
+| **`final class`** | нельзя наследоваться → нельзя сгенерировать подкласс |
+| **`final` метод** | нельзя переопределить даже в подклассе |
+| **Статический метод** | вызывается через `Class::method()` без объекта → не на что подменять `\$this` |
+| **`new SomeClass()` внутри тестируемого кода** | подмена реализации не передастся |
+| **Глобальные функции** (`time()`, `file_get_contents()`) | нельзя переопределить из PHP |
+
+**Три класса решений:**
+
+**1. Хирургические инструменты (помогают, но симптоматически)**
+
+| Пакет | Что делает |
+| --- | --- |
+| **`dg/bypass-finals`** | через PHP stream-wrapper переписывает `final` в `非final` при загрузке классов в тестах |
+| **`Mockery`** с **`alias:`** | заменяет **класс целиком** в class table (только до первого реального вызова) |
+| **`Mockery`** с **`overload:`** | подменяет конструктор класса — `new Foo()` отдаёт мок |
+| **`uopz`** (PHP-расширение) | runtime-патчинг функций и методов |
+| **AspectMock** | AOP-подход — врезается в байткод через Go AOP |
+| **`bovigo/callmap`** | для лёгких подмен |
+
+**Пример Mockery alias:**
+
+```php
+\$mock = \\Mockery::mock("alias:Carbon\\\\Carbon");
+\$mock->shouldReceive("now")->andReturn(Carbon::parse("2026-01-01"));
+// Carbon::now() везде в тесте вернёт фиксированную дату
+```
+
+**2. Рефакторинг под DI (правильный путь)**
+
+```php
+// ❌ Плохо — статика и хардкод
+class OrderService {
+    public function process(Order \$order): void {
+        if (Carbon::now()->isAfter(\$order->deadline)) {
+            throw new Exception("expired");
+        }
+        Stripe::charge(\$order->total);   // 🤬
+    }
+}
+
+// ✅ Хорошо — зависимости через интерфейс
+class OrderService {
+    public function __construct(
+        private Clock \$clock,
+        private PaymentGateway \$gateway,
+    ) {}
+
+    public function process(Order \$order): void {
+        if (\$this->clock->now()->isAfter(\$order->deadline)) {
+            throw new Exception("expired");
+        }
+        \$this->gateway->charge(\$order->total);
+    }
+}
+
+// Тест:
+\$clock = \$this->createStub(Clock::class);
+\$clock->method("now")->willReturn(Carbon::parse("2026-01-01"));
+\$gateway = \$this->createMock(PaymentGateway::class);
+\$gateway->expects(\$this->once())->method("charge")->with(\$total);
+```
+
+**3. Идиомы фреймворков**
+
+| Фреймворк | Готовое решение |
+| --- | --- |
+| **Laravel** | `Bus::fake()`, `Mail::fake()`, `Queue::fake()`, `Event::fake()`, `Http::fake()`, `Storage::fake()`, `Notification::fake()` |
+| **Symfony** | подмена через DI: переопределить сервис в test-окружении |
+| **Время** | `Carbon::setTestNow()` (Laravel/Carbon), `ClockMock` (Symfony) |
+| **HTTP** | `Http::fake()` (Laravel), `MockHandler` (Guzzle), WireMock |
+
+**Правило senior-уровня:**
+
+> **«Если приходится использовать Mockery alias или uopz — задумайтесь о дизайне.»**
+
+Каждая статика и `final`-конструкция, которую тяжело замокать, — это **подсказка**, что класс делает **скрытую зависимость** (на время, файловую систему, сеть). Сделайте её **явной через DI** — и тестирование становится тривиальным.
+
+**Исключение:** **value objects** и **enum** имеет смысл делать `final` — их и не нужно мокать, они представляют значения.',
                 'difficulty' => 4,
                 'topic' => 'php.testing',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Как изолировать тесты от внешних HTTP-API?',
-                'answer' => 'Самый простой путь — Guzzle MockHandler: создаём клиент с подменённым обработчиком и отдаём заранее подготовленные Response. Для контракта между сервисами поднимают локальный мок-сервер вроде WireMock или Mountebank, который ловит реальные HTTP-запросы и возвращает фикстуры. Прямые вызовы к боевому API в тестах недопустимы — они делают набор медленным, нестабильным и зависимым от внешней доступности.',
+                'answer' => '**Зачем изолировать:**
+
+| Проблема прямых вызовов в тестах | Следствие |
+| --- | --- |
+| **Медленно** — сетевой round-trip 100-500 ms | вместо миллисекунд |
+| **Нестабильно** — сеть, лимиты, изменения сторонней стороны | flaky tests, false negatives |
+| **Зависимость от внешней доступности** | CI ломается из-за сторонних аварий |
+| **Лимиты и платность** | боевой API в каждом прогоне CI |
+| **Side-effects** | реальные платежи, письма, аналитика |
+| **Невозможность воспроизвести редкие сценарии** | 503, timeout, malformed JSON |
+
+**Четыре уровня изоляции (от простого к строгому):**
+
+**1. Mock HTTP-клиент на уровне библиотеки**
+
+| Клиент | Тест-инструмент |
+| --- | --- |
+| **Guzzle** | `GuzzleHttp\\Handler\\MockHandler` |
+| **Laravel `Http`** | `Http::fake([...])`, `Http::sequence(...)` |
+| **Symfony HttpClient** | `MockHttpClient` с массивом `MockResponse` |
+| **PSR-18 (`Psr\\Http\\Client`)** | свой in-memory implementation |
+
+**Guzzle MockHandler:**
+
+```php
+\$mock = new MockHandler([
+    new Response(200, [], json_encode(["id" => 42])),
+    new Response(500),
+    new RequestException("Network failure", new Request("GET", "/")),
+]);
+\$client = new Client(["handler" => HandlerStack::create(\$mock)]);
+```
+
+**Laravel `Http::fake()`:**
+
+```php
+Http::fake([
+    "api.example.com/users/*" => Http::response(["name" => "Иван"], 200),
+    "api.example.com/orders/*" => Http::sequence()
+        ->push(["status" => "pending"])
+        ->push(["status" => "complete"]),
+]);
+
+\$response = \$service->fetchUser(42);
+
+Http::assertSent(fn(Request \$req) =>
+    \$req->url() === "https://api.example.com/users/42"
+    && \$req->method() === "GET"
+);
+Http::assertSentCount(1);
+Http::assertNothingSent();  // или этот, для участков "не должно дёргаться"
+```
+
+**2. Локальный mock-сервер**
+
+Когда нужен **контракт** с внешним сервисом и хочется **проверять реальные HTTP-запросы**:
+
+| Инструмент | Особенности |
+| --- | --- |
+| **WireMock** (Java, поднимается в Docker) | мощный, гибкий, стандарт индустрии |
+| **Mountebank** | Node.js, multi-protocol (HTTP, TCP, SMTP) |
+| **MockServer** (Java) | proxy + mock, OpenAPI-driven |
+| **Pact Broker** (consumer-driven contracts) | синхронизация контрактов между командами |
+
+**Использование в PHPUnit:**
+
+```php
+// setUp: запустить WireMock в Docker
+\$this->wireMock = WireMock::create();
+\$this->wireMock->stubFor(get(urlEqualTo("/users/42"))
+    ->willReturn(aResponse()->withBody(\'{"name":"Иван"}\')));
+
+// в коде:
+\$client = new HttpClient(["base_uri" => "http://localhost:8080"]);
+\$user = \$client->get("/users/42");
+```
+
+**3. Contract testing (Pact, Pacto)**
+
+Не мокаем — **верифицируем контракт** между consumer (наш код) и provider (внешний сервис) через **общий артефакт**.
+
+- Consumer пишет тест: «я отправляю X, ожидаю Y»
+- Это сохраняется в `.json`-контракте и хранится в **Pact Broker**
+- Provider в своём CI проигрывает контракт и проверяет, что реально отдаёт Y
+
+**4. VCR-pattern — запись/воспроизведение**
+
+| Инструмент | Идея |
+| --- | --- |
+| **php-vcr/php-vcr** | при первом прогоне записывает реальные ответы в YAML/JSON; при повторных воспроизводит |
+| Подходит для интеграции с **stable** третьеми API | удобно для seed-кейсов |
+
+**Что НЕ делать:**
+
+- **никогда** не дёргать боевой API в `phpunit`-тестах — даже в feature-suite
+- **не использовать** `env("API_KEY")` напрямую в коде, без слоя абстракции — иначе нет как подменить
+- **не записывать** в VCR ответы с реальными секретами — фильтровать заголовки `Authorization`
+
+**Best practice:** **`Http::fake()`** в Laravel и **`MockHttpClient`** в Symfony — должны быть в каждом feature-тесте, который хоть как-то использует внешние API. Если в тесте сеть **реально** идёт наружу — это баг setup-а.',
                 'difficulty' => 4,
                 'topic' => 'php.testing',
             ],

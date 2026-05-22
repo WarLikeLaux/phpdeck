@@ -57,16 +57,77 @@ event(new UserRegistered($user));',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Broadcasting в Laravel?',
-                'answer' => 'Broadcasting - это передача событий с сервера на клиента в реальном времени через WebSockets. Каналы: public (любой), private (требует авторизации), presence (с информацией о подключённых пользователях). Драйверы: Pusher, Ably, Reverb (свой WebSocket сервер от Laravel), Redis (pub/sub-транспорт - сам по себе WebSocket-клиентов не обслуживает, нужен внешний WS-сервер: Echo Server, Soketi). Клиент использует Laravel Echo.',
-                'code_example' => 'class MessageSent implements ShouldBroadcast {
-    public function broadcastOn(): PrivateChannel {
-        return new PrivateChannel(\'chat.\' . $this->message->room_id);
+                'answer' => '**Broadcasting** — передача серверных событий **на клиента в реальном времени** через WebSocket-протокол. Превращает обычный Laravel-event в push-сообщение для браузеров.
+
+**Поток:**
+
+1. На сервере: `event(new MessageSent($msg))` с `implements ShouldBroadcast`.
+2. Laravel сериализует event в JSON и отправляет в **broadcaster** (Reverb / Pusher / Ably).
+3. Broadcaster через WebSocket доставляет сообщение **всем клиентам**, подписанным на канал.
+4. Клиент (Laravel Echo) ловит событие и обновляет UI.
+
+**Три типа каналов:**
+
+| Канал | Кто может подписаться | Особенности |
+|---|---|---|
+| **Public** | Любой | Без авторизации, любой WS-клиент |
+| **Private** | Залогиненные + callback в `routes/channels.php` вернул `true` | Авторизация через `/broadcasting/auth` |
+| **Presence** | Как private + callback вернул **массив user-data** | Знает «кто онлайн», события `joining/leaving/here` |
+
+**Драйверы (broadcasters):**
+
+| Драйвер | Тип | Когда |
+|---|---|---|
+| **`reverb`** | Self-hosted PHP (L11+) | Дефолт в L11, бесплатно, один стек |
+| **`pusher`** | Managed SaaS | Платно, без operations |
+| **`ably`** | Managed SaaS | Альтернатива Pusher |
+| **`redis`** | **Только pub/sub транспорт** | Нужен внешний WS-сервер (Soketi, Echo Server) |
+| **`log` / `null`** | Для тестов / dev | Не доставляет |
+
+**Установка в L11:**
+
+- **`php artisan install:broadcasting`** — ставит Reverb + создаёт `routes/channels.php` + настраивает `.env` + публикует JS-bootstrap.
+
+**Клиент:** **Laravel Echo** (`laravel-echo` npm) — обёртка над `pusher-js` / `socket.io-client`.',
+                'code_example' => '<?php
+// 1) Event с интерфейсом ShouldBroadcast
+class MessageSent implements ShouldBroadcast
+{
+    public function __construct(public Message \$message) {}
+
+    public function broadcastOn(): PrivateChannel
+    {
+        return new PrivateChannel("chat.{\$this->message->room_id}");
+    }
+
+    public function broadcastAs(): string
+    {
+        return "message.sent";  // имя для клиента
     }
 }
 
-// JS клиент
-Echo.private(`chat.${roomId}`)
-    .listen(\'MessageSent\', (e) => console.log(e));',
+// 2) Авторизация канала - routes/channels.php
+Broadcast::channel("chat.{roomId}", function (User \$user, int \$roomId) {
+    return \$user->rooms()->whereKey(\$roomId)->exists();
+});
+
+// 3) JS клиент - resources/js/bootstrap.js
+import Echo from "laravel-echo";
+import Pusher from "pusher-js";
+window.Pusher = Pusher;
+
+window.Echo = new Echo({
+    broadcaster: "reverb",
+    key: import.meta.env.VITE_REVERB_APP_KEY,
+    wsHost: import.meta.env.VITE_REVERB_HOST,
+    wsPort: import.meta.env.VITE_REVERB_PORT,
+});
+
+// 4) Подписка в компоненте
+window.Echo.private(`chat.\${roomId}`)
+    .listen(".message.sent", (e) => {     // точка перед именем = broadcastAs
+        appendMessage(e);
+    });',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.events_listeners',
@@ -74,15 +135,96 @@ Echo.private(`chat.${roomId}`)
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое broadcasting и в чём разница private и presence-каналов?',
-                'answer' => 'Broadcasting публикует серверные события клиенту через драйверы (Pusher, Reverb, Soketi). Public - открыт всем. Private - требует Auth::user() и колбэк в Broadcast::channel("orders.{userId}", fn($u, $userId) => $u->id === $userId), который проверяет доступ. Presence - расширение private, ещё возвращает массив с данными присутствующих пользователей; используется для онлайн-статуса и совместного редактирования.',
-                'code_example' => '<?php
-Broadcast::channel("orders.{userId}", fn($u, $userId) => (int)$u->id === (int)$userId);
+                'answer' => '**Broadcasting** публикует серверные события клиенту через драйверы (`Pusher`, `Reverb`, `Soketi`). Три типа каналов отличаются **авторизацией** и **возможностями**.
 
-class OrderShipped implements ShouldBroadcast {
-    public function broadcastOn(): PrivateChannel {
-        return new PrivateChannel("orders.{$this->order->user_id}");
+**Сравнение трёх каналов:**
+
+| | **Public** | **Private** | **Presence** |
+|---|---|---|---|
+| Авторизация | Не нужна | `Auth::user()` + callback `→ bool` | `Auth::user()` + callback **`→ array`** |
+| JS API | `Echo.channel(name)` | `Echo.private(name)` | `Echo.join(name)` |
+| Знает участников | Нет | Нет | **Да** |
+| События | `listen` | `listen` | `listen` + `here` + `joining` + `leaving` |
+| Auth-эндпоинт | — | `/broadcasting/auth` | `/broadcasting/auth` |
+| Typical use | Новости, ленты | Личные уведомления, чат one-to-one | Online-статус, совместное редактирование |
+
+**Авторизация private — callback возвращает `bool`:**
+
+```php
+Broadcast::channel("orders.{userId}", fn (User $u, $userId) =>
+    (int) $u->id === (int) $userId
+);
+```
+
+**Авторизация presence — callback возвращает `array` с user-data (или `false`):**
+
+```php
+Broadcast::channel("room.{roomId}", function (User $u, int $roomId) {
+    if (! $u->canJoin($roomId)) {
+        return false;
     }
-}',
+    return ["id" => $u->id, "name" => $u->name, "avatar" => $u->avatar_url];
+});
+```
+
+**Presence-API на клиенте:**
+
+| Метод | Что даёт |
+|---|---|
+| **`.here(callback)`** | Текущий список участников при подключении |
+| **`.joining(callback)`** | Кто-то **вошёл** в канал |
+| **`.leaving(callback)`** | Кто-то **вышел** |
+| **`.listen("EventName", callback)`** | Обычные события |
+| **`.whisper("typing", data)`** / **`.listenForWhisper("typing", ...)`** | Client-to-client события (без сервера) |
+
+**Когда что брать:**
+
+- **Public** — новости сайта, лента активности (всем видно).
+- **Private** — личный inbox юзера, его заказы, его уведомления.
+- **Presence** — чат-комната с «кто онлайн», collaborative editing с курсорами, multiplayer-фичи.',
+                'code_example' => '<?php
+use Illuminate\\Broadcasting\\PrivateChannel;
+use Illuminate\\Broadcasting\\PresenceChannel;
+
+// PRIVATE - событие для одного юзера
+class OrderShipped implements ShouldBroadcast
+{
+    public function broadcastOn(): PrivateChannel
+    {
+        return new PrivateChannel("orders.{\$this->order->user_id}");
+    }
+}
+
+Broadcast::channel("orders.{userId}", fn (User \$u, \$userId) =>
+    (int) \$u->id === (int) \$userId
+);
+
+// PRESENCE - кто в комнате
+class MessageSent implements ShouldBroadcast
+{
+    public function broadcastOn(): PresenceChannel
+    {
+        return new PresenceChannel("room.{\$this->message->room_id}");
+    }
+}
+
+Broadcast::channel("room.{roomId}", function (User \$user, int \$roomId) {
+    if (! \$user->canEnter(\$roomId)) {
+        return false;
+    }
+    return [
+        "id"     => \$user->id,
+        "name"   => \$user->name,
+        "avatar" => \$user->avatar_url,
+    ];
+});
+
+// Клиент - присоединиться к presence
+Echo.join(`room.\${roomId}`)
+    .here((users) => setOnline(users))
+    .joining((user) => addOnline(user))
+    .leaving((user) => removeOnline(user))
+    .listen("MessageSent", (e) => appendMessage(e));',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.events_listeners',

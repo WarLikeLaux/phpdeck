@@ -550,7 +550,26 @@ $ terraform destroy   # снести всё',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как обеспечить Graceful Shutdown для PHP-воркеров и Kubernetes-подов?',
-                'answer' => 'Graceful shutdown - корректное завершение процесса при получении сигнала остановки: дождаться завершения текущей работы, не принимать новую, освободить ресурсы. Без него при деплое теряются in-flight Job-ы, обрываются HTTP-запросы, остаётся "висящий" state в БД. Механика в Linux: процесс получает SIGTERM (15) - нужно успеть завершиться за grace period; если не успел, через timeout приходит SIGKILL (9), который не перехватывается. Kubernetes по умолчанию даёт terminationGracePeriodSeconds=30 после SIGTERM, потом SIGKILL. Что делать в PHP: 1) В CLI-воркере - pcntl_async_signals(true) + pcntl_signal(SIGTERM, ...) + установить флаг "shouldStop", который проверяется в основном цикле между задачами. 2) Для очередей - Laravel queue:work уже умеет сам ловить SIGTERM/SIGINT и завершается после текущего Job; нужно только настроить правильный --timeout и terminationGracePeriodSeconds > timeout. 3) Для HTTP - php-fpm graceful через kill -USR2 (master форкает новых воркеров, старые дорабатывают текущие запросы); SIGUSR1 у php-fpm — это переоткрыть лог-файлы (для logrotate), а SIGQUIT — graceful shutdown без замены воркеров. В Kubernetes: 4) preStop hook на pod (sleep 10) - даёт время сервис-меш / load balancer убрать pod из endpoints до начала остановки, чтобы новые запросы не шли. 5) Readiness probe возвращает unready при получении SIGTERM. 6) terminationGracePeriodSeconds = max время вашей задачи + buffer. Для Octane/Swoole/RoadRunner - встроенная поддержка graceful reload. Подводный камень: в Kubernetes SIGTERM приходит ДО того, как pod удалён из endpoints - всегда нужен preStop sleep либо корректная readiness-проверка.',
+                'answer' => '**Graceful shutdown** — корректное завершение процесса при сигнале остановки: дождаться текущей работы, **не принимать новую**, освободить ресурсы. Без него при деплое теряются in-flight `Job`-ы, обрываются HTTP-запросы, в БД остаётся «висящий» state.
+
+**Механика Linux:**
+- `SIGTERM` (15) — нужно успеть завершиться за **grace period**.
+- Не успел — приходит `SIGKILL` (9), который **не перехватывается**.
+- Kubernetes по умолчанию даёт `terminationGracePeriodSeconds=30` после `SIGTERM`, затем `SIGKILL`.
+
+**Что делать в PHP:**
+
+1. **CLI-воркер:** `pcntl_async_signals(true)` + `pcntl_signal(SIGTERM, ...)` + флаг `shouldStop`, проверяемый в основном цикле **между задачами**.
+2. **Очереди (Laravel):** `queue:work` сам ловит `SIGTERM`/`SIGINT` и завершается после текущего `Job`. Настрой `--timeout` и `terminationGracePeriodSeconds > --timeout`.
+3. **HTTP (php-fpm):** graceful через `kill -USR2` (мастер форкает новых воркеров, старые дорабатывают). `SIGUSR1` — переоткрыть лог-файлы (для logrotate). `SIGQUIT` — graceful shutdown без замены.
+4. **Octane / Swoole / RoadRunner:** встроенная поддержка graceful reload.
+
+**Kubernetes-обвязка:**
+- **`preStop` hook** (`sleep 10`) — даёт сервис-мешу / LB убрать pod из endpoints **до** остановки.
+- **Readiness probe** возвращает `unready` при получении `SIGTERM`.
+- **`terminationGracePeriodSeconds`** = максимум твоей задачи + buffer.
+
+**Подводный камень:** в Kubernetes `SIGTERM` приходит **раньше**, чем pod удалён из endpoints — всегда нужен `preStop sleep` либо корректная readiness-проверка.',
                 'code_example' => '<?php
 // 1. Свой воркер с обработкой SIGTERM
 pcntl_async_signals(true);
@@ -596,7 +615,26 @@ $this->cleanup(); // close DB, flush metrics
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как сделать миграцию БД (rename column, drop column) без downtime в blue-green деплое?',
-                'answer' => 'Прямая миграция RENAME/DROP/изменение типа колонки во время blue-green или rolling-деплоя ломает приложение, потому что в момент миграции одновременно работают ДВЕ версии кода: старая (работающие воркеры/инстансы, ещё не перекатились) и новая. Если старый код ждёт колонку email, а вы её только что удалили - старые поды падают. Решение - паттерн Expand and Contract (Parallel Change), 5 шагов. 1) EXPAND. Создаём НОВУЮ колонку (добавление - всегда безопасная операция в современных БД, кроме случаев с DEFAULT в PG старее 11 - там переписывается вся таблица). Старая колонка живая, новая пустая или с дефолтом. Деплоим миграцию, прод не трогаем. 2) DUAL WRITE. Деплоим код, который пишет В ОБЕ колонки (старую и новую) при каждом UPDATE/INSERT. Читает пока из старой - чтобы старые поды и новые видели одинаковые данные во время rolling rollout. 3) BACKFILL. Запускаем миграцию данных: копируем существующие записи из старой колонки в новую (через chunkById, чтобы не залочить таблицу). После backfill: новая колонка имеет полные актуальные данные. 4) SWITCH READS. Деплоим код, который ЧИТАЕТ из новой колонки, но всё ещё пишет в обе. Если что-то сломалось - откатываемся, старая колонка цела. 5) STOP DUAL WRITE + DROP. Деплоим код, который пишет и читает только из новой. Когда уверены, что нигде не используется старая - отдельным релизом DROP COLUMN (миграция). Применимо ко всем "разрушительным" изменениям: rename column, change type, разделение таблицы, объединение, удаление таблицы. Каждый шаг - отдельный деплой, между ними проходят часы или дни (особенно перед DROP, чтобы убедиться, что ничего не использует старое). В Laravel: пишите миграции в обоих направлениях (up/down), не объединяйте expand и contract в одном файле миграций. PostgreSQL: для больших таблиц следить за блокировками - ALTER TABLE без DEFAULT обычно мгновенен (в 11+), CREATE INDEX CONCURRENTLY (не блокирует записи), DROP COLUMN мгновенен (но физически место освободится только после VACUUM FULL).',
+                'answer' => '**Проблема:** прямой `RENAME` / `DROP` / `ALTER TYPE` во время blue-green или rolling-деплоя ломает прод — в момент миграции **одновременно работают две версии кода**: старая (поды, которые ещё не перекатились) и новая. Если старый код ждёт колонку `email`, а её только что удалили — старые поды падают.
+
+**Решение — паттерн `Expand and Contract` (Parallel Change), 5 шагов:**
+
+1. **EXPAND.** Создай **новую колонку** (добавление — безопасная операция в современных БД, кроме `DEFAULT` в PG до 11 — там переписывается вся таблица). Старая жива, новая пустая. Деплой миграции, прод не трогаем.
+2. **DUAL WRITE.** Деплой кода, который пишет **в обе колонки** при каждом `UPDATE`/`INSERT`. Читает пока из старой — чтобы старые и новые поды видели одинаковые данные во время rolling rollout.
+3. **BACKFILL.** Миграция данных: копируем существующие записи из старой колонки в новую через `chunkById`, чтобы не залочить таблицу. После — новая колонка имеет полные актуальные данные.
+4. **SWITCH READS.** Деплой кода, который **читает из новой**, но всё ещё пишет в обе. Если что-то сломалось — откатываемся, старая колонка цела.
+5. **STOP DUAL WRITE + DROP.** Деплой кода, который пишет и читает **только из новой**. Когда уверены, что старая нигде не используется — отдельным релизом `DROP COLUMN`.
+
+**Применимо ко всем «разрушительным» изменениям:** rename column, change type, split/merge таблиц, удаление таблицы.
+
+**Правила:**
+- Каждый шаг — **отдельный деплой**. Между ними часы или дни, особенно перед `DROP`.
+- В Laravel: пишите миграции в обе стороны (`up`/`down`); **не объединяйте** expand и contract в одном файле миграций.
+
+**PostgreSQL-нюансы для больших таблиц:**
+- `ALTER TABLE` без `DEFAULT` обычно мгновенен (в PG 11+).
+- `CREATE INDEX CONCURRENTLY` — не блокирует записи.
+- `DROP COLUMN` мгновенен, но физическое место освободится только после `VACUUM FULL`.',
                 'code_example' => '<?php
 // Сценарий: переименовать users.username → users.handle
 
@@ -1034,49 +1072,450 @@ docker compose down -v',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Ingress в Kubernetes и чем он отличается от Service типа LoadBalancer?',
-                'answer' => 'Service типа LoadBalancer создаёт по одному внешнему балансировщику (и публичному IP) на каждый сервис — на облаке это быстро дорого. Ingress — это слой L7-маршрутизации поверх кластера: один внешний LB, за ним Ingress Controller (nginx, Traefik, HAProxy), который по host и path разводит трафик на разные ClusterIP-сервисы. Ingress умеет TLS termination, rewrite, basic auth, rate limit. То есть LoadBalancer работает на L4, Ingress — на L7 и заменяет N балансировщиков одним с правилами маршрутизации.',
+                'answer' => 'Два разных способа **впустить трафик снаружи в кластер** Kubernetes.
+
+| | **`Service` type=`LoadBalancer`** | **`Ingress`** |
+|---|---|---|
+| **Уровень OSI** | **L4** (TCP/UDP) | **L7** (HTTP/HTTPS) |
+| **Маршрутизация** | по портам | по **host** и **path** |
+| **TLS** | passthrough | **termination** |
+| **На один сервис** | **один LB + IP** | **один LB на N сервисов** |
+| **Цена в облаке** | $$ × N сервисов | $$ × 1 |
+| **Что под капотом** | cloud-provider LB (ELB, GLB) | **`Ingress Controller`** (nginx, Traefik, HAProxy) |
+
+**`Service: LoadBalancer`** — на каждый сервис **отдельный** внешний балансировщик с **публичным IP**:
+
+- На облаке (`AWS ELB`, `GCP Load Balancer`) — **$15-25/мес** за каждый
+- 10 микросервисов → 10 LB → **дорого**
+- Простой L4 — не понимает HTTP
+
+**`Ingress`** — **слой L7-маршрутизации** поверх кластера:
+
+- **Один внешний LB** + **`Ingress Controller`** внутри
+- Controller (nginx / Traefik / HAProxy / Istio) разводит трафик по **`host` и `path`**:
+  - `api.example.com/*` → `api-service`
+  - `shop.example.com/*` → `shop-service`
+  - `api.example.com/v2/*` → `api-v2-service`
+- Из коробки: **TLS termination**, rewrite, basic auth, rate limit, **WAF**
+
+**Возможности Ingress поверх L7:**
+
+- **TLS termination** — сертификаты через `cert-manager` + Let\'s Encrypt
+- **HTTP/2**, **gRPC**
+- **Rewrite** path (`/api/v1/users` → `/users`)
+- **Basic auth**, **JWT validation**
+- **Rate limiting** per-route
+- **Canary** через header / cookie / weight
+- **CORS**, headers manipulation
+
+**Когда что выбирать:**
+
+| Сценарий | Решение |
+|---|---|
+| **HTTP/HTTPS трафик** | **`Ingress`** (стандарт) |
+| **gRPC, WebSocket** | Ingress с поддержкой (Traefik, Istio) |
+| **TCP/UDP не-HTTP** (Redis, MySQL извне) | `Service: LoadBalancer` |
+| **Один сервис без routing** | `Service: LoadBalancer` (если бюджет позволяет) |
+
+**Современная альтернатива** — **`Gateway API`** (GA в Kubernetes 1.30+) — преемник Ingress с лучшим разделением ролей и более выразительным синтаксисом.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Зачем в Kubernetes нужны liveness и readiness probes и в чём между ними разница?',
-                'answer' => 'Readiness probe отвечает на вопрос «готов ли под принимать трафик»: если она падает, kube-proxy убирает под из endpoints соответствующего Service, но сам под не убивается — это нужно при прогреве кэша, ожидании БД, во время деплоя. Liveness probe отвечает «жив ли процесс вообще»: если она падает несколько раз подряд, kubelet перезапускает контейнер. Путать их опасно: если readiness привязать к внешней БД, при её недоступности весь сервис исчезнет из балансировки; если liveness слишком агрессивен, медленный GC будет вызывать постоянные рестарты.',
+                'answer' => 'Две **разные probe** с разной семантикой — путать их **опасно**.
+
+| Probe | Вопрос | При падении | Когда нужна |
+|---|---|---|---|
+| **`readiness`** | «готов **принимать трафик**?» | под убирается из `endpoints`, **не убивается** | прогрев кэша, ожидание БД, деплой |
+| **`liveness`** | «жив ли **процесс**?» | под **перезапускается** | deadlock, утечка, зависание |
+| **`startup`** | «закончил **старт**?» | блокирует другие probes | долгие старты (Java, миграции) |
+
+**`readiness probe`:**
+
+- Возвращает `200 OK` когда под **готов обслуживать запросы**
+- `kube-proxy` использует её для решения, **отправлять ли трафик**
+- При `fail` → под **удаляется из endpoints** `Service`
+- **Под живой**, перезапуска нет — ждём, пока станет ready
+
+**Типичные применения readiness:**
+
+- Прогрев OPcache при старте
+- Ожидание подключения к БД / Redis
+- Загрузка ML-модели в память
+- Во время **graceful shutdown** возвращать `503` чтобы LB убрал из ротации
+
+**`liveness probe`:**
+
+- Возвращает `200 OK` когда **процесс жив и работает**
+- При `fail N раз подряд` → **kubelet перезапускает контейнер**
+- **Last resort** — починка через рестарт
+
+**Типичные применения liveness:**
+
+- Deadlock в треде
+- Memory leak (но обычно ловится OOM-killer)
+- Стейтовая рассинхронизация, требующая чистого старта
+- Зависание на бесконечном GC
+
+**Опасные ошибки:**
+
+| Ошибка | Что произойдёт |
+|---|---|
+| **`readiness` привязан к БД** | БД упала → **весь сервис** исчез из балансировки → каскад |
+| **`liveness` слишком агрессивный** (`failureThreshold=1`, `period=1s`) | медленный GC → постоянные рестарты |
+| **Одинаковая логика для liveness и readiness** | теряется смысл разделения |
+| **Нет `initialDelaySeconds`** | под убивают до старта приложения |
+
+**Правильные настройки для Laravel:**
+
+```yaml
+readinessProbe:
+  httpGet: { path: /healthz/ready, port: 8000 }
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  failureThreshold: 3
+livenessProbe:
+  httpGet: { path: /healthz/live, port: 8000 }
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  failureThreshold: 5
+```
+
+**`/healthz/ready`** проверяет БД + Redis; **`/healthz/live`** возвращает 200 без проверок зависимостей.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Чем ConfigMap отличается от Secret в Kubernetes?',
-                'answer' => 'ConfigMap хранит несекретную конфигурацию (URL-ы, фичефлаги, имена файлов) и пробрасывается в под как переменные окружения или примонтированные файлы. Secret устроен почти так же, но предназначен для паролей, токенов и ключей: значения хранятся в etcd закодированными в base64 (это не шифрование, а транспортная кодировка) и в etcd может быть включён encryption-at-rest. RBAC обычно настраивают строже на Secret, чем на ConfigMap. На практике секреты лучше отдавать через external-secrets из Vault/AWS Secrets Manager, а не коммитить в YAML в гит.',
+                'answer' => 'Два **похожих по API** объекта Kubernetes с **разной семантикой и защитой**.
+
+| | **`ConfigMap`** | **`Secret`** |
+|---|---|---|
+| **Назначение** | несекретная конфигурация | пароли, токены, ключи |
+| **Хранение в etcd** | plain text | **`base64`** (это **НЕ шифрование**) |
+| **Encryption-at-rest** | нет | **опционально** (`EncryptionConfiguration`) |
+| **RBAC** | обычный | **строже** ограничивают |
+| **Размер** | до 1 МБ | до 1 МБ |
+| **Маунт** | env / volume | env / volume |
+
+**`ConfigMap`** хранит **несекретную конфигурацию**:
+
+- URL-ы внешних API (`API_URL=https://...`)
+- **Фичефлаги** (`FEATURE_NEW_UI=true`)
+- Имена файлов, пути
+- Конфиги (`nginx.conf`, `php.ini`)
+
+**`Secret`** устроен **почти так же**, но для секретов:
+
+- Значения **закодированы в `base64`** в YAML — это **транспортная кодировка**, **не шифрование**
+- В **etcd** опционально включается **encryption-at-rest** (KMS / `aescbc`)
+- RBAC обычно настраивают **строже** — `get/list secrets` только у нужных ServiceAccount
+
+**Важный миф:** `base64(password)` **в YAML — это не безопасность**. Любой с доступом к манифесту легко декодирует.
+
+**Подходы к секретам:**
+
+| Подход | Когда |
+|---|---|
+| **Plain Secret в git** | **никогда** в публичных репо |
+| **`sealed-secrets`** (bitnami) | шифрование Secret в git через публичный ключ кластера |
+| **`SOPS`** (Mozilla) | шифрование YAML с интеграцией age/PGP/KMS |
+| **`external-secrets-operator`** | **best practice** — Secret синкается из **Vault / AWS Secrets Manager / GCP Secret Manager** |
+| **CSI Secrets Store Driver** | секреты приходят как volume из внешнего provider, не попадают в etcd |
+
+**Best practice для production:**
+
+1. **Никогда** не коммитить plain Secret в git
+2. **Vault** / **AWS Secrets Manager** как источник правды
+3. **`external-secrets`** синхронизирует в Kubernetes Secret
+4. **Encryption-at-rest в etcd** включён
+5. **RBAC** ограничивает доступ к Secret по ServiceAccount
+6. **Rotation** автоматизирован через `secret-rotation-operator` или Vault dynamic secrets
+
+**Использование в Pod:**
+
+- **env**: `valueFrom: secretKeyRef` или `configMapKeyRef`
+- **volume**: маунт как файл (полезно для сертификатов, `.htpasswd`)
+- **envFrom**: импортнуть все ключи разом',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Зачем в Kubernetes указывают requests и limits для CPU и памяти?',
-                'answer' => 'Requests — это минимум, который шедулер гарантирует поду на ноде; на их сумме считается, влезет ли под на узел. Limits — потолок: при превышении CPU контейнер троттлится, при превышении памяти — OOM-killed. Без requests шедулинг становится непредсказуемым и можно получить шумных соседей. Без memory limit процесс способен сожрать всю ноду и положить остальные поды. С CPU limit нужно осторожно: на интенсивных пиках (composer dump, прогрев OPcache) троттлинг ломает SLA. Хорошая практика — задать requests адекватно реальному p95-потреблению, а memory limit — с запасом 20-30%.',
+                'answer' => 'Два **разных параметра** ресурсов pod-а, которые легко перепутать.
+
+| | **`requests`** | **`limits`** |
+|---|---|---|
+| **Значение** | **минимум**, гарантированный поду | **потолок** потребления |
+| **Использует** | scheduler — для размещения | cgroup — для enforcement |
+| **При превышении** | — | **CPU: throttle**, **Memory: OOM-kill** |
+| **На сумме** | считается, влезет ли под на ноду | не считается |
+
+**`requests`** — что обещает кластер:
+
+- **Scheduler** считает: `sum(requests) ≤ node capacity` → можно ли разместить
+- Гарантированный ресурс — pod **точно получит** этот объём
+- Без requests → шедулинг **непредсказуемый** → **noisy neighbours**
+
+**`limits`** — что не дадим превысить:
+
+- **CPU limit** превышен → **throttling** (процесс замедляется, не убивается)
+- **Memory limit** превышен → **OOM-killed** (kernel убивает контейнер)
+- **Без memory limit** → процесс может **сожрать всю ноду** и положить **другие pod-ы**
+
+**QoS-классы Kubernetes** (определяются по requests/limits):
+
+| Класс | Условие | Кого убивают первым при нехватке памяти |
+|---|---|---|
+| **`Guaranteed`** | requests == limits для всех ресурсов | **последним** |
+| **`Burstable`** | requests < limits | средний приоритет |
+| **`BestEffort`** | нет requests и limits | **первым** |
+
+**CPU limit — осторожно:**
+
+- На **интенсивных пиках** (composer dump, прогрев OPcache, JIT компиляция) **throttling ломает SLA**
+- p99 latency страдает сильнее, чем средняя
+- **Многие команды** убирают CPU limits, оставляя только **requests**
+- Спорный момент — есть оба лагеря: «выставлять» vs «не выставлять»
+
+**Memory limit — обязателен:**
+
+- **Без него** утечка памяти → ноду убивает OOM-killer **в случайном порядке**
+- **С limit** — убивается **только** виновный pod
+
+**Best practices:**
+
+- **`requests`** — адекватно **реальному p95-потреблению** (профилируйте на стейдже)
+- **`memory limit`** — с **запасом 20-30%** над p99
+- **`CPU limit`** — спорно, многие убирают для PHP-FPM
+- **VPA / HPA** — горизонтальный/вертикальный автоскейлинг по реальным метрикам
+- **LimitRange** на namespace — дефолты для команд, забывающих указывать
+
+**Подвох с PHP-FPM:**
+
+- `pm.max_children × memory_limit_per_process` должно влезать в pod memory limit
+- Иначе OOM-kill сразу при наплыве запросов',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое Helm и какую проблему он решает?',
-                'answer' => 'Helm — это пакетный менеджер для Kubernetes. Чарт (chart) — это набор шаблонизированных YAML-манифестов с values.yaml, в котором задаются параметры (имя образа, теги, replicas, ресурсы). helm install/upgrade подставляет values в шаблоны и применяет получившиеся манифесты атомарно, ведя историю релизов с возможностью rollback. Без Helm на каждое окружение (dev/stage/prod) копируются почти идентичные YAML, и любая правка означает sed по нескольким файлам. Альтернатива — Kustomize (overlay-подход без шаблонов) или GitOps через ArgoCD/Flux поверх Helm-чартов.',
+                'answer' => '**`Helm`** — **пакетный менеджер** для Kubernetes (аналог `apt` / `composer`, но для манифестов).
+
+**Структура `chart` (пакета):**
+
+```
+mychart/
+├── Chart.yaml          # метаданные пакета
+├── values.yaml         # дефолтные параметры
+├── templates/
+│   ├── deployment.yaml # шаблоны с {{ .Values.X }}
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   └── _helpers.tpl    # переиспользуемые блоки
+└── charts/             # вложенные зависимости
+```
+
+**Как работает:**
+
+1. `helm install myapp ./mychart -f prod-values.yaml`
+2. Helm **подставляет `values`** в шаблоны (Go templates)
+3. **Применяет** получившиеся манифесты **атомарно** через k8s API
+4. Сохраняет историю в **`Secret`** в namespace
+5. **`helm rollback`** возвращает предыдущую версию
+
+**Проблема, которую решает:**
+
+Без Helm на **каждое окружение** копируются почти **идентичные YAML**:
+
+```
+deploy/
+├── dev/    deployment.yaml service.yaml ingress.yaml ...
+├── stage/  deployment.yaml service.yaml ingress.yaml ...
+└── prod/   deployment.yaml service.yaml ingress.yaml ...
+```
+
+Любая правка → **`sed` по нескольким файлам** → ошибки, дрейф между окружениями.
+
+**С Helm:**
+
+```yaml
+# values.yaml — дефолт
+replicas: 1
+image: myapp:latest
+
+# values-prod.yaml — оверрайды
+replicas: 5
+image: myapp:1.2.3
+resources: { requests: { cpu: 200m, memory: 256Mi } }
+```
+
+`helm upgrade --install myapp ./chart -f values-prod.yaml`
+
+**Преимущества:**
+
+- **DRY** — один chart, разные `values`
+- **Релизы и rollback** из коробки (`helm history`, `helm rollback`)
+- **Зависимости** — chart-А может включать chart-Б (postgres, redis из community charts)
+- **`helm repo`** — публичные хабы готовых charts (`bitnami`, `prometheus-community`)
+- **Hooks** — pre-install, post-upgrade
+
+**Альтернативы:**
+
+| | **Helm** | **Kustomize** | **`ArgoCD` + Helm** |
+|---|---|---|---|
+| **Подход** | шаблонизация | **overlay** patches | GitOps + Helm |
+| **Кривая обучения** | средняя | низкая | средняя |
+| **Готов в k8s из коробки** | нет | **да** (kubectl apply -k) | нет |
+| **История релизов** | да | нет | через git |
+
+**Современная практика:** **GitOps через ArgoCD / Flux поверх Helm chart-ов** — chart хранится в git, ArgoCD применяет автоматически при изменении, rollback = `git revert`.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'В чём разница между Terraform и Ansible?',
-                'answer' => 'Terraform — это декларативный provisioning: описываешь желаемое состояние инфраструктуры (VPC, сабнеты, инстансы, RDS, k8s-кластер) в HCL, terraform apply считает diff с реальностью через state-файл и приводит к нужному виду. Хорош для создания и удаления ресурсов в облаке. Ansible — это конфигурационный менеджмент через SSH: набор playbook с задачами (поставить пакет, скопировать файл, перезапустить сервис), выполняется императивно сверху вниз. На практике их часто комбинируют: Terraform поднимает голые VM/сети, Ansible настраивает на них софт. С приходом Kubernetes и immutable-образов потребность в Ansible уменьшилась.',
+                'answer' => 'Два **разных по назначению** инструмента инфраструктуры, которые часто путают.
+
+| | **`Terraform`** (`OpenTofu`) | **`Ansible`** |
+|---|---|---|
+| **Что делает** | **provisioning** инфраструктуры | **configuration management** |
+| **Подход** | **декларативный** | **императивный** (с идемпотентностью) |
+| **Транспорт** | **API облаков** | **SSH** |
+| **Язык** | **HCL** | **YAML** |
+| **State** | хранит **state-файл** | без state, считывает с хоста |
+| **Идемпотентность** | через diff с state | через `check_mode` / when |
+| **Тип ресурсов** | VPC, EC2, RDS, k8s-кластер | пакеты, файлы, сервисы на хосте |
+
+**`Terraform`** — **provisioning**:
+
+- Описываешь **желаемое состояние** в HCL: `resource "aws_instance" ...`
+- `terraform plan` показывает **diff** между state и реальностью
+- `terraform apply` приводит к нужному виду через **API облака**
+- Хорош для:
+  - Создания VPC, сабнетов, security groups
+  - Запуска EC2 / RDS / S3
+  - Развёртывания k8s-кластера (EKS / GKE)
+  - Управления DNS, IAM
+- **Главное:** «**что должно существовать**»
+
+**`Ansible`** — **configuration management**:
+
+- Набор **playbook** с задачами: установи пакет, скопируй файл, перезапусти сервис
+- Выполняется **императивно сверху вниз** через **SSH**
+- Хорош для:
+  - Настройки софта на VM (nginx, php-fpm, postgres)
+  - Patch management
+  - Деплоя приложений на bare-metal
+- **Главное:** «**что должно произойти**»
+
+**На практике часто комбинируют:**
+
+```
+Terraform поднимает голую инфру:
+└── VPC + EC2 instance + RDS
+
+         ↓ (после apply)
+
+Ansible настраивает софт на VM:
+├── apt install nginx php-fpm
+├── копирует конфиги
+├── создаёт пользователей
+└── запускает сервисы
+```
+
+**Современные тренды:**
+
+- **С приходом Kubernetes и immutable-образов потребность в Ansible уменьшилась**:
+  - Софт уже в Docker image
+  - Конфиг — через ConfigMap
+  - Деплой — через Helm / Argo
+  - VM становятся «cattle» — пересоздаются, не патчатся
+- **`OpenTofu`** — fork Terraform после смены лицензии HashiCorp
+- **`Pulumi`** — альтернатива Terraform на TypeScript/Python/Go (полноценный язык вместо HCL)
+- **`crossplane`** — provisioning через k8s CRD (terraform-as-controller)
+
+**Когда что использовать сегодня:**
+
+- **Terraform** — для **облачных ресурсов** и `kubernetes cluster`
+- **Ansible** — для **legacy on-premise**, patch management, one-off задач
+- **`Helm` / `Argo CD`** — для приложений в k8s (вместо Ansible deploy)',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое GitOps и чем он отличается от классического CI/CD push-деплоя?',
-                'answer' => 'В классическом push-CD pipeline после успешных тестов сам по SSH или kubectl apply деплоит в кластер — у CI-раннера должны быть creds на прод. В GitOps git-репозиторий с манифестами объявляется единственным источником истины, а агент в кластере (ArgoCD, Flux) сам периодически сверяется с гитом и приводит кластер к описанному состоянию (pull-модель). Преимущества: история деплоев = git log, rollback = git revert, кластер не пускает CI внутрь периметра, drift detection бесплатно. Минус — двухрепная схема (app-repo и manifest-repo) и кривая обучения.',
+                'answer' => 'Два **разных направления потока** деплоя в k8s.
+
+| | **Classic push-CD** | **`GitOps`** (pull) |
+|---|---|---|
+| **Кто инициирует** | CI runner | **агент в кластере** |
+| **Кому даны creds на k8s** | CI системе | **никому извне** |
+| **Источник правды** | артефакты + кнопка Deploy | **git-репо** с манифестами |
+| **Rollback** | новый pipeline run | **`git revert`** |
+| **Drift detection** | вручную | **из коробки** (sync loop) |
+| **Аудит деплоев** | CI логи | **`git log`** |
+| **Изменения в кластере вручную** | приживутся до следующего деплоя | **откатятся** агентом |
+
+**Classic push-CD:**
+
+```
+git push → CI tests → CI build image → CI: kubectl apply → kuber
+                                            ↑
+                                  CI runner имеет creds на прод
+```
+
+**Проблемы:**
+
+- **У CI-раннера должны быть creds** на прод-кластер — это **широкий attack surface**
+- **Drift** — кто-то сделал `kubectl edit` вручную → состояние расходится с git
+- **Откат** — отдельный pipeline run, нужно помнить старый тег
+
+**`GitOps` (pull-модель):**
+
+```
+git push → CI tests → CI build image → CI обновляет тег в manifest-repo
+                                              ↓
+                                         git commit
+                                              ↓
+ArgoCD/Flux в кластере: периодический sync с manifest-repo
+                                              ↓
+                                         kubectl apply
+```
+
+**Агент** (`ArgoCD`, `Flux`) **внутри кластера** **сам** периодически сверяется с git и приводит кластер к **описанному состоянию**.
+
+**Преимущества `GitOps`:**
+
+- **История деплоев = `git log`** с авторами и PR
+- **Rollback = `git revert`** — один коммит, всё прозрачно
+- **Кластер не пускает CI внутрь периметра** — улучшение security
+- **Drift detection** бесплатно — агент видит расхождение
+- **Reconciliation** — ручные правки автоматически откатываются
+- **Disaster recovery** — кластер восстанавливается из git
+- **Multi-cluster** — один git-репо → много кластеров
+
+**Минусы:**
+
+- **Двухрепная схема** — app-repo (код) + **manifest-repo** (yaml)
+- **Кривая обучения** — новые инструменты, паттерны
+- **Задержка деплоя** — sync loop (но обычно ≤ 1 мин)
+- **Image promotion** между окружениями требует автоматизации
+
+**Инструменты:**
+
+- **`ArgoCD`** — UI, application-of-applications, PreSync hooks (популярнее)
+- **`Flux`** — CRD-first, без UI, тесная интеграция с Helm/Kustomize
+- **`Jenkins X`**, **`Werf`** — менее популярные
+
+**Архитектурный паттерн** — **app-of-apps**: один root-application в ArgoCD ссылается на N приложений, каждое из своей папки manifest-repo. Изменения в app деплоятся через PR в manifest-repo.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
@@ -1147,28 +1586,246 @@ server {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что настраивают в php-fpm pool: pm static vs dynamic vs ondemand?',
-                'answer' => 'pm = static держит фиксированное число pm.max_children воркеров — предсказуемое потребление памяти, лучшая латентность под пиком, выбор для нагруженного прода. pm = dynamic стартует pm.start_servers и держит между pm.min_spare_servers и pm.max_spare_servers — экономит память на простаивающем сервере, но при резком всплеске часть запросов ждёт форка. pm = ondemand форкает воркер только под запрос и убивает его — минимум памяти, максимум cold-start; годится для shared-хостинга. Дополнительно крутят pm.max_requests (рестарт воркера для борьбы с утечками) и request_terminate_timeout.',
+                'answer' => 'Три **стратегии управления пулом** воркеров `php-fpm` — выбор влияет на память, latency и cold-start.
+
+| Стратегия | Кол-во воркеров | Память | Cold-start под пиком | Когда брать |
+|---|---|---|---|---|
+| **`static`** | **фиксировано** `pm.max_children` | **константа** | **нет** (всегда готовы) | **нагруженный прод** |
+| **`dynamic`** | колеблется между min/max spare | **средняя** | **есть** при резких всплесках | средняя нагрузка |
+| **`ondemand`** | форкается **под запрос** | **минимум** | **есть на каждом** запросе | shared-хостинг, dev |
+
+**`pm = static`** — фиксированный пул:
+
+- **Держит ровно `pm.max_children` воркеров** всё время
+- **Предсказуемое потребление памяти** — `max_children × memory_per_worker`
+- **Лучшая latency под пиком** — нет cold-start, всё готово
+- **Минус:** «платит память» даже простаивая
+- **Выбор для нагруженного прода**, где трафик стабильный
+
+**`pm = dynamic`** — адаптивный:
+
+- Стартует `pm.start_servers` воркеров
+- **Держит** между `pm.min_spare_servers` и `pm.max_spare_servers`
+- Под нагрузкой форкает до `pm.max_children`
+- **Плюс:** экономит память на простаивающем сервере
+- **Минус:** при резком всплеске **часть запросов ждёт форка** (cold-start `~50-100ms`)
+
+**`pm = ondemand`** — лениво:
+
+- **Форкает воркер только под запрос** и убивает его
+- **Минимум памяти** в покое
+- **Максимум cold-start** — каждый запрос ждёт форка
+- **Годится для shared-хостинга** или dev-окружений
+
+**Дополнительные параметры (важны для прода):**
+
+| Параметр | Зачем |
+|---|---|
+| **`pm.max_requests`** | **рестарт воркера** после N запросов — борьба с утечками памяти |
+| **`request_terminate_timeout`** | **kill зависших** запросов (`30s`) |
+| **`pm.process_idle_timeout`** | в `dynamic` — сколько ждать перед убийством idle-воркера |
+| **`emergency_restart_threshold`** | при N сегфолтах за `emergency_restart_interval` — рестарт пула |
+| **`slowlog`** + **`request_slowlog_timeout`** | лог медленных запросов |
+
+**Расчёт `pm.max_children` для пода/сервера:**
+
+```
+pm.max_children = доступная_память_pod / память_на_воркер
+
+Пример: 4 ГБ контейнер, ~80 МБ на воркер
+pm.max_children = 4096 / 80 ≈ 50
+```
+
+**Подвох:** `pm.max_children` × `memory_per_worker` **не должно превышать** memory limit pod-а, иначе OOM.
+
+**Best practice для k8s:** **`pm = static`** + **горизонтальный автоскейлинг** через HPA по CPU/RPS — один pod = фиксированный пул, масштабируется добавлением pod-ов.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Какие настройки OPcache критичны для production-PHP?',
-                'answer' => 'opcache.enable=1 и opcache.memory_consumption (128-256 МБ для среднего проекта) — без них кеш либо выключен, либо вытесняется. opcache.max_accelerated_files должен быть больше реального числа .php файлов в проекте, иначе часть будет постоянно перекомпилироваться. opcache.validate_timestamps=0 на проде даёт максимум скорости, но требует opcache_reset/рестарт fpm при деплое — иначе старый код останется в памяти. opcache.preload (PHP 7.4+) загружает классы фреймворка при старте и убирает их компиляцию из горячего пути. JIT включается через opcache.jit (режим компиляции, например 1255) и opcache.jit_buffer_size (размер буфера) — помогает в основном CPU-bound коду, для типичных I/O-bound веб-приложений эффект скромный.',
+                'answer' => '**`OPcache`** хранит скомпилированный bytecode PHP в shared memory — без него **каждый запрос перекомпилирует** все включённые файлы. Это **обязательная** оптимизация для production.
+
+**Критичные настройки:**
+
+| Параметр | Значение | Зачем |
+|---|---|---|
+| **`opcache.enable`** | `1` | без этого OPcache **выключен** |
+| **`opcache.memory_consumption`** | `128-256 МБ` | размер кэша; меньше → вытеснение |
+| **`opcache.max_accelerated_files`** | `10000-50000` | должно быть **больше** реального числа `.php` в проекте |
+| **`opcache.validate_timestamps`** | `0` на проде | максимум скорости, но требует reset при деплое |
+| **`opcache.interned_strings_buffer`** | `16-32 МБ` | для общих строк (имена классов, методов) |
+
+**Подвохи:**
+
+- **`max_accelerated_files` слишком мало** → часть файлов **постоянно перекомпилируется**, OPcache мигает
+- **`memory_consumption` мало** → cache **вытесняется** под нагрузкой, hit rate падает
+- **Мониторинг:** `opcache_get_status()` → `cache_full`, `oom_restarts`, `hash_restarts`, `hit_rate`
+
+**`opcache.validate_timestamps=0`** — главный production-tuning:
+
+- **`=1`** — на **каждый запрос** делает `stat()` по файлам с шагом `revalidate_freq` → лишний syscall, заметно режет p99
+- **`=0`** — **максимум скорости**, но **правка файла на диске не подхватывается**
+- При деплое нужен **`opcache_reset()`** или **рестарт `php-fpm`**
+
+**`opcache.preload`** (PHP 7.4+):
+
+- Загружает **классы фреймворка при старте** php-fpm — убирает их компиляцию из горячего пути
+- Сохраняется в SHM **до рестарта**
+- Конфиг: `opcache.preload=/var/www/preload.php`
+- **Не работает** для классов, использующих attributes-runtime или динамические includes
+
+**`JIT`** (PHP 8.0+):
+
+- **`opcache.jit_buffer_size=128M`** — без этого JIT выключен
+- **`opcache.jit=1255`** или **`tracing`** — режим компиляции
+- **Эффект:**
+  - **CPU-bound** код (математика, парсинг) — **значительное** ускорение
+  - **Типичный I/O-bound веб** (БД, Redis) — **скромный** эффект 5-10%
+- Сложнее в эксплуатации — могут быть редкие баги в редких сценариях
+
+**Боевой пресет для прода:**
+
+```ini
+opcache.enable=1
+opcache.memory_consumption=256
+opcache.interned_strings_buffer=32
+opcache.max_accelerated_files=50000
+opcache.validate_timestamps=0
+opcache.save_comments=1          ; нужно для аттрибутов и аннотаций
+opcache.enable_file_override=0
+opcache.preload=/var/www/preload.php
+opcache.preload_user=www-data
+opcache.jit_buffer_size=128M
+opcache.jit=tracing
+```
+
+**Деплой при `validate_timestamps=0`:** см. отдельную карточку про **симлинк-стратегию** и `opcache_reset` через FastCGI.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Почему в production нельзя оставлять opcache.validate_timestamps=1 и как тогда катить релиз?',
-                'answer' => 'При validate_timestamps=1 OPcache на каждый запрос (с шагом revalidate_freq) делает stat по файлу и сверяет mtime — это лишний syscall на каждый include, заметно режущий p99 на больших фреймворках. На проде ставят 0 и тогда правка файла на диске не подхватывается, пока не сбросить кеш. Безопасный деплой: выкатывать новый код в новую директорию (release_N), переключать симлинк current на неё атомарно и затем дёргать opcache_reset через fastcgi_finish_request или systemctl reload php-fpm. В Kubernetes ту же роль играет rolling-restart подов — у новых OPcache пустой и наполняется свежим кодом.',
+                'answer' => '**`opcache.validate_timestamps=1`** — режим **«проверять файлы на изменения»**:
+
+- На каждый запрос (с шагом **`revalidate_freq`** секунд) делает **`stat()`** по файлу
+- Сверяет **`mtime`** с тем, что в кэше
+- Если изменился → **рекомпилирует**
+
+**Цена:** **лишний syscall на каждый `include`**:
+
+- В Laravel приложении — **сотни include-ов** на запрос
+- Заметно **режет p99** на больших фреймворках (5-15%)
+- На SSD меньше, на сетевом storage (NFS) — катастрофа
+
+**На production ставят `=0`** → правка файла **не подхватывается**, пока не сбросить кэш.
+
+**Безопасный деплой при `validate_timestamps=0`:**
+
+**Симлинк-стратегия** (классический способ):
+
+```bash
+# Структура
+/var/www/
+├── releases/
+│   ├── 2024-05-22-1430/    # старый
+│   └── 2024-05-22-1500/    # новый
+└── current → releases/2024-05-22-1500   # симлинк
+
+# Деплой:
+# 1. Распаковываем новый код в releases/2024-05-22-1500
+# 2. Прогреваем (composer dump-autoload, php artisan optimize)
+# 3. Атомарно переключаем симлинк:
+ln -sfn /var/www/releases/2024-05-22-1500 /var/www/current.new
+mv -Tf /var/www/current.new /var/www/current
+
+# 4. Сбрасываем OPcache:
+systemctl reload php-fpm
+# или: php artisan opcache:clear (через FastCGI)
+# или: cachetool opcache:reset --fcgi=127.0.0.1:9000
+```
+
+**Подводные камни:**
+
+- **`realpath_cache`** PHP — после переключения симлинка кэш путей **остаётся** старым → нужен `realpath_cache_clear()` или рестарт fpm
+- **Длинно живущие воркеры** (Octane, RoadRunner) — у них **свой** OPcache в каждом процессе, нужен **graceful reload**
+- **`opcache_reset`** через HTTP-endpoint опасен — должен быть **только** с localhost / админ-токеном
+
+**В Kubernetes — проще:**
+
+- **Rolling restart pod-ов** = у каждого нового pod **пустой OPcache**, наполняется свежим кодом
+- **Образ Docker = immutable** — нет понятия «правка файла»
+- Можно держать **`validate_timestamps=0`** без оглядки
+
+**Альтернативы:**
+
+| Подход | Когда |
+|---|---|
+| **k8s rolling restart** | контейнерный деплой |
+| **Симлинк + opcache_reset** | bare-metal / VM |
+| **`cachetool` через FastCGI** | если нет SSH |
+| **Octane/RoadRunner graceful reload** | long-lived воркеры |
+| **`validate_timestamps=1` с `revalidate_freq=60`** | компромисс для нечастых деплоев |',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое self-hosted runner в GitHub Actions / GitLab CI и когда он нужен?',
-                'answer' => 'По умолчанию пайплайны исполняются на shared-runner провайдера — удобно, но платно по минутам, без доступа во внутреннюю сеть и с холодным кешем на каждом запуске. Self-hosted runner — собственная VM или под в кластере, зарегистрированная как worker; задачи едут туда. Это нужно, когда нужен доступ к private DB/k8s через VPN, когда хочется тёплый кеш composer/node_modules между запусками, когда тяжёлые билды дешевле гонять у себя, и когда требуется кастомное железо (GPU). Минусы — самим следить за обновлениями, изоляцией задач и безопасностью runner-токена.',
+                'answer' => 'Два **варианта runner-а** для CI-пайплайнов — у каждого свои сильные стороны.
+
+| | **Shared runner** (provider) | **Self-hosted runner** |
+|---|---|---|
+| **Кто хостит** | GitHub / GitLab | **вы сами** |
+| **Цена** | **платно** по минутам | hardware + ops |
+| **Доступ в private VPN** | нет | **да** |
+| **Тёплый кэш** | **нет** (cold start) | **да** (persistent) |
+| **Скорость** | средняя | **зависит от железа** |
+| **Security** | изолированно provider-ом | **ваша ответственность** |
+| **Custom hardware** | нет | **GPU, ARM, большая RAM** |
+
+**По умолчанию** пайплайны исполняются на **shared-runner** провайдера:
+
+- Удобно — ничего настраивать не надо
+- **Платно по минутам** — после free tier $0.008-0.08/мин
+- **Без доступа** во внутреннюю сеть компании
+- **Cold кэш** на каждом запуске — composer/npm качают по сети
+
+**`Self-hosted runner`** — собственная VM или pod в кластере:
+
+- Регистрируется как **worker** через токен от GitHub/GitLab
+- Задачи **едут на ваш runner** (по label или fallback)
+
+**Когда нужен self-hosted:**
+
+- **Доступ к private DB / k8s** через VPN — интеграционные тесты против реальной staging-БД
+- **Тёплый кэш** `composer` / `node_modules` между запусками — сборка за **секунды**, а не минуты
+- **Тяжёлые билды** дешевле гонять у себя — Docker images, ML-датасеты
+- **Кастомное железо** — **GPU** для ML, **ARM** для multi-arch images
+- **Compliance** — данные не должны покидать корпоративный периметр
+
+**Минусы:**
+
+- **Сами следите** за обновлениями runner-агента
+- **Изоляция задач** — один билд не должен влиять на другой (Docker-in-Docker, ephemeral runners)
+- **Безопасность runner-токена** — компрометация = доступ к secrets и репозиториям
+- **Hardware и cost** — VM/железо круглосуточно
+- **Очистка между запусками** — мусор от прошлых билдов накапливается
+
+**Современные варианты:**
+
+- **`ephemeral runners`** (GitHub Actions Runner Controller, ARC) — pod в k8s **только на время задачи**, потом удаляется
+- **`Spot/preemptible` инстансы** — дёшево, перезапуск при выселении
+- **`act_runner`** + **`Gitea`** — self-hosted CI «всё своё»
+- **`docker-in-docker`** vs **`kubernetes-executor`** в GitLab — разные подходы к изоляции
+
+**Best practice:**
+
+- Использовать **ARC (Actions Runner Controller)** в k8s — ephemeral, изолированные
+- **Не давать** self-hosted runner-у secrets от прода — только staging
+- **Защита** через `allowed_actions` (whitelist использованных actions)',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
@@ -1238,21 +1895,224 @@ server {
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Чем canary отличается от blue-green и когда выбирать какой?',
-                'answer' => 'Blue-green поднимает рядом со старой версией (blue) полный второй стек новой версии (green), прогоняет smoke-тесты и переключает 100% трафика разом — мгновенный rollback переключением назад, но требует двойных ресурсов и не ловит проблемы, проявляющиеся только под реальной нагрузкой. Canary катит новую версию на 1-5% трафика, наблюдает метрики (error rate, p95, бизнес-KPI) и постепенно увеличивает долю. Canary безопаснее для рискованных изменений и больших систем, но требует развитого мониторинга и feature-flag-инфраструктуры. Blue-green удобен для коротких релизов и фоновой миграции БД.',
+                'answer' => 'Две **стратегии безопасного деплоя**, оптимизированные под разные сценарии.
+
+| | **`blue-green`** | **`canary`** |
+|---|---|---|
+| **Перевод трафика** | **100% разом** | **постепенно** (1% → 5% → 25% → 100%) |
+| **Время выкатки** | **минуты** | **часы-дни** |
+| **Ресурсы** | **× 2** на время | **+ 1-N pod** |
+| **Rollback** | **мгновенный** | **частичный** автоматический |
+| **Ловит проблемы под нагрузкой** | нет (100% сразу) | **да** (постепенно) |
+| **Требует мониторинга** | смок-тесты | **продвинутый** (error rate, p95, KPI) |
+| **Сложность инфры** | низкая | высокая (`Istio`/`Argo Rollouts`) |
+
+**`blue-green`** — мгновенное переключение:
+
+1. Поднимаем **рядом со старой** версией (`blue`) **полный второй стек** новой (`green`)
+2. Прогоняем **smoke-тесты** на `green` (на ней пока **нет трафика**)
+3. **Переключаем 100% трафика** разом (LB / DNS / k8s Service selector)
+4. `blue` остаётся стоять — **резерв на rollback**
+5. Если что — **переключаем назад** одним движением
+
+**Плюсы:**
+
+- **Instant rollback** — секунды
+- **Нет downtime**
+- Smoke-тесты до приёма трафика
+- Простая mental model
+
+**Минусы:**
+
+- **× 2 ресурсов** на время деплоя
+- **Не ловит проблемы под реальной нагрузкой** — все или никто
+- Sessions, in-memory cache **теряются** при переключении
+- Миграции БД сложнее (паттерн **Expand-and-Contract**)
+
+**`canary`** — постепенное:
+
+1. Деплоим новую версию рядом со старой (`1 pod vs 99`)
+2. Маршрутизатор отправляет **1% трафика** в canary
+3. **Сравниваем метрики** с baseline:
+   - `error rate`
+   - `p95 / p99 latency`
+   - **Бизнес-KPI** (заказы / мин)
+4. Если метрики ровные → **увеличиваем долю** (5% → 25% → 50% → 100%)
+5. Если ухудшение → **автоматический rollback**, трафик возвращается в старую
+
+**Плюсы:**
+
+- **Маленький blast radius** — затронут N% пользователей
+- **Ловит проблемы, видимые только под реальной нагрузкой**
+- Можно совмещать с **A/B тестами**
+- Меньше ресурсов, чем blue-green
+
+**Минусы:**
+
+- **Сложная инфраструктура маршрутизации** — `Istio`, `Linkerd`, **`Argo Rollouts`**, **`Flagger`**
+- **Хороший observability обязателен** — без метрик canary бесполезен
+- **Sticky sessions** требуют внимания
+- **Долго** — часы вместо минут
+
+**Когда что выбирать:**
+
+| Сценарий | Стратегия |
+|---|---|
+| **Короткий релиз**, низкий риск | **`blue-green`** |
+| **Stateful** компонент, фоновая миграция БД | `blue-green` |
+| **Рискованное** изменение (новый алгоритм рекомендаций) | **`canary`** |
+| **Большая система**, много пользователей | `canary` |
+| **A/B тест** новой фичи | `canary` (по сути то же) |
+| **Бэк без рискованных изменений** | **rolling** (k8s default) |
+
+**Современный паттерн:** **`Argo Rollouts` / `Flagger`** + **Istio/Linkerd** — автоматический canary с авто-rollback по метрикам Prometheus.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое immutable infrastructure и почему она безопаснее mutable?',
-                'answer' => 'В mutable-подходе сервер живёт долго: на него раскатываются обновления через ssh/ansible, ставятся пакеты, правятся конфиги. Со временем накапливается configuration drift — два «одинаковых» сервера ведут себя по-разному, воспроизвести проблему сложно. Immutable infrastructure означает, что любое изменение = пересборка нового образа (Docker image, AMI) и замена старых инстансов на новые; правок на живой машине не делают. Это даёт идентичные окружения, тривиальный rollback (вернуть прежний образ), отсутствие snowflake-серверов и аудит через git/CI. Цена — обязательная автоматизация сборки и центральное хранилище образов.',
+                'answer' => 'Два **подхода к управлению серверами** — mutable («живой» сервер) vs immutable («одноразовый» сервер).
+
+| | **Mutable** | **Immutable** |
+|---|---|---|
+| **Жизнь сервера** | долгая, **патчится** | короткая, **пересоздаётся** |
+| **Обновления** | через `ssh`/`ansible` | **новый образ** + замена |
+| **Drift** | **накапливается** | **невозможен** |
+| **Rollback** | сложный | **тривиальный** — старый образ |
+| **Аудит** | логи ansible, history | **git** + CI |
+| **Snowflake-серверы** | часто | **исключены** |
+
+**`Mutable infrastructure`** — классика:
+
+- **Сервер живёт долго** (месяцы/годы)
+- На него раскатываются обновления через **`ssh`/`ansible`**
+- Ставятся пакеты, правятся конфиги, ротируются ключи
+- **Проблема — `configuration drift`**:
+  - Два «одинаковых» сервера ведут себя **по-разному**
+  - Воспроизвести проблему **сложно** — на проде есть, на стейдже нет
+  - **Snowflake servers** — каждый уникален, никто не знает, что там накручено
+  - Аудит изменений — только в логах ansible, легко потерять историю
+
+**`Immutable infrastructure`** — современный подход:
+
+- **Любое изменение = пересборка** нового образа (`Docker image`, AMI)
+- **Замена** старых инстансов на новые
+- **Правок на живой машине НЕ делают** (даже `ssh` обычно отключён)
+- Откат = **прежний образ** обратно
+
+**Что даёт:**
+
+- **Идентичные окружения** — dev / stage / prod из одного образа
+- **Тривиальный rollback** — `kubectl rollout undo` или прежний AMI
+- **Отсутствие snowflake-серверов** — все идентичны
+- **Аудит через git/CI** — Dockerfile/Packer template + commit-история
+- **Disaster recovery** — после потери региона **поднимаем из образов**
+- **Воспроизводимость** — баг на проде воспроизводится локально из того же образа
+
+**Цена:**
+
+- **Обязательная автоматизация сборки** — без CI не получится
+- **Центральное хранилище образов** — `registry` (`Docker Hub`, ECR, GCR, Harbor) с retention
+- **Stateful данные — отдельно** — БД, файлы пользователей **не** в образе; в `volumes` / `PVC` / managed services
+- **Размер образа** — нужно держать под контролем (`multi-stage build`, alpine)
+- **Дольше деплой** — пересборка vs `apt-get upgrade`
+
+**Где встречается:**
+
+- **Kubernetes** — pods inherently immutable (нужен новый image для изменений)
+- **Auto Scaling Groups** в облаках — AMI как источник правды
+- **Packer** + **Terraform** — Packer строит AMI, Terraform запускает
+- **Serverless** — Lambda/Cloud Functions inherently immutable
+
+**Anti-pattern:** **`kubectl exec` → `apt install`** на проде → теряется immutability, нужно **запретить** на production-кластерах через RBAC.',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Зачем PHP-приложению контейнеры запускать не от root, и что для этого нужно сделать?',
-                'answer' => 'По умолчанию контейнер запускается от UID 0 — если злоумышленник вырвался из процесса (например, через RCE в приложении) и нашёл уязвимость в runc/ядре, он получает root на хосте. Также root внутри легко повредит примонтированные тома. Правильно: в Dockerfile создать пользователя (RUN adduser -u 1000 app) и USER app перед CMD; в Kubernetes выставить securityContext.runAsNonRoot: true и runAsUser: 1000, плюс readOnlyRootFilesystem: true. Сложности: php-fpm нужно дать права на /var/run/php-fpm.sock и логи, а слушать порты ниже 1024 не-root не сможет — поэтому fpm обычно слушает 9000, а 80/443 терминируются на nginx-ingress. Подвох с readOnlyRootFilesystem в Laravel: storage/, bootstrap/cache/ (compiled views, route cache) пишутся в рантайме — нужны явные emptyDir volumes на эти пути, иначе приложение упадёт.',
+                'answer' => '**По умолчанию контейнер запускается от `UID 0` (root)** — это **слабая security posture**, которую обязательно лечат на production.
+
+**Чем плох root внутри контейнера:**
+
+- **Container escape** — если злоумышленник вырвался из процесса (через **RCE** в приложении) и нашёл уязвимость в **runc/containerd** или **ядре** — получает **root на хосте**
+- **Повреждение volumes** — root внутри легко удалит/перепишет примонтированные тома
+- **Capabilities** — у root по умолчанию `CAP_NET_RAW`, `CAP_NET_BIND_SERVICE` и др.
+- **Соответствие** PCI-DSS / CIS Kubernetes Benchmark — требуется non-root
+
+**Что нужно сделать:**
+
+**1. В Dockerfile** — создать пользователя:
+
+```dockerfile
+FROM php:8.3-fpm-alpine
+
+RUN addgroup -g 1000 app && \\
+    adduser -u 1000 -G app -D app && \\
+    chown -R app:app /var/www
+
+USER app
+WORKDIR /var/www
+EXPOSE 9000
+CMD ["php-fpm"]
+```
+
+**2. В Kubernetes** — `securityContext`:
+
+```yaml
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  containers:
+  - name: app
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]
+```
+
+**Сложности и подводные камни:**
+
+| Проблема | Решение |
+|---|---|
+| **Порты ниже 1024** | non-root **не может** слушать; fpm слушает `9000`, TLS терминируется на ingress |
+| **Права на сокет** `/var/run/php-fpm.sock` | владелец = UID контейнера или общая группа |
+| **Логи** | директория должна быть writable для UID; используйте `stderr` (12-factor) |
+| **`readOnlyRootFilesystem` + Laravel** | `storage/`, `bootstrap/cache/` нужны writable → **`emptyDir`** volumes |
+| **Composer artisan на старте** | должны работать от того же UID, что и runtime |
+
+**Пример Laravel-pod с `readOnlyRootFilesystem`:**
+
+```yaml
+volumeMounts:
+- name: storage
+  mountPath: /var/www/storage
+- name: bootstrap-cache
+  mountPath: /var/www/bootstrap/cache
+- name: tmp
+  mountPath: /tmp
+volumes:
+- name: storage
+  emptyDir: {}
+- name: bootstrap-cache
+  emptyDir: {}
+- name: tmp
+  emptyDir: {}
+```
+
+**Без этих volumes** приложение упадёт при попытке записать **compiled view**, **route cache**, **session file**.
+
+**Дополнительные меры безопасности:**
+
+- **`securityContext.seccompProfile: RuntimeDefault`** — стандартный seccomp-фильтр
+- **`PodSecurityStandard: restricted`** — namespace-level policy
+- **`drop ALL capabilities`** — оставить только нужные
+- **`AppArmor`/`SELinux`** — MAC поверх DAC',
                 'difficulty' => 4,
                 'topic' => 'system_design.devops',
             ],

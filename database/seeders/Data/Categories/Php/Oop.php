@@ -363,21 +363,170 @@ echo $user->email; // i@i.ru',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое property hooks в PHP 8.4?',
-                'answer' => 'Property hooks позволяют задавать логику get и set прямо при объявлении свойства, без отдельных геттеров и сеттеров. Это устраняет шаблонный код и сохраняет естественный синтаксис обращения через стрелочную нотацию, при этом хуки могут вычислять значение или валидировать вход.',
+                'answer' => '**Property hooks (PHP 8.4+)** — встроенные `get`/`set`-хуки прямо при объявлении свойства. Убирают шаблонный геттер/сеттер, **сохраняя естественный синтаксис `$user->name`**.
+
+**Что это даёт:**
+- **виртуальное** свойство — значение вычисляется на лету (нет хранения)
+- **валидация / нормализация** на запись без отдельного `set`-метода
+- **переопределение в наследнике** — раньше требовало переопределения метода
+- **в интерфейсах** теперь можно объявить **abstract property**: `public string $name { get; set; }`
+
+**Два вида хуков:**
+
+| Хук | Когда вызывается | Особенности |
+| --- | --- | --- |
+| **`get`** | при чтении `$obj->name` | можно `=> expression` (short form) либо блок с `return` |
+| **`set`** | при записи `$obj->name = $v` | параметр `$value` или `set(Type $v)` для type-narrowing |
+
+**Подкапотные тонкости:**
+- хук не вызывается **изнутри своего же хука** — иначе бесконечная рекурсия; для доступа к «сырому» значению есть `$this->name::raw` или backing field
+- `readonly` + `set` несовместимы; **`asymmetric visibility`** (`public private(set)`) — отдельная фича, но хорошо комбинируется
+- хуки **наследуются и переопределяются** — `parent::$name::get()` зовёт родительский
+- работают в **constructor property promotion**',
+                'code_example' => '<?php
+class User {
+    private string $first;
+    private string $last;
+
+    // Виртуальное свойство — не хранится
+    public string $fullName {
+        get => "$this->first $this->last";
+        set(string $v) {
+            [$this->first, $this->last] = explode(" ", $v, 2);
+        }
+    }
+
+    // Нормализация на запись + валидация
+    public string $email {
+        set(string $v) {
+            $v = strtolower(trim($v));
+            if (!filter_var($v, FILTER_VALIDATE_EMAIL)) {
+                throw new InvalidArgumentException("bad email");
+            }
+            $this->email = $v;   // backing field — запись «как есть»
+        }
+    }
+
+    public function __construct(string $first, string $last) {
+        $this->first = $first;
+        $this->last  = $last;
+    }
+}
+
+$u = new User("Иван", "Петров");
+echo $u->fullName;            // "Иван Петров" — get-хук
+$u->fullName = "Аня Сидорова";// set-хук разрезал
+$u->email = "  X@Y.RU ";      // нормализация → "x@y.ru"',
+                'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'php.oop',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что такое asymmetric visibility в PHP 8.4?',
-                'answer' => 'Асимметричная видимость позволяет задать разные модификаторы для чтения и записи свойства, например public private(set). Снаружи такое свойство доступно только для чтения, а изменять его может только сам класс, что упрощает создание иммутабельных объектов без отдельного геттера.',
+                'answer' => '**Asymmetric visibility (PHP 8.4+)** — разная видимость для **чтения** и **записи** свойства.
+
+**Синтаксис:** `public private(set) string $id;`
+- `public` — **видимость чтения**
+- `private(set)` — **видимость записи** (только сам класс)
+
+**Допустимые комбинации:**
+
+| Объявление | Read | Write |
+| --- | --- | --- |
+| **`public private(set)`** | везде | только свой класс |
+| **`public protected(set)`** | везде | свой класс + наследники |
+| **`protected private(set)`** | свой класс + наследники | только свой класс |
+
+**Правило:** видимость записи **не может быть шире** видимости чтения. **`private public(set)`** — синтаксическая ошибка.
+
+**Чем отличается от `readonly`:**
+
+| | `readonly` | `public private(set)` |
+| --- | --- | --- |
+| Запись изнутри класса | **один раз** | **сколько угодно** |
+| Запись из наследника | **нет** (даже у protected) | возможна (`protected(set)`) |
+| Чтение снаружи | да | да |
+
+**Когда брать что:**
+- **readonly** — value-object, инициализированный один раз в конструкторе
+- **asymmetric visibility** — entity, у которой состояние **меняется внутри**, но снаружи **только читается** (счётчики, статусы, поля, обновляемые через методы)
+
+**Работает с promoted-параметрами** в конструкторе и **сочетается с property hooks**.',
+                'code_example' => '<?php
+final class Order {
+    public function __construct(
+        public private(set) string $id,
+        public protected(set) string $status = "new",
+    ) {}
+
+    public function pay(): void {
+        $this->status = "paid";        // ✅ внутри своего класса
+    }
+}
+
+class PriorityOrder extends Order {
+    public function expedite(): void {
+        $this->status = "rushed";      // ✅ наследник может (protected(set))
+        // $this->id = "X";            // ❌ Error — private(set)
+    }
+}
+
+$o = new Order("ord_1");
+echo $o->status;                       // "new" — read OK
+// $o->status = "hacked";              // ❌ Error: protected(set)
+$o->pay();
+echo $o->status;                       // "paid"',
+                'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'php.oop',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что разрешает PHP 8.3 делать с readonly-свойствами внутри __clone()?',
-                'answer' => 'До 8.3 readonly-свойство нельзя было перезаписать даже в магическом __clone, поэтому глубокое клонирование объектов с readonly DateTime внутри было сломано. В 8.3 разрешена однократная переинициализация readonly-свойств именно в __clone — обычно для того, чтобы заменить вложенные мутабельные объекты на их клоны. Вне __clone правило неизменности по-прежнему действует.',
+                'answer' => '**Проблема до PHP 8.3:**
+- `readonly`-свойство нельзя было **перезаписать** даже в магическом `__clone()`
+- **глубокое клонирование** объектов с вложенными `readonly`-полями было **сломано**
+- приходилось писать **wither-методы** (`return new self(...)`) — много boilerplate
+
+**Что разрешили в PHP 8.3 (RFC «readonly amendments»):**
+- внутри `__clone()` того класса, **где свойство объявлено**, разрешена **однократная переинициализация** `readonly`-свойств
+- вне `__clone()` правило неизменности **по-прежнему действует** — запись снаружи → `Error`
+
+**Зачем это нужно — типичный сценарий:**
+1. У вас `readonly`-агрегат с вложенными `readonly`-объектами
+2. При **`clone $aggregate`** PHP делает **поверхностную копию** — вложенные объекты остаются те же
+3. Если внутренний объект **должен быть свежей копией** — `__clone()` теперь может выполнить `$this->inner = clone $this->inner;`
+
+**Подкапотные правила:**
+- разрешена **запись только в `readonly`-свойство своего класса** — у унаследованных всё ещё `Error`
+- `__clone()` вызывается **после** копирования полей, видит уже скопированные значения
+- объекты, которые сами реализуют свой `__clone()`, получают согласованную deep-copy через каскад
+
+**До 8.3 — wither-паттерн** для immutable-обновления остаётся каноном и в 8.3+ для тех случаев, когда нужно создать модифицированную копию **снаружи** объекта.',
+                'code_example' => '<?php
+final class OrderSnapshot {
+    public function __construct(
+        public readonly string $id,
+        public readonly DateTimeImmutable $createdAt,
+        public readonly Money $total,
+    ) {}
+
+    // PHP 8.3+: deep-clone вложенных объектов
+    public function __clone(): void {
+        // readonly-поле своего класса можно один раз переписать в __clone()
+        $this->total = clone $this->total;
+        // $this->createdAt уже immutable — клонировать не обязательно
+    }
+}
+
+$a = new OrderSnapshot("ord_1", new DateTimeImmutable(), new Money(100, "USD"));
+$b = clone $a;
+// $b->total — новый Money-объект, не тот же, что у $a
+// $b->id  = "X";   // ❌ Error: cannot modify readonly snaружи __clone
+// Wither-паттерн остаётся канонным для модификации снаружи:
+// public function withTotal(Money $m): self { return new self($this->id, $this->createdAt, $m); }',
+                'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'php.oop',
             ],
@@ -461,21 +610,156 @@ echo Order::STATUS_NEW;   // "new" — через класс, НЕ через т
             [
                 'category' => 'PHP',
                 'question' => 'Что такое clone with (clone-with-properties) в PHP 8.5?',
-                'answer' => 'Синтаксис clone($obj, [\'status\' => 200, \'reason\' => \'OK\']) клонирует объект и одновременно перезаписывает указанные свойства. Особенно ценен для readonly- и immutable-классов вроде PSR-7 Response: раньше для withStatus() приходилось писать собственный конструктор копирования или использовать __clone. Запись в свойства внутри clone with разрешена даже для readonly при условии, что вызов происходит из scope, имеющего право на запись (для readonly — обычно изнутри класса или его методов вроде wither-а). Из глобального scope clone($obj, [\'x\'=>...]) для readonly выдаст Error.',
+                'answer' => '**Clone-with-properties (PHP 8.5+)** — синтаксис **`clone($obj, [\'prop\' => $value])`** клонирует объект **и одновременно перезаписывает** указанные свойства.
+
+**Зачем нужно — типичная задача:**
+- **PSR-7 Response** и подобные immutable-объекты: метод `withStatus(int $code)` должен вернуть новую копию с обновлённым статусом
+- раньше для этого приходилось писать **собственный wither**: `$new = clone $this; $new->status = $code; return $new;` — boilerplate
+
+**Что делает синтаксис:**
+1. вызывает обычный `clone` (включая `__clone()`)
+2. применяет перезапись свойств **после** `__clone()` — атомарно для вызывающего
+3. возвращает уже модифицированный новый объект
+
+**Правила scope для записи:**
+
+| Где вызвали `clone($obj, [...])` | readonly-свойство | обычное свойство |
+| --- | --- | --- |
+| Из метода **того же класса** | **разрешено** | разрешено |
+| Из **наследника** | `Error` | зависит от видимости |
+| Снаружи (глобально) | **`Error`** для readonly | зависит от видимости |
+
+**Главное правило:** **scope записи в `clone($obj, [...])` определяется по правилам обычного присваивания** в этом месте кода. Для `public readonly` свойств снаружи всё равно нельзя — нужно остаться внутри класса или его wither-метода.
+
+**Что выигрываем:** wither-методы становятся **одной строкой**, без отдельного клона + присваивания.',
+                'code_example' => '<?php
+final class HttpResponse {
+    public function __construct(
+        public readonly int $status,
+        public readonly string $reason,
+        public readonly array $headers = [],
+        public readonly string $body = "",
+    ) {}
+
+    // PHP 8.5: wither в одну строку
+    public function withStatus(int $code, string $reason): self {
+        return clone($this, ["status" => $code, "reason" => $reason]);
+    }
+
+    public function withHeader(string $name, string $value): self {
+        return clone($this, ["headers" => [...$this->headers, $name => $value]]);
+    }
+}
+
+$r1 = new HttpResponse(200, "OK");
+$r2 = $r1->withStatus(404, "Not Found");
+echo $r1->status;          // 200 — оригинал не тронут
+echo $r2->status;          // 404
+
+// Снаружи для readonly — Error
+// $r3 = clone($r1, ["status" => 500]);   // Error: cannot modify readonly',
+                'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'php.oop',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что даёт модификатор final у promoted-свойств в PHP 8.5?',
-                'answer' => 'В 8.5 свойство, объявленное через constructor property promotion, можно пометить как final, например public final string $id. Это запрещает наследникам переопределять данное свойство (в сочетании с property hooks, которые в 8.4 ввели понятие переопределяемого свойства). Семантически близко к readonly, но фиксирует именно «не переопределяй в подклассе», а не «не пиши после инициализации».',
+                'answer' => '**`final` для promoted-свойств (PHP 8.5+)** — запрещает **наследникам** переопределять конкретное свойство.
+
+**Зачем это вообще появилось:** в PHP 8.4 property hooks ввели понятие **переопределяемого свойства** — наследник может перекрыть `get`/`set` родителя. До 8.5 не было способа сказать «я объявил это поле — оно итоговое, не трогайте».
+
+**Что `final` фиксирует:**
+- запрещает **переопределение свойства** в подклассе (как `final` у методов)
+- наследник, попытавшийся объявить такое же свойство → **`Error: Cannot override final property`**
+
+**Чем отличается от `readonly`:**
+
+| | `readonly` | `final` |
+| --- | --- | --- |
+| Запрещает | **запись после инициализации** | **переопределение в наследнике** |
+| Время проверки | runtime | compile-time |
+| Можно вместе? | **да**: `public final readonly string $id` |
+| Влияет на hooks? | нет | **да** — наследник не сможет перекрыть |
+
+**Когда брать `final`:**
+- библиотечные базовые классы — гарантировать, что **критичный property не будет перекрыт** в чужом коде
+- свойства с **property hooks**, поведение которых важно зафиксировать
+- защита **invariant-ов** при наследовании
+
+**Где работает:**
+- promoted-параметры: `public final string $id`
+- обычные объявления свойств в классе
+- **не на интерфейсах** (там свойство абстрактное по определению)',
+                'code_example' => '<?php
+class Entity {
+    public function __construct(
+        public final readonly string $id,    // PHP 8.5: final + readonly
+    ) {}
+}
+
+class User extends Entity {
+    // ❌ Error: Cannot override final property Entity::$id
+    // public string $id = "X";
+}
+
+// Использование с property hooks — наследник не может перекрыть get
+class Money {
+    public final string $formatted {
+        get => number_format($this->amount, 2) . " " . $this->currency;
+    }
+
+    public function __construct(
+        public readonly float $amount,
+        public readonly string $currency,
+    ) {}
+}
+
+class Btc extends Money {
+    // ❌ Error: final property не переопределяется
+    // public string $formatted { get => ...; }
+}',
+                'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'php.oop',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Что такое Reflection в PHP?',
-                'answer' => 'Reflection - API для интроспекции кода в рантайме: получить информацию о классах, методах, свойствах, параметрах. Простыми словами: код, который анализирует другой код. Используется фреймворками для DI-контейнеров, ORM, сериализаторов, тестов. Основные классы: ReflectionClass, ReflectionMethod, ReflectionProperty, ReflectionParameter, ReflectionAttribute (PHP 8). С PHP 8.1 setAccessible() стал deprecated/no-op — Reflection даёт доступ к private/protected свойствам и методам по умолчанию. Минус - медленнее прямых вызовов.',
+                'answer' => '**Reflection** — API для **интроспекции кода в рантайме**: получить информацию о классах, методах, свойствах, параметрах, атрибутах.
+
+**Основные классы:**
+
+| Класс | Что описывает |
+| --- | --- |
+| **`ReflectionClass`** | класс целиком |
+| **`ReflectionMethod`** | метод |
+| **`ReflectionProperty`** | свойство |
+| **`ReflectionParameter`** | параметр функции/метода |
+| **`ReflectionAttribute`** (PHP 8+) | атрибут `#[...]` |
+| **`ReflectionEnum`** / **`ReflectionEnumCase`** | enum и его кейсы |
+| **`ReflectionIntersectionType`** / **`ReflectionUnionType`** | составные типы |
+
+**Где реально применяется:**
+- **DI-контейнер** Laravel разбирает type-hints конструкторов для **autowiring**
+- **PHPUnit** ищет методы с префиксом `test*` или с `#[Test]`
+- **ORM** (Eloquent, Doctrine) мапит колонки БД на свойства
+- **сериализаторы / валидаторы** читают атрибуты (`#[Assert\\NotBlank]`)
+- **роутеры** (`#[Route]`)
+
+**Доступ к приватным членам:**
+- **PHP < 8.1** — нужно было `setAccessible(true)`
+- **PHP 8.1+** — `setAccessible()` стал **deprecated / no-op**; Reflection видит `private`/`protected` **по умолчанию**
+
+**Создание объекта:**
+- **`newInstance($args...)`** — обычные аргументы
+- **`newInstanceArgs([...])`** — массивом
+- **`newInstanceWithoutConstructor()`** — **в обход** конструктора (нужно ORM для гидратации из БД)
+
+**Минусы:**
+- **медленнее** прямых вызовов (parsing метаданных)
+- паттерн: использовать **один раз на старте** + **кэшировать** результат (compiled DI container, hydrator-pool)
+- **JIT не оптимизирует** код, написанный через Reflection',
                 'code_example' => '<?php
 class User {
     public function __construct(
@@ -510,7 +794,34 @@ echo $ageProp->getValue($user);',
             [
                 'category' => 'PHP',
                 'question' => 'Что такое late static binding и зачем нужен static вместо self?',
-                'answer' => 'Late static binding (LSB) - механизм, когда static:: ссылается на класс, в котором был ВЫЗВАН метод, а не на тот, где он объявлен. self:: всегда ссылается на класс объявления. Простыми словами: static подстраивается под наследников, self - нет. Критично для фабричных методов в родительских классах: с static новые подклассы автоматически получают правильное поведение.',
+                'answer' => '**Late static binding (LSB)** — механизм, когда **`static::`** ссылается на класс, в котором метод был **ВЫЗВАН**, а не на тот, где он **объявлен**.
+
+**Сравнение `self::` vs `static::`:**
+
+| | `self::` | `static::` |
+| --- | --- | --- |
+| Когда резолвится | **compile-time** (early binding) | **runtime** (late binding) |
+| Указывает на | класс, где **написан** код | класс, где **вызван** метод |
+| Учитывает наследование | **нет** | **да** |
+| Применимо к | методам, свойствам, константам, `new` | то же самое |
+
+**Где имеет значение:**
+
+**1. Фабричные методы в базовом классе:**
+- `public static function create(): static` — с LSB наследники **автоматически** возвращают свой тип
+- классический `: self` — всегда базовый, наследник придётся переопределять
+
+**2. Eloquent / Active Record:**
+- `Model::query()`, `User::find(1)` работают через LSB — статический метод в `Model`, но `static::` указывает на `User`
+
+**3. Тип возврата `: static`** (PHP 8.0+):
+- compile-time гарантирует, что fluent-методы (`->save()`, `->refresh()`) возвращают **именно класс, у которого их вызвали**
+- IDE/статанализ знают точный тип
+
+**Подкапотные правила:**
+- LSB активируется при вызове через **`static::`**, **`new static()`** или с возврат-типом **`: static`**
+- внутри **статического метода** `$this` нет — LSB работает через **служебный stack frame** Zend Engine
+- при `forward_static_call($cb)` LSB **переносится** в вызываемую функцию; обычный вызов сбрасывает',
                 'code_example' => '<?php
 class Model {
     public static function create(): self {
@@ -622,7 +933,35 @@ class Order {
             [
                 'category' => 'PHP',
                 'question' => 'Что такое Iterator и IteratorAggregate?',
-                'answer' => 'Iterator - интерфейс, который надо реализовать чтобы объект работал в foreach. Методы: rewind, valid, current, key, next. IteratorAggregate проще - нужно только реализовать getIterator(), возвращающий любой Iterator (часто - ArrayIterator). Plus Generator: метод getIterator() может быть генератором (yield). Это делает обход коллекций ленивым и кастомным.',
+                'answer' => '**Два SPL-интерфейса** для того, чтобы объект работал в **`foreach`**.
+
+**`Iterator`** — низкоуровневый, нужно реализовать **5 методов** строгого протокола:
+
+| Метод | Когда вызывается | Что должен делать |
+| --- | --- | --- |
+| **`rewind(): void`** | при входе в `foreach` | переставить внутренний курсор в начало |
+| **`valid(): bool`** | перед каждой итерацией | есть ли ещё элементы |
+| **`current(): mixed`** | получение значения | вернуть текущее значение |
+| **`key(): mixed`** | если используется `$k => $v` | вернуть текущий ключ |
+| **`next(): void`** | в конце итерации | продвинуть курсор |
+
+**`IteratorAggregate`** — проще, **один метод**:
+- **`getIterator(): Iterator`** возвращает **любой** `Iterator` (часто **`ArrayIterator`**)
+- бонус: метод может быть **генератором** (`yield`) — компилятор сам обернёт его в `Generator`, который реализует `Iterator`
+
+**Что выбирать:**
+
+| Случай | Берите |
+| --- | --- |
+| Хочется **переиспользовать** готовый итератор (массив, генератор) | `IteratorAggregate` |
+| Нужен **сложный внутренний курсор** с состоянием | `Iterator` |
+| **Бесконечная** или ленивая последовательность | `IteratorAggregate` + `Generator` |
+
+**Подкапотные нюансы:**
+- `Iterator` **не может быть пройден дважды** без правильно реализованного `rewind`
+- `Generator` — одноразовый; для повторного обхода нужно создать заново
+- **`Traversable`** — родительский интерфейс **обоих**; type-hint `iterable` принимает `array | Traversable`
+- порядок вызовов в `foreach`: `rewind` → `valid` → (`current` + `key`) → тело → `next` → `valid` → ...',
                 'code_example' => '<?php
 // Через IteratorAggregate + Generator
 class Collection implements IteratorAggregate {
@@ -795,7 +1134,34 @@ var_dump($a->equals($b)); // true',
             [
                 'category' => 'PHP',
                 'question' => 'Зачем нужны readonly-свойства и readonly-классы (PHP 8.2) и какие у них ограничения?',
-                'answer' => 'readonly-свойство можно инициализировать один раз изнутри объявившего класса (обычно в конструкторе, но строго это "первая запись из scope класса", а не только из конструктора). После первой записи переписать его снаружи или из наследника нельзя - Error. readonly-класс (PHP 8.2+) делает все нестатические свойства readonly автоматически. Это даёт иммутабельные DTO/value objects без бойлерплейта геттеров. Ограничения: нельзя static-свойства, нельзя дефолтные значения у типизированных readonly-свойств. Про клонирование: до PHP 8.3 clone не позволял переписать readonly на копии, использовали wither (return new self(...)); с PHP 8.3 (RFC "readonly amendments") readonly-свойства можно reinitialize СТРОГО внутри тела магического метода __clone() того класса, где они объявлены - вне __clone() запись по-прежнему Error. Полезно это для глубокого клонирования вложенных readonly-объектов и сброса кешированного state на копии; для классических wither-ов new self(...) остаётся каноном.',
+                'answer' => '**`readonly` свойство (PHP 8.1+)** — можно записать **ровно один раз** из **scope объявившего класса**.
+
+**Точные правила записи:**
+- запись разрешена **из любого метода своего класса** — **не только из конструктора** (важный нюанс)
+- после **первой** записи любая последующая → **`Error: Cannot modify readonly property`**
+- из **наследника** записать нельзя, **даже если** свойство `protected readonly`
+
+**`readonly` класс (PHP 8.2+)** — `final readonly class Foo`:
+- автоматически **все нестатические** свойства становятся `readonly`
+- даёт immutable DTO / value object **без boilerplate**
+
+**Ограничения:**
+- **нельзя** на `static`-свойствах
+- **нельзя** с дефолтным значением у типизированного свойства (как поля; promoted с дефолтом — можно)
+- **нельзя** untyped `readonly` (тип **обязателен**)
+- **нельзя** в трейтах напрямую (трейт **объявляющий** readonly-поле — `Fatal error`, надо в самом классе)
+
+**Эволюция clone:**
+
+| Версия | Что можно с readonly при `clone` |
+| --- | --- |
+| **PHP 8.1** | ничего — wither (`return new self(...)`) **обязателен** |
+| **PHP 8.3** | **reinitialize** разрешено **только внутри `__clone()`** объявившего класса (RFC «readonly amendments») |
+| **PHP 8.5** | синтаксис **`clone($obj, [...])`** + scope-правила |
+
+**Подкапотный нюанс:**
+- `readonly` **не делает глубокую неизменность**: внутри `readonly` поле-объект, его собственные **свойства** менять можно (если они не readonly)
+- глубокая immutability = `readonly class` **плюс** value-objects во всех полях',
                 'code_example' => '<?php
 final readonly class Money {
     public function __construct(
@@ -812,12 +1178,58 @@ $m = new Money(100, "USD");
             [
                 'category' => 'PHP',
                 'question' => 'В чём разница между WeakMap, WeakReference и SplObjectStorage?',
-                'answer' => 'SplObjectStorage хранит сильные ссылки - объект-ключ не освободится, пока хранилище живёт. WeakReference (PHP 7.4) - обёртка, не препятствующая GC, get() вернёт null после уборки. WeakMap (PHP 8.0) - ассоциативный массив со слабыми ключами: при удалении объекта запись исчезает автоматически. Используется для кэшей и метаданных, привязанных к объекту, без утечек.',
+                'answer' => '**Три инструмента для хранения «по объекту»** — с принципиально разной семантикой ссылок.
+
+| Структура | Версия | Тип ссылки на ключ | Освобождается? |
+| --- | --- | --- | --- |
+| **`SplObjectStorage`** | PHP 5.3 | **сильная** | нет, пока хранилище живо |
+| **`WeakReference`** | PHP 7.4 | **слабая** (обёртка) | да — `get()` вернёт `null` |
+| **`WeakMap`** | PHP 8.0 | **слабые ключи** | да — запись **автоматически** уходит |
+
+**`SplObjectStorage`:**
+- работает как **map**: `$storage[$obj] = $data` или **set**: `$storage->attach($obj)`
+- использует **`spl_object_hash`** под капотом
+- хранит **сильную** ссылку на ключ — объект **не освободится**, пока хранилище живёт ⚠️
+- **источник утечек** в long-running процессах
+
+**`WeakReference`:**
+- одиночная **обёртка** над объектом, **не препятствующая GC**
+- создаётся через **`WeakReference::create($obj)`**
+- `$ref->get()` возвращает объект **или `null`**, если объект уже собран
+- удобно для **обратных ссылок** (Observer не должен «держать» Subject)
+
+**`WeakMap`:**
+- ассоциативный map со **слабыми ключами**
+- когда **последняя сильная ссылка** на объект-ключ уходит → запись **исчезает автоматически**
+- используется для **side-table метаданных**: per-object кеши, ленивые вычисления, права доступа
+- **значения** хранятся сильно (если значение содержит ссылку на ключ — кольцо, GC решит)
+
+**Что брать:**
+- **per-object метаданные/кеш без утечек** — **`WeakMap`**
+- **обратная ссылка** на единственный объект — `WeakReference`
+- **множество объектов** где время жизни хочется контролировать **извне** — `SplObjectStorage`',
                 'code_example' => '<?php
+// WeakMap — без утечек: запись уходит вместе с ключом
 $cache = new WeakMap();
 $user = new stdClass();
 $cache[$user] = "expensive_payload";
-unset($user);             // запись из WeakMap уйдёт автоматически',
+var_dump(count($cache));       // 1
+unset($user);
+var_dump(count($cache));       // 0 — запись пропала автоматически
+
+// WeakReference — слабая обёртка на единственный объект
+$obj = new stdClass();
+$ref = WeakReference::create($obj);
+var_dump($ref->get() !== null); // true
+unset($obj);
+var_dump($ref->get());          // NULL — GC собрал
+
+// SplObjectStorage — сильная ссылка, объект не освободится
+$store = new SplObjectStorage();
+$user = new stdClass();
+$store[$user] = "data";
+unset($user);
+var_dump(count($store));        // 1 — утечка: $user всё ещё в $store',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'php.oop',
@@ -825,7 +1237,33 @@ unset($user);             // запись из WeakMap уйдёт автомат
             [
                 'category' => 'PHP',
                 'question' => 'Приведи практический пример утечки памяти, которую решает WeakMap',
-                'answer' => 'Классический сценарий - кеширование вычисленных метаданных по объекту в долгоживущем процессе (Octane, queue:work, ReactPHP). Например, EventDispatcher запоминает прав доступа для каждого Request/User, чтобы не ходить в БД повторно при каждом fired event. Если кеш - обычный array со spl_object_id($user) или SplObjectStorage в качестве ключа, то ссылка на $user в кеше СИЛЬНАЯ: даже когда обработчик запроса завершён и нигде в коде $user больше не нужен, refcount остаётся > 0 - объект не освобождается, и через 100k запросов память кончается. С WeakMap ключ - слабая ссылка: как только закончился запрос и кончились сильные ссылки на $user, GC уничтожит и объект, и автоматически уберёт запись из WeakMap. Это правильный инструмент для "side-table" данных: метаданных, прав, ленивых вычислений, observer-паттерна (слушатели не должны мешать GC своих субъектов). Аналогичная проблема в JS: WeakMap используется для приватных полей и DOM-метаданных по той же причине.',
+                'answer' => '**Классический сценарий:** кеширование **вычисленных метаданных по объекту** в **долгоживущем процессе** — Laravel **Octane**, `queue:work`, ReactPHP/AMPHP, Swoole.
+
+**Типовая постановка:**
+- `PermissionCache` запоминает права доступа для каждого `User`, чтобы не ходить в БД повторно при каждом fired event
+- кеш живёт **между запросами** в Octane-воркере
+- проблема всплывает только под нагрузкой через часы работы
+
+**Как ломается с обычным массивом:**
+1. Ключ кеша: **`spl_object_id($user)`** или сам объект через `SplObjectStorage`
+2. Значение содержит **ссылку на `$user`** (или вычисленные данные с ним)
+3. Контроллер закончился, `$user` нигде больше не нужен
+4. **refcount остаётся > 0** — кеш держит сильную ссылку
+5. Через **100k запросов** memory кончается → **OOM**
+
+**Как решает `WeakMap`:**
+- ключ — **слабая ссылка** на `$user`
+- как только из контроллера и сервисов уходят **все сильные ссылки**, GC уничтожает `$user`
+- запись **автоматически исчезает** из `WeakMap`
+- **side-table data** — метаданные, права, ленивые вычисления, observer-паттерн (слушатели не должны мешать GC субъектов)
+
+**Где реально используется в экосистеме:**
+- **Symfony EventDispatcher** — связь listener ↔ subject
+- **Doctrine UnitOfWork** — отслеживание managed entities
+- **Laravel Octane** — кеширование вычисленных view-binding-ов
+- любые **per-request scoped** структуры в long-running runtime
+
+**Аналог в JS** — `WeakMap` используется для приватных полей и DOM-метаданных по той же причине.',
                 'code_example' => '<?php
 // ❌ УТЕЧКА в long-running процессе
 class PermissionCacheBad

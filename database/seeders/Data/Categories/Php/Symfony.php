@@ -240,7 +240,53 @@ public function index(Request $request): Response
             [
                 'category' => 'PHP',
                 'question' => 'Какие основные события HttpKernel срабатывают при обработке запроса?',
-                'answer' => 'Жизненный цикл проходит через kernel.request (до выбора контроллера, тут работает роутинг и фаервол), kernel.controller (контроллер найден), kernel.controller_arguments (готовятся аргументы), kernel.view (если контроллер вернул не Response), kernel.response (финальные модификации ответа), kernel.finish_request и kernel.terminate (после отправки ответа, для долгих фоновых действий) и kernel.exception (при выбросе исключения). Подписавшись на нужное событие, можно вмешаться почти в любую точку обработки запроса.',
+                'answer' => '**`Symfony\\Component\\HttpKernel`** проводит запрос через **последовательность событий**, на каждое можно подписаться через `EventSubscriber`/`EventListener`.
+
+**Полный жизненный цикл (от запроса к ответу):**
+
+| Событие | Когда срабатывает | Зачем подписываться |
+| --- | --- | --- |
+| **`kernel.request`** | до выбора контроллера | роутинг, фаервол, CORS, локаль, тенант-резолвер |
+| **`kernel.controller`** | контроллер найден, до вызова | подмена контроллера, профайлер |
+| **`kernel.controller_arguments`** | подготовлены аргументы для контроллера | ArgumentResolver, авторизация |
+| _(вызов контроллера)_ | — | — |
+| **`kernel.view`** | контроллер вернул **НЕ `Response`** (например, массив) | автомаппинг array → JsonResponse, сериализация |
+| **`kernel.response`** | финальный `Response` готов, до отправки | заголовки CSP/Cache-Control, замер времени |
+| **`kernel.finish_request`** | запрос обработан, перед TerminableInterface | очистка request-scoped state в воркерах |
+| _(`Response::send()`)_ | байты ушли клиенту | — |
+| **`kernel.terminate`** | **после** отправки ответа | долгие действия: отправить аналитику, прогреть кеш |
+| **`kernel.exception`** | в любой момент брошено исключение | конвертация в ErrorResponse, логирование |
+
+**Приоритеты:**
+
+- у каждого подписчика есть **`priority`** (число) — выше = раньше
+- встроенные слушатели Symfony:
+  - **`RouterListener`** (priority 32) — на `kernel.request`, выбирает маршрут
+  - **`FirewallListener`** (priority 8) — на `kernel.request`, проверяет аутентификацию
+  - **`ProfilerListener`** — на `kernel.response`, добавляет debug toolbar
+
+**Структура listener-методов:**
+
+```php
+public function onKernelRequest(RequestEvent \$event): void
+{
+    if (! \$event->isMainRequest()) {
+        return; // sub-requests пропускаем
+    }
+    \$request = \$event->getRequest();
+    // ...
+    if (\$shouldShortCircuit) {
+        \$event->setResponse(new Response("blocked", 403));
+        // дальнейшие слушатели kernel.request не вызовутся (StopPropagation)
+    }
+}
+```
+
+**Подводные камни:**
+
+- **`kernel.terminate`** работает в FPM только если SAPI поддерживает `fastcgi_finish_request` — в CLI/Octane всё в одном процессе, после `send()` блокирующая работа задерживает следующий запрос
+- **sub-requests** (через `HttpKernelInterface::SUB_REQUEST`) тоже проходят весь цикл — фильтруйте через `isMainRequest()`
+- порядок событий внутри одного `kernel.request` определяется **только** `priority` — не предполагайте, что бандлы зарегистрировали слушатели в нужном порядке',
                 'difficulty' => 4,
                 'topic' => 'php.symfony',
             ],
@@ -288,14 +334,157 @@ class AuthSubscriber implements EventSubscriberInterface
             [
                 'category' => 'PHP',
                 'question' => 'Что такое CompilerPass и зачем он нужен?',
-                'answer' => 'CompilerPass — это хук, который запускается на этапе компиляции контейнера и может менять определения сервисов до того, как контейнер закэшируется. Самый частый сценарий — собрать все сервисы с определённым тегом и инъектировать их в реестр или диспетчер: например, фабрика транспортов Messenger таким образом узнаёт обо всех зарегистрированных типах транспорта. Регистрируют CompilerPass в методе build() Kernel или бандла.',
+                'answer' => '**`CompilerPassInterface`** — хук в процессе **компиляции контейнера**, выполняющийся **до** того, как контейнер закэшируется в PHP-класс `App_KernelDevDebugContainer.php`.
+
+**Почему это важная концепция:**
+
+- Symfony **компилирует** DI-контейнер: после `composer dump-autoload` и `cache:warmup` все определения сервисов превращаются в **один сгенерированный PHP-класс** с массивом фабрик
+- runtime-разрешение зависимостей становится **почти бесплатным** — это просто `new` в готовом коде
+- **CompilerPass** даёт возможность **до этой заморозки** перебрать определения и что-то изменить: добавить аргумент, переопределить класс, собрать теги
+
+**Классический use-case — Tagged Services pattern:**
+
+```php
+final class RegisterTransportsPass implements CompilerPassInterface
+{
+    public function process(ContainerBuilder \$container): void
+    {
+        if (! \$container->hasDefinition(TransportRegistry::class)) {
+            return;
+        }
+        \$registry = \$container->findDefinition(TransportRegistry::class);
+        foreach (\$container->findTaggedServiceIds("messenger.transport") as \$id => \$tags) {
+            \$registry->addMethodCall("add", [new Reference(\$id), \$tags[0]["name"] ?? \$id]);
+        }
+    }
+}
+```
+
+**Типичные сценарии для CompilerPass:**
+
+| Сценарий | Что делает |
+| --- | --- |
+| **Сбор tagged services** | `findTaggedServiceIds()` + добавление в реестр через `addMethodCall` |
+| **Подмена класса сервиса** | `setDefinition()` для замены реализации |
+| **Условная регистрация** | если расширение установлено — зарегистрировать, иначе — нет |
+| **Валидация конфига** | проверить, что обязательные сервисы есть, иначе `throw RuntimeException` |
+| **Динамическое декорирование** | обернуть сервис в Proxy/Decorator программно |
+
+**Регистрация:**
+
+```php
+// В Bundle (предпочтительно) или Kernel
+public function build(ContainerBuilder \$container): void
+{
+    parent::build(\$container);
+    \$container->addCompilerPass(new RegisterTransportsPass());
+}
+```
+
+**Этапы компиляции (`PassConfig::TYPE_*`):**
+
+| Этап | Когда срабатывает | Зачем |
+| --- | --- | --- |
+| `TYPE_BEFORE_OPTIMIZATION` (default) | до оптимизаций | основное место для своих pass-ов |
+| `TYPE_OPTIMIZE` | оптимизация графа сервисов | внутреннее, не трогать |
+| `TYPE_BEFORE_REMOVING` | до удаления неиспользуемых | если делаете setMethodCall на «private» сервисах |
+| `TYPE_REMOVE` | удаление private/unused | внутреннее |
+| `TYPE_AFTER_REMOVING` | финальные правки | последний шанс |
+
+**Подводные камни:**
+
+- CompilerPass запускается **только при пересборке** контейнера — в проде после `cache:clear` или при изменении конфига
+- **не использует runtime-данные** — на этапе компиляции нет request, БД, env-переменных (можно `\$container->resolveEnvPlaceholders` для env, но осторожно)
+- ошибки в pass-е валят `cache:warmup` — отлаживайте локально
+- сложные сценарии (динамическая зависимость от runtime) делаются **через runtime DI** (`ServiceLocator`, `TaggedIteratorArgument`), не через pass',
                 'difficulty' => 4,
                 'topic' => 'php.symfony',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Как внедрить два разных экземпляра одного класса в Symfony?',
-                'answer' => 'Когда autowiring не может различить реализации одного интерфейса, используют named autowiring: имя параметра конструктора должно совпадать с алиасом сервиса, например LoggerInterface $applicationLogger. С PHP 8 для того же служит атрибут #[Target("application")] на параметре, который явно указывает контейнеру, какой именно сервис подставить.',
+                'answer' => '**Корневая проблема:** autowiring подбирает сервис **по type-hint**. Если в контейнере **две реализации** одного интерфейса (`LoggerInterface` для app/audit, `CacheInterface` для users/posts), сам тип не различает их — нужен **второй сигнал** контейнеру.
+
+**Четыре механизма для разрешения:**
+
+**1. Named autowiring (имя параметра ≡ имя сервиса)**
+
+```yaml
+# services.yaml
+services:
+    Psr\\Log\\LoggerInterface \$applicationLogger:
+        alias: monolog.logger.app
+
+    Psr\\Log\\LoggerInterface \$auditLogger:
+        alias: monolog.logger.audit
+```
+
+```php
+class UserService {
+    public function __construct(
+        private LoggerInterface \$applicationLogger,  // → monolog.logger.app
+        private LoggerInterface \$auditLogger,        // → monolog.logger.audit
+    ) {}
+}
+```
+
+**2. Атрибут `#[Target]` (Symfony 5.4+, рекомендованный путь):**
+
+```php
+use Symfony\\Component\\DependencyInjection\\Attribute\\Target;
+
+class UserService {
+    public function __construct(
+        #[Target("application")] private LoggerInterface \$logger,
+        #[Target("audit")] private LoggerInterface \$audit,
+    ) {}
+}
+```
+
+Связь сервиса с целью — через alias `LoggerInterface \\$auditLogger` (camelCase → kebab внутри атрибута). Symfony **выводит** target из суффикса алиаса.
+
+**3. Атрибут `#[Autowire]` (Symfony 6.1+) — самый явный:**
+
+```php
+use Symfony\\Component\\DependencyInjection\\Attribute\\Autowire;
+
+class UserService {
+    public function __construct(
+        #[Autowire(service: "monolog.logger.audit")]
+        private LoggerInterface \$audit,
+
+        #[Autowire(env: "API_KEY")]
+        private string \$apiKey,
+
+        #[Autowire(param: "kernel.project_dir")]
+        private string \$projectDir,
+    ) {}
+}
+```
+
+Преимущество: всё в одном месте (классе), не нужны YAML-алиасы.
+
+**4. `#[TaggedIterator]` — все сервисы с тегом сразу:**
+
+```php
+class PaymentService {
+    public function __construct(
+        #[TaggedIterator("app.payment_gateway")]
+        private iterable \$gateways,  // все сервисы с тегом
+    ) {}
+}
+```
+
+**Сравнение четырёх способов:**
+
+| Способ | Когда выбирать |
+| --- | --- |
+| Named autowiring | классика, унаследованный код |
+| `#[Target]` | две-три реализации одного интерфейса |
+| `#[Autowire]` | разовая «привяжи к конкретному сервису» |
+| `#[TaggedIterator]` | плагины, стратегии, voter-ы |
+
+**Подводный камень:** **autowiring требует точного типа**. Если переименовали интерфейс, оба способа выше упадут. Best practice: писать **интеграционный тест на контейнер** (`\$this->getContainer()->get(UserService::class)`), чтобы CI ловил ошибки compilation.',
                 'difficulty' => 4,
                 'topic' => 'php.symfony',
             ],
@@ -486,7 +675,84 @@ class UserController
             [
                 'category' => 'PHP',
                 'question' => 'Как устроен компонент Security в Symfony?',
-                'answer' => 'Security строится вокруг фаерволов (firewalls), authenticator-классов и системы голосующих за доступ (voters). Authenticator извлекает учётные данные из запроса и возвращает Passport, фаервол создаёт TokenStorage с аутентифицированным пользователем, а проверки isGranted() делегируют решение AccessDecisionManager и Voters. Authorization-правила описывают через access_control, атрибут #[IsGranted] на контроллере или вызов $this->denyAccessUnlessGranted().',
+                'answer' => '**`SecurityBundle`** разделяет аутентификацию (**кто ты?**) и авторизацию (**что тебе можно?**) на отдельные подсистемы.
+
+**Аутентификация (AuthN):**
+
+| Компонент | Роль |
+| --- | --- |
+| **Firewall** | блок конфига, описывающий, **какие маршруты** защищены и **как** аутентифицировать (`config/packages/security.yaml`) |
+| **Authenticator** | класс, **извлекающий** учётные данные из запроса (form login, JWT в header, API key, OAuth) |
+| **Passport** | объект-контейнер «удостоверение» — содержит `UserBadge`, `CredentialsBadge`, доп. бейджи (`CsrfTokenBadge`, `RememberMeBadge`) |
+| **UserProvider** | загружает `UserInterface` из БД/LDAP/API по identifier |
+| **TokenStorage** | хранит **`TokenInterface`** аутентифицированного пользователя в текущем запросе |
+| **PasswordHasher** | хеширует/проверяет пароль (argon2id, bcrypt) |
+
+**Поток AuthN:**
+
+1. Запрос приходит на путь firewall
+2. **Authenticator** проверяет, его ли запрос (`supports()`) — например, есть ли `Authorization: Bearer ...`
+3. Authenticator делает `authenticate()` → возвращает `Passport`
+4. Symfony вызывает `UserProvider->loadUserByIdentifier()` → получает `UserInterface`
+5. Проверяются **бейджи** (`PasswordCredentials::check`, `CsrfTokenBadge::validate`)
+6. Создаётся `Token` и кладётся в `TokenStorage`
+
+**Авторизация (AuthZ):**
+
+| Компонент | Роль |
+| --- | --- |
+| **AccessDecisionManager** | главный сервис, принимает решение «можно/нельзя» |
+| **Voter** | реализация `VoterInterface` — голосует за/против/воздерживается по конкретному `attribute` (`ROLE_ADMIN`, `EDIT`, `VIEW`) |
+| **AccessDecisionStrategy** | как агрегировать голоса: `affirmative` (хоть один за), `consensus`, `unanimous`, `priority` (Symfony 5.4+) |
+
+**Способы запросить проверку:**
+
+```yaml
+# 1. Декларативно в access_control (security.yaml)
+access_control:
+    - { path: ^/admin, roles: ROLE_ADMIN }
+```
+
+```php
+// 2. Атрибут на контроллере (Symfony 6.2+)
+#[IsGranted("ROLE_ADMIN")]
+public function admin(): Response { ... }
+
+#[IsGranted("EDIT", subject: "post")]
+public function edit(Post \$post): Response { ... }
+
+// 3. В коде контроллера
+\$this->denyAccessUnlessGranted("EDIT", \$post);
+
+// 4. Из сервиса
+\$this->security->isGranted("EDIT", \$post);
+```
+
+**Voter — кастомные правила:**
+
+```php
+class PostVoter extends Voter {
+    protected function supports(string \$attribute, mixed \$subject): bool {
+        return in_array(\$attribute, ["VIEW", "EDIT", "DELETE"])
+            && \$subject instanceof Post;
+    }
+    protected function voteOnAttribute(string \$attr, mixed \$post, TokenInterface \$t): bool {
+        \$user = \$t->getUser();
+        return match (\$attr) {
+            "VIEW" => true,
+            "EDIT", "DELETE" => \$post->getAuthor() === \$user,
+        };
+    }
+}
+```
+
+**Подводные камни:**
+
+- **`access_control`** проверяется **раньше** атрибута `#[IsGranted]` — нужно согласовывать
+- **`UserProvider::refreshUser()`** вызывается на каждый запрос — медленный provider тормозит весь firewall, кешируйте
+- **Stateless firewall** (для API) не использует сессии — без неё нет `TokenStorage` между запросами
+- **`role_hierarchy`** позволяет `ROLE_ADMIN → ROLE_USER`, чтобы не дублировать
+- Для **тестов** используется `loginUser()` на тестовом `KernelBrowser`',
                 'difficulty' => 4,
                 'topic' => 'php.symfony',
             ],
@@ -514,28 +780,338 @@ class UserController
             [
                 'category' => 'PHP',
                 'question' => 'Как устроена цепочка middleware в Symfony Messenger?',
-                'answer' => 'Каждая шина Messenger — это стек middleware, через который последовательно проходит конверт (Envelope) с сообщением. Стандартный набор включает SendMessageMiddleware (отправляет в транспорт, если есть routing), HandleMessageMiddleware (вызывает обработчик), ValidationMiddleware и DoctrineTransactionMiddleware. Свой middleware пишут для логирования, метрик, повторных попыток или кастомной транзакционности.',
+                'answer' => '**Архитектурно Messenger — это шина (`MessageBus`), которая прогоняет каждое сообщение через стек middleware**, аналогично HTTP middleware в PSR-15. Сообщение оборачивается в **`Envelope`**, который собирает по пути **`StampInterface`**-марки (метаданные).
+
+**`MessageBusInterface::dispatch(\$message)` → \$envelope → middleware-стек → \$envelope с результатом.**
+
+**Стандартный набор middleware (порядок важен):**
+
+| Middleware | Что делает |
+| --- | --- |
+| **`AddBusNameStampMiddleware`** | помечает envelope именем шины |
+| **`DispatchAfterCurrentBusMiddleware`** | откладывает дочерние dispatch до завершения текущего (для атомарности) |
+| **`FailedMessageProcessingMiddleware`** | специальная логика для повторных попыток из `failed`-транспорта |
+| **`SendMessageMiddleware`** | смотрит в `routing:` конфиг — если транспорт `async`, шлёт в очередь и **обрывает цепочку**; если `sync` — пропускает дальше |
+| **`HandleMessageMiddleware`** | находит handler через `#[AsMessageHandler]`, вызывает, кладёт `HandledStamp` |
+| **`ValidationMiddleware`** | если включен — валидирует сообщение через компонент Validator |
+| **`DoctrineTransactionMiddleware`** | оборачивает обработку в Doctrine-транзакцию |
+| **`DoctrinePingConnectionMiddleware`** | пингует БД перед обработкой (для долгоживущих воркеров) |
+| **`DoctrineCloseConnectionMiddleware`** | закрывает соединение после обработки |
+
+**`Envelope` и `Stamp` — ключевые типы:**
+
+```php
+\$envelope = new Envelope(new SendEmailMessage(\$to, \$body), [
+    new DelayStamp(60_000),                    // задержать на 60 сек
+    new TransportNamesStamp(["async_high"]),   // конкретный транспорт
+    new AmqpStamp(routing_key: "high"),        // RabbitMQ-specific
+]);
+\$bus->dispatch(\$envelope);
+```
+
+**Кастомный middleware:**
+
+```php
+final class LoggingMiddleware implements MiddlewareInterface
+{
+    public function __construct(private LoggerInterface \$log) {}
+
+    public function handle(Envelope \$envelope, StackInterface \$stack): Envelope
+    {
+        \$message = \$envelope->getMessage();
+        \$this->log->info("dispatch", ["class" => \$message::class]);
+
+        try {
+            \$envelope = \$stack->next()->handle(\$envelope, \$stack);
+        } catch (\\Throwable \$e) {
+            \$this->log->error("failed", ["error" => \$e->getMessage()]);
+            throw \$e;
+        }
+        return \$envelope;
+    }
+}
+```
+
+**Регистрация в `messenger.yaml`:**
+
+```yaml
+framework:
+    messenger:
+        buses:
+            messenger.bus.default:
+                middleware:
+                    - validation
+                    - doctrine_transaction
+                    - App\\Messenger\\Middleware\\LoggingMiddleware
+```
+
+**Типичные кастомные middleware:**
+
+| Назначение | Где обычно ставится |
+| --- | --- |
+| **Логирование** | сразу после `AddBusNameStampMiddleware` |
+| **Метрики** (StatsD/Prometheus) | то же — до Send |
+| **Tenant context** | в самом начале, читает `TenantIdStamp` |
+| **Idempotency** (проверка дубля по UUID) | перед `HandleMessageMiddleware` |
+| **Retry policy** override | вместо стандартного retry-listener |
+| **Outbox pattern** интеграция | вместо `SendMessageMiddleware` |
+
+**Подводные камни:**
+
+- **порядок** middleware определяется конфигом — встроенные ставятся **первыми**, потом ваши
+- `SendMessageMiddleware` **обрывает** цепочку для async — последующие middleware **не сработают** при отправке, **только** на consumer-стороне
+- **`DoctrineTransactionMiddleware`** оборачивает целиком — если handler шлёт **другое** сообщение в той же шине, оно тоже попадёт в транзакцию (`DispatchAfterCurrentBusMiddleware` это решает)',
                 'difficulty' => 4,
                 'topic' => 'php.symfony',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Как Symfony работает с RoadRunner и FrankenPHP в режиме воркера?',
-                'answer' => 'Компонент Runtime отделяет точку входа приложения (public/index.php) от среды выполнения: выбор runtime определяется переменной APP_RUNTIME или autoload_runtime.php. Для RoadRunner и FrankenPHP есть готовые runtime, которые держат Kernel в памяти и переиспользуют его между запросами, обнуляя только request-state. Это даёт значительный прирост производительности по сравнению с классическим PHP-FPM, но требует осторожности с глобальным состоянием и сессиями.',
+                'answer' => '**`symfony/runtime`** (с Symfony **5.3**) — компонент, отделяющий **точку входа приложения** от **среды исполнения**.
+
+**Как было до Runtime:**
+
+- `public/index.php` для веба + `bin/console` для CLI — **разные** точки входа
+- встроенный `Symfony\\Component\\HttpKernel\\Kernel` тесно связан с FPM
+- любая поддержка воркеров (Swoole, RoadRunner) требовала **переписать** entry point
+
+**С Runtime:**
+
+```php
+// public/index.php — единый код для всех окружений
+use App\\Kernel;
+
+require_once dirname(__DIR__) . "/vendor/autoload_runtime.php";
+
+return function (array \$context) {
+    return new Kernel(\$context["APP_ENV"], (bool) \$context["APP_DEBUG"]);
+};
+```
+
+Файл **`autoload_runtime.php`** генерируется Composer-плагином и **выбирает runtime** по переменной **`APP_RUNTIME`** или `extra.runtime.class` в `composer.json`.
+
+**Доступные runtime:**
+
+| Runtime | Назначение |
+| --- | --- |
+| **`Symfony\\Component\\Runtime\\SymfonyRuntime`** (default) | классический PHP-FPM + CLI |
+| **`Runtime\\RoadRunnerSymfonyNyholm\\Runtime`** | RoadRunner с PSR-7/nyholm |
+| **`Runtime\\FrankenPhpSymfony\\Runtime`** | FrankenPHP с worker-mode |
+| **`Runtime\\Bref\\Runtime`** | AWS Lambda через Bref |
+| **`Runtime\\Swoole\\Runtime`** | Swoole |
+| **`Runtime\\ReactPhp\\Runtime`** | ReactPHP |
+
+**Что делает worker-runtime:**
+
+1. **Один раз** при старте воркера создаёт `Kernel`, прогружает контейнер, autoload
+2. В цикле принимает request от Go-сервера (RoadRunner) или Caddy (FrankenPHP)
+3. Конвертирует **PSR-7 request → Symfony Request**, передаёт в Kernel
+4. Получает Symfony Response → конвертирует **обратно в PSR-7**
+5. Отправляет клиенту
+6. **Сбрасывает request-scoped state**, переходит к следующему запросу
+
+**Выигрыш в производительности:**
+
+- **в 3-10× быстрее** FPM на типичном веб-приложении: bootstrap не повторяется
+- меньше CPU, меньше RAM на запрос
+- но: **больше осторожности** с памятью (запрос не «убивает» процесс)
+
+**На что обращать внимание:**
+
+| Проблема | Решение |
+| --- | --- |
+| **Глобальное состояние** в сервисах | используйте `#[AsScopedService]` (Symfony 6.4+) или сбрасывайте в `kernel.reset` |
+| **Сессии** через `$_SESSION` | только через `RequestStack`, см. отдельную карточку |
+| **Doctrine EntityManager** держит references | вызывайте `clear()` между запросами или используйте `ResettableInterface` |
+| **`Carbon::setTestNow`** или **`Mockery`** | сбрасывайте в `kernel.terminate` |
+| **Утечки памяти** | `RR_HTTP_NUM_WORKERS` + перезапуск по `RR_HTTP_MAX_JOBS=1000` |
+| **`exit`/`die`** в коде | прибьёт **весь воркер** — никогда не использовать |
+
+**FrankenPHP worker-mode** (с **PHP 8.2+**) интересен тем, что **встраивает PHP внутрь Caddy** через cgo/FFI — без отдельного RoadRunner-сервера.
+
+**Альтернатива — Octane-стиль** в Laravel-мире (`laravel/octane` поддерживает Swoole, RoadRunner, FrankenPHP с похожей моделью).',
                 'difficulty' => 4,
                 'topic' => 'php.symfony',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Как избежать циклических ссылок при сериализации сущностей в Symfony?',
-                'answer' => 'Есть три рабочих подхода: задавать группы сериализации атрибутами #[Groups] и сериализовать только нужные группы; вводить отдельные DTO и маппить сущности на них вручную или через ObjectMapper; ограничивать глубину атрибутом #[MaxDepth] и включать опцию AbstractObjectNormalizer::ENABLE_MAX_DEPTH в контексте. Группы и DTO дают самый явный контроль над контрактом API.',
+                'answer' => '**Корневая проблема:** Doctrine-сущности часто связаны **bi-directional** (`Post→Author + Author→posts`), и при сериализации в JSON компонент Serializer уходит в **бесконечную рекурсию** или валит **`CircularReferenceException`**.
+
+**Три рабочих подхода (от менее к более строгому):**
+
+**1. Serialization Groups (`#[Groups]`)**
+
+```php
+class Post {
+    #[Groups(["post:read", "post:list"])]
+    public int \$id;
+
+    #[Groups(["post:read"])]
+    public string \$body;
+
+    #[Groups(["post:read"])]
+    #[MaxDepth(1)]
+    public Author \$author;
+}
+
+class Author {
+    #[Groups(["post:read", "author:read"])]
+    public string \$name;
+
+    // НЕ в группе post:read — не попадёт в JSON при сериализации Post
+    #[Groups(["author:read"])]
+    public Collection \$posts;
+}
+```
+
+Сериализуем с контекстом:
+
+```php
+\$json = \$serializer->serialize(\$post, "json", [
+    "groups" => ["post:read"],
+]);
+// posts автора не попадут — цикл разорван по группе
+```
+
+**2. DTO-маппинг (самый строгий, рекомендуется для API)**
+
+```php
+final readonly class PostDto {
+    public function __construct(
+        public int \$id,
+        public string \$body,
+        public AuthorBriefDto \$author,  // только нужные поля
+    ) {}
+
+    public static function fromEntity(Post \$p): self {
+        return new self(
+            \$p->getId(),
+            \$p->getBody(),
+            AuthorBriefDto::fromEntity(\$p->getAuthor()),
+        );
+    }
+}
+
+final readonly class AuthorBriefDto {
+    public function __construct(
+        public int \$id,
+        public string \$name,
+        // posts НЕТ — структурно отсутствует
+    ) {}
+}
+```
+
+**3. `#[MaxDepth]` + `ENABLE_MAX_DEPTH`**
+
+```php
+class Post {
+    #[MaxDepth(2)]
+    public Author \$author;
+}
+
+\$json = \$serializer->serialize(\$post, "json", [
+    AbstractObjectNormalizer::ENABLE_MAX_DEPTH => true,
+]);
+```
+
+После заданной глубины Serializer **обрезает** граф.
+
+**Сравнение трёх подходов:**
+
+| Подход | Гибкость | Контроль API | Сложность |
+| --- | --- | --- | --- |
+| **Groups** | средняя — переключение через context | плохой (поля рассыпаны по сущностям) | низкая |
+| **DTO** | максимальная — структура отдельная | **отличный** (DTO == контракт API) | средняя (нужны мапперы или ObjectMapper) |
+| **MaxDepth** | глобальный лимит | плохой (произвольная обрезка) | минимальная |
+
+**Дополнительные приёмы:**
+
+- **`CIRCULAR_REFERENCE_HANDLER`**: callback в контексте, который возвращает `\$obj->id` вместо повтора объекта
+- **`@ApiResource`** в **API Platform** имеет встроенные нормализационные группы
+- для **Doctrine lazy-loading**: проверяйте, что Proxy не цепляет неинициализированную коллекцию (`\$em->initialize(\$proxy)` или EAGER loading через DQL)
+
+**Best practice senior-уровня:** **никогда не сериализуйте сущности напрямую в API**. DTO — единый источник правды для контракта; сущность — модель домена. Это разные концерны.',
                 'difficulty' => 4,
                 'topic' => 'php.symfony',
             ],
             [
                 'category' => 'PHP',
                 'question' => 'Как оптимизировать Symfony-приложение под высокую нагрузку?',
-                'answer' => 'Включают OPcache и при подходящем профиле нагрузки JIT, делают composer dump-autoload --classmap-authoritative и предкомпилируют контейнер в проде (cache:warmup), переходят на воркер-серверы вроде RoadRunner или FrankenPHP, чтобы не пересоздавать Kernel на каждом запросе. На уровне Doctrine борются с N+1 через жадные ассоциации и DTO-проекции, кэшируют Query, Result и метаданные, а тяжёлые сценарии выносят в Messenger.',
+                'answer' => '**Подход — оптимизация по уровням, от runtime к коду.**
+
+**1. Runtime PHP**
+
+| Настройка | Зачем |
+| --- | --- |
+| **`opcache.enable=1`** + `opcache.memory_consumption=256` | байткод-кеш — обязателен в проде |
+| `opcache.preload` | предзагрузка фреймворка в shared memory (Symfony хорошо работает с preload) |
+| `opcache.jit=tracing` + `jit_buffer_size=256M` | если бенчмарк показал выигрыш |
+| `realpath_cache_size=4096K` | ускорение `require`/`include` |
+| `composer dump-autoload --classmap-authoritative --no-dev` | classmap вместо PSR-4-сканирования |
+
+**2. Symfony контейнер и cache**
+
+| Действие | Эффект |
+| --- | --- |
+| **`bin/console cache:warmup`** на деплое | предкомпилировать контейнер, маршруты, валидатор |
+| **`APP_ENV=prod`** + `APP_DEBUG=0` | выключение dev-инструментов |
+| **`framework.router.utf8=true`** + кеш роутов | в prod уже включён, проверьте |
+| Compiler passes для дорогих графов сервисов | предсобирать вместо рантайма |
+
+**3. Воркер-режим вместо FPM**
+
+Переход на **RoadRunner / FrankenPHP / Octane-стиль** даёт **3-10× RPS** на типичном веб-приложении: Kernel не пересоздаётся, нет cold-start.
+
+**4. Doctrine ORM**
+
+| Проблема | Решение |
+| --- | --- |
+| **N+1 запросы** | EAGER fetch в DQL, `partial` selects, `fetchJoin` |
+| Тяжёлая гидрация сущностей | **DTO-projections** через DQL `SELECT NEW App\\Dto\\...(...)` |
+| Большие выборки | `Pagerfanta` + cursor-based pagination |
+| Холодный старт метаданных | `doctrine.orm.metadata_cache_driver: php_array` (preloadable) |
+| Повторные запросы | `query_cache` + `result_cache` (Redis) |
+| Долгие транзакции в воркере | `EntityManager::clear()` периодически |
+
+**5. Кеширование**
+
+| Уровень | Технология |
+| --- | --- |
+| **HTTP-кеш** (Symfony) | ESI, `Cache-Control`, `Vary`, `Surrogate-Control` |
+| **Reverse proxy** | Varnish, **Symfony HttpCache** (встроенный) |
+| **Application cache** | `cache.adapter.redis`, `cache.adapter.apcu` для in-memory |
+| **CDN** | статика и **edge-кеш JSON** для `GET /api/...` |
+
+**6. Асинхронность через Messenger**
+
+Любая длительная задача (письма, отчёты, сторонние API) → **`async`-транспорт** + воркер:
+
+```
+\$bus->dispatch(new SendNotificationMessage(\$userId));
+// HTTP-запрос завершается мгновенно, обработка в background
+```
+
+**7. БД и инфра**
+
+| Что | Зачем |
+| --- | --- |
+| **PgBouncer / ProxySQL** | пул соединений вместо новых на каждый запрос |
+| **Read replicas** | `doctrine.orm.connections` с разными `slaves`/`master` |
+| **Индексы** под реальные запросы | `EXPLAIN ANALYZE` для каждого slow-query |
+| **Партиционирование** больших таблиц | по дате, тенанту |
+| Redis для **session/cache/queue** | вместо файлов |
+
+**8. Профилирование как процесс**
+
+| Инструмент | Когда |
+| --- | --- |
+| **Blackfire** | прод-выборочное профилирование + регрессионные тесты в CI |
+| **Symfony Profiler** | dev-окружение, **never** в проде (`APP_ENV=prod`) |
+| **APM** (NewRelic/Datadog/Tideways) | непрерывный мониторинг |
+| **`stopwatch`** + Symfony Stopwatch | замер участков кода |
+
+**Главное правило:** оптимизировать **по бенчмаркам**, а не по интуиции. На разных профилях нагрузки разные узкие места — где-то JIT даст +30%, а где-то 0%, где-то Redis-cache решит всё.',
                 'difficulty' => 4,
                 'topic' => 'php.symfony',
             ],

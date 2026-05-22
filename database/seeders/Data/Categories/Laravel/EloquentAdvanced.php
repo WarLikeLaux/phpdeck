@@ -367,7 +367,41 @@ Post::onlyTrashed()->get();   // только удалённые',
             [
                 'category' => 'Laravel',
                 'question' => 'SoftDeletes ломает unique-индекс на email - как это правильно решать?',
-                'answer' => 'Классическая боль: на users.email стоит UNIQUE, юзер регистрируется → удаляет аккаунт (deleted_at заполняется) → пытается зарегистрироваться снова с тем же email → 23000/23505 (duplicate entry), потому что для БД "удалённая" запись физически жива и всё ещё держит email. Eloquent-валидация Rule::unique() умеет игнорировать soft-deleted (->ignore() / whereNull("deleted_at")), но БД-уровень уникальности про SoftDeletes ничего не знает. Решения: 1) PostgreSQL - partial unique index, элегантный путь: CREATE UNIQUE INDEX users_email_active ON users(email) WHERE deleted_at IS NULL. Уникальность проверяется только для живых записей; удалённые могут иметь какие угодно дубли email. В Laravel это $table->unique("email")->where("deleted_at IS NULL") нельзя - надо raw DB::statement в миграции. 2) MySQL/MariaDB - partial index НЕ поддерживается. Наивный составной UNIQUE (email, deleted_at) при дефолтном Laravel-поведении (deleted_at=NULL для живых) ЛОМАЕТСЯ: в MySQL для UNIQUE NULL != NULL, поэтому "(email=X, NULL)" и "(email=X, NULL)" считаются РАЗНЫМИ парами и БД пропустит ДВУХ ЖИВЫХ юзеров с одним email - уничтожает уникальность активных. Решения для MySQL: 2a) хранить deleted_at у живых не как NULL, а как sentinel (0 или 1970-01-01) - тогда (X, 0) дубли отлавливаются, (X, 2024-...) среди удалённых остаются уникальными по timestamp. Требует переопределить $dates / casts модели и прибить дефолт в схеме (DEFAULT 0). 2b) добавить generated column email_unique = (deleted_at IS NULL) и UNIQUE(email, email_unique) - живые получают TRUE, удалённые - ничего страшного из-за того же NULL != NULL. 2c) использовать MariaDB 10.2.x JSON / generated columns похожим способом. 3) Альтернатива - hard delete + архивная таблица users_archive (свобода схемы, но теряются связи через foreign key). 4) Альтернатива - анонимизировать email при удалении (email = "deleted_{$id}@example.com"), uniqueness сохраняется естественно и в MySQL, и в Postgres. Выбор зависит от: нужно ли восстанавливать аккаунт (тогда не аноним), есть ли GDPR/right-to-be-forgotten (тогда лучше hard delete), какая СУБД.',
+                'answer' => '**Классическая боль:** на `users.email` стоит `UNIQUE`. Юзер регистрируется → удаляет аккаунт (`deleted_at` заполняется) → пытается зарегистрироваться снова с тем же email → **`SQLSTATE 23000`/`23505`** (`duplicate entry`).
+
+Для БД «удалённая» запись физически жива и всё ещё держит `email`. **БД-уровень уникальности про SoftDeletes ничего не знает.**
+
+**Eloquent-валидация** `Rule::unique()->whereNull(\'deleted_at\')` это видит, но БД — нет.
+
+**Сравнение решений:**
+
+| Решение | СУБД | Плюсы | Минусы |
+|---|---|---|---|
+| **Partial unique index** | **Postgres** ✅ | Самое элегантное — uniqueness только для живых | `Schema::table` это не умеет, нужен `DB::statement(...)` |
+| **Sentinel вместо NULL + composite UNIQUE** | MySQL/MariaDB | Работает на любой версии MySQL | Нужен `\'1970-01-01\'` дефолт + override SoftDeletes |
+| **Generated column** `email_unique = (deleted_at IS NULL)` | MySQL 5.7+/MariaDB | Не трогать модель | Дополнительная колонка, читать миграции |
+| **Анонимизация при `deleting`** | Любая | Простое, СУБД-независимое | Email потерян → восстановить нельзя |
+| **Hard delete + архивная таблица** | Любая | Чистая модель данных | Foreign keys потеряют связь, ручная миграция |
+
+**Главная ловушка MySQL — наивный `UNIQUE (email, deleted_at)`:**
+
+- В MySQL для UNIQUE-индекса **`NULL != NULL`**.
+- Поэтому `(\'a@b.c\', NULL)` и `(\'a@b.c\', NULL)` считаются **разными парами**.
+- БД пропустит **ДВУХ ЖИВЫХ юзеров** с одним email — **уничтожает уникальность активных**.
+
+Поэтому в MySQL нужен **sentinel** (`\'1970-01-01\'`) вместо NULL у живых, **либо** generated column.
+
+**Postgres путь (рекомендуемый):**
+
+```php
+DB::statement(\'CREATE UNIQUE INDEX users_email_active ON users (email) WHERE deleted_at IS NULL\');
+```
+
+**Выбор зависит от:**
+
+- Нужно ли **восстанавливать аккаунт** → не аноним.
+- Есть ли **GDPR/right-to-be-forgotten** → лучше hard delete + анонимизация.
+- Какая **СУБД** — Postgres сильно проще.',
                 'code_example' => '<?php
 // Postgres - partial index в миграции
 Schema::create("users", function (Blueprint $t) {
@@ -435,7 +469,51 @@ $post->updateQuietly([\'views\' => $post->views + 1]);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое chunk, chunkById, lazy и cursor в Eloquent? В чём разница и где ловушка?',
-                'answer' => 'chunk - выбирает по N записей через LIMIT/OFFSET и отдаёт коллекцию в callback. lazy - возвращает LazyCollection, выбирая записи порциями (внутри тоже chunk). cursor - использует серверный SQL-курсор и держит ОДНУ запись в памяти, экономит память сильнее всего, но удерживает соединение и не работает с eager loading. ⚠️ КРИТИЧЕСКАЯ ЛОВУШКА chunk при UPDATE. Если внутри chunk() вы обновляете записи так, что они перестают подпадать под исходное where (например, where("processed", false) и в callback ставите processed=true), произойдёт сдвиг OFFSET и ПОЛОВИНА записей будет ПРОПУЩЕНА. Механика: первый запрос берёт строки 0-999, обновляет их → они уходят из выборки. Строки 1000-1999 уходят из выборки, а OFFSET 1000 теперь указывает на строки 2000-2999 - между ними пропускается 1000 записей. Для миграций данных и любых обновлений всегда используйте chunkById() (или lazyById()): он использует WHERE id > $lastId вместо нестабильного OFFSET, поэтому устойчив к изменению набора записей. Тот же риск есть в обратную сторону при INSERT в обрабатываемую таблицу. Lazy для просто чтения - ок; для UPDATE - lazyById. ⚠️ ОТДЕЛЬНОЕ ТРЕБОВАНИЕ chunkById/lazyById: колонка ($column, по умолчанию "id") должна быть СТРОГО МОНОТОННО ВОЗРАСТАЮЩЕЙ И УНИКАЛЬНОЙ. На неуникальной колонке (created_at без секунд, status, datetime с дублями) механизм WHERE column > $lastValue ПРОПУСКАЕТ записи с тем же значением, что у границы чанка - все строки с дубликатом ключа за пределами первого попадания теряются. Если естественной такой колонки нет - либо chunkById по pk, дополнительно фильтруя нужный where, либо chunkByIdDesc для обратного направления, либо вручную делать пагинацию через "WHERE (sort_col, id) > (?, ?)" (keyset pagination на составном ключе).',
+                'answer' => '**Четыре способа обработать большие выборки** без OOM, с разной семантикой и ловушками.
+
+| Метод | Механика | Память | Соединение | Eager loading |
+|---|---|---|---|---|
+| **`chunk(N, $cb)`** | `LIMIT N OFFSET ...` | `O(N)` на чанк | Закрыто между чанками | Да |
+| **`chunkById(N, $cb)`** | `WHERE id > $lastId LIMIT N` | `O(N)` на чанк | Закрыто между чанками | Да |
+| **`lazy(N)` / `lazyById(N)`** | То же, через `LazyCollection`/генератор | `O(N)` | Закрыто между чанками | Да |
+| **`cursor()`** | Серверный **SQL-курсор**, по одной записи | **`O(1)`** | **Открыто** до конца итерации | **Нет** |
+
+**Критическая ловушка `chunk` при UPDATE/DELETE — пропуск записей:**
+
+Если внутри callback вы изменяете записи так, что они **перестают подпадать под исходный `where`**, происходит **сдвиг OFFSET** и **половина записей пропускается**.
+
+**Механика:**
+
+1. `where(\'processed\', false)`, `chunk(1000)`.
+2. Первый запрос: `LIMIT 1000 OFFSET 0` → строки 0-999, обновили → ушли из выборки.
+3. Второй запрос: `LIMIT 1000 OFFSET 1000` — но строки 1000-1999 теперь **сдвинулись в позицию 0-999**, а OFFSET 1000 указывает на 2000-2999.
+4. **Пропустили 1000 записей.**
+
+**Решение — `chunkById()`:**
+
+- Использует **`WHERE id > $lastId`** вместо нестабильного OFFSET.
+- Устойчив к изменению набора записей внутри callback.
+- **Канон для миграций данных и любых UPDATE/DELETE в callback.**
+
+**Тот же риск в обратную сторону при INSERT** в обрабатываемую таблицу.
+
+**Отдельное требование `chunkById`/`lazyById`:**
+
+- Колонка `$column` (дефолт `id`) должна быть **строго монотонно возрастающей и уникальной**.
+- На неуникальной (`created_at` с дублями, `status`, низкоразрядный timestamp) механизм `WHERE column > $lastValue` **пропустит** записи с тем же значением, что у границы чанка.
+- Если такой колонки нет — `chunkById` по PK дополнительно фильтрует нужный `where`, либо **keyset pagination на составном ключе**: `WHERE (sort_col, id) > (?, ?)`.
+
+**Когда выбирать что:**
+
+- **Read-only проход по диапазону, который не меняется** — `chunk()`.
+- **UPDATE/DELETE внутри callback** — **`chunkById()` обязательно**.
+- **Стрим с минимальной памятью, без eager-load связей** — `cursor()` (открытое соединение нюанс).
+- **Унифицированный API через генератор** — `lazy()`/`lazyById()`.
+
+**Доп. инструменты:**
+
+- **`chunkByIdDesc()`** — обратное направление.
+- **`cursor()` + `toBase()`** — `O(1)` память **и** без гидратации (stdClass).',
                 'code_example' => '<?php
 // ❌ Опасно: chunk + UPDATE условия фильтра - пропуски записей
 User::where("notified", false)->chunk(1000, function ($users) {
@@ -511,11 +589,62 @@ User::whereDoesntHave(\'posts\')->get(); // без постов',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое lockForUpdate и sharedLock?',
-                'answer' => 'lockForUpdate - "пишущая" блокировка строки до конца транзакции (FOR UPDATE), другие транзакции не смогут читать с lock или писать. sharedLock - "читающая" блокировка (FOR SHARE), другие могут читать, но не писать. Используется для борьбы с гонками (race conditions).',
-                'code_example' => 'DB::transaction(function () {
-    $account = Account::where(\'id\', 1)->lockForUpdate()->first();
-    $account->balance -= 100;
-    $account->save();
+                'answer' => '**Пессимистические блокировки строк** на уровне транзакции — используются для борьбы с **race conditions** при `read-modify-write`.
+
+**Сравнение:**
+
+| Метод | SQL | Кому блокирует |
+|---|---|---|
+| **`lockForUpdate()`** | `SELECT ... FOR UPDATE` | Другим транзакциям нельзя ни читать с lock, ни писать |
+| **`sharedLock()`** | `SELECT ... FOR SHARE` (PG) / `LOCK IN SHARE MODE` (MySQL) | Другим можно читать, но **нельзя писать** |
+
+**Зачем нужны (классическая задача — списать с баланса):**
+
+1. T1: `SELECT balance FROM accounts WHERE id = 1` → 100.
+2. T2: `SELECT balance FROM accounts WHERE id = 1` → 100 (тоже видит 100!).
+3. T1: `UPDATE ... balance = 100 - 50` → 50.
+4. T2: `UPDATE ... balance = 100 - 30` → 70.
+
+**Итог:** списали 80, но баланс 70 вместо 20 — **lost update**.
+
+С `lockForUpdate()` шаг 2 будет **ждать** окончания T1 → читает уже 50.
+
+**Подводные камни:**
+
+- **Только внутри транзакции** — без `DB::transaction()` lock не имеет смысла, он снимается сразу.
+- **`SKIP LOCKED`** (Laravel 9+: `->lockForUpdate(skipLocked: true)`) — пропустить уже залоченные строки. Канонический паттерн для **work queues** на БД: разные воркеры берут разные задачи без блокировки друг друга.
+- **`NOWAIT`** — упасть сразу, если строка занята, вместо ожидания.
+- **Deadlock** — два процесса берут локи в **обратном порядке** → БД убивает одного из них. Решение — фиксированный порядок локов + `DB::transaction($cb, attempts: 3)`.
+- **Оптимистическая альтернатива** — `version`-колонка + `UPDATE ... WHERE version = ?` (без блокировок, но retry на ошибке).',
+                'code_example' => '<?php
+// Классический банковский перевод - lockForUpdate защищает от lost update
+DB::transaction(function () use ($fromId, $toId, $amount) {
+    $from = Account::where(\'id\', $fromId)->lockForUpdate()->first();
+    $to   = Account::where(\'id\', $toId)->lockForUpdate()->first();
+
+    if ($from->balance < $amount) {
+        throw new InsufficientFundsException();
+    }
+
+    $from->decrement(\'balance\', $amount);
+    $to->increment(\'balance\', $amount);
+}, attempts: 3); // retry на deadlock
+
+// Work queue на БД - SKIP LOCKED, чтобы воркеры брали РАЗНЫЕ задачи
+DB::transaction(function () {
+    $job = Job::where(\'status\', \'pending\')
+        ->lockForUpdate(skipLocked: true) // пропустить занятые
+        ->first();
+    if (! $job) return;
+    $job->update([\'status\' => \'processing\']);
+    // ... обработка
+});
+
+// sharedLock - "никто не должен изменить, пока я смотрю"
+DB::transaction(function () use ($userId) {
+    $user = User::where(\'id\', $userId)->sharedLock()->first();
+    // другие могут читать $user, но UPDATE будут ждать commit
+    audit($user);
 });',
                 'code_language' => 'php',
                 'difficulty' => 4,
@@ -524,14 +653,73 @@ User::whereDoesntHave(\'posts\')->get(); // без постов',
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает DB::afterCommit?',
-                'answer' => 'afterCommit регистрирует callback, который выполнится только ПОСЛЕ успешного commit транзакции. Полезно для отправки событий, очередей, уведомлений - чтобы не отправлять их, если транзакция откатится. У моделей и job-ов есть свойства $afterCommit или ShouldQueueAfterCommit.',
-                'code_example' => 'DB::transaction(function () use ($order) {
-    $order->save();
+                'answer' => '**`DB::afterCommit($callback)`** регистрирует callback, который выполнится **только после успешного COMMIT** самой внешней транзакции. При rollback (любом — внешнем или внутреннем savepoint, который потом откатится) — **не выполнится**.
 
-    DB::afterCommit(function () use ($order) {
-        SendOrderConfirmation::dispatch($order);
-    });
-});',
+**Зачем нужен — классический баг без `afterCommit`:**
+
+```php
+DB::transaction(function () use ($order) {
+    $order->save();
+    SendOrderEmail::dispatch($order); // job ушёл в очередь сразу
+    throw new \\Exception(\'oops\');     // транзакция откачена,
+                                       // но job УЖЕ в Redis - воркер пытается
+                                       // обработать несуществующий order
+});
+```
+
+**Где может выстрелить:**
+
+- **Queue jobs** — worker подхватил job до того, как транзакция закоммитилась → читает старые данные или 404.
+- **Broadcasting/events** — пользователь получил уведомление о ещё не сохранённой записи.
+- **External API calls** — отправили webhook, а наша запись «откатилась».
+
+**Способы — в порядке предпочтения:**
+
+| Способ | Где описать |
+|---|---|
+| **`ShouldQueueAfterCommit`** интерфейс на Job | Самый чистый (L10+) — Job сам решает |
+| **`$afterCommit = true`** на Job/Event/Listener | Свойство класса |
+| **`DB::afterCommit(fn () => ...)`** | Разово, прямо в коде |
+| **`Bus::dispatchAfterCommit($job)`** | Принудительно для одного dispatch |
+
+**Подводные камни:**
+
+- **Только в Eloquent/`DB`-транзакциях** — если ваш код **не в транзакции**, callback выполнится **немедленно** (как обычный).
+- **Вложенные транзакции** (savepoint) — `afterCommit` сработает после **самого внешнего** commit. Откат внешней транзакции отменит callback, даже если «внутренний savepoint закоммитился».
+- **`config/queue.php` → `after_commit` => true** — глобальный дефолт для всех Job (вместо явных свойств).',
+                'code_example' => '<?php
+// 1. Разовый вариант - DB::afterCommit
+DB::transaction(function () use ($order) {
+    $order->save();
+    DB::afterCommit(fn () => SendOrderConfirmation::dispatch($order));
+});
+
+// 2. Свойство на Job - универсально
+class SendOrderEmail implements ShouldQueue {
+    public bool $afterCommit = true; // или реализовать ShouldQueueAfterCommit
+
+    public function __construct(public Order $order) {}
+    public function handle(): void { /* ... */ }
+}
+
+// Теперь можно безопасно из транзакции:
+DB::transaction(function () use ($order) {
+    $order->save();
+    SendOrderEmail::dispatch($order); // отложится до COMMIT
+});
+
+// 3. Принудительно через Bus
+Bus::dispatchAfterCommit(new SendOrderEmail($order));
+
+// 4. Глобально - config/queue.php
+return [
+    \'after_commit\' => true, // все Job по умолчанию ждут commit
+];
+
+// 5. На Event/Listener
+class OrderShipped {
+    public bool $afterCommit = true;
+}',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_advanced',
@@ -635,14 +823,78 @@ Post::query()
             [
                 'category' => 'Laravel',
                 'question' => 'Чем Eloquent Observer отличается от Event/Listener и когда выбирать что?',
-                'answer' => 'Observer - класс, методы которого - это коллбэки на жизненный цикл модели (creating, saved, deleted). Удобен, когда логика тесно связана с моделью. Event/Listener - общая шина: модель/код диспатчит произвольное событие, на него подписываются несколько слушателей, легко асинхронить через ShouldQueue. Observer лаконичнее для аудита/таймстампов, события - для кросс-доменной интеграции.',
+                'answer' => 'Это **два разных уровня абстракции** — Observer завязан на жизненный цикл **конкретной модели**, Event/Listener — на **любое доменное событие**.
+
+**Сравнение:**
+
+| Параметр | **Observer** | **Event/Listener** |
+|---|---|---|
+| К чему привязан | К **модели** (`User`, `Order`) | К **доменному событию** (`OrderShipped`) |
+| Триггер | `creating`/`saved`/`deleted` — встроенные lifecycle | Явный `event(new OrderShipped(...))` |
+| Семантика | «**когда модель меняется**» | «**когда произошло бизнес-событие**» |
+| Подписчиков | Один Observer на модель | Сколько угодно `Listener` на одно событие |
+| Async | По умолчанию синхронно | Listener реализует `ShouldQueue` → в очередь |
+| Регистрация (L11) | `#[ObservedBy]` на модели или `Model::observe()` | Auto-discovery (если включен) или явный `Event::listen()` |
+| Bulk-операции | **НЕ срабатывает** (`Model::where(...)->update(...)`) | Срабатывает, если вы сами вызвали `event()` |
+
+**Когда выбирать что:**
+
+| Задача | Что выбрать |
+|---|---|
+| Slug/UUID при `creating`, timestamps, audit-log | **Observer** — данные модели сами по себе |
+| `Cache::forget()` после `saved`/`deleted` | **Observer** — инвариант кеша вокруг записи |
+| Каскадное удаление детей в `deleting` | **Observer** — внутри жизненного цикла |
+| «Заказ оплачен → уведомить юзера + Slack + аналитику + bonus-points» | **Event** + 4 Listener-а (можно queue-async) |
+| Интеграция с внешним сервисом из несвязанного домена | **Event** — слабая связанность |
+| Логика, которая хочет async по умолчанию | **Event** + `ShouldQueue` Listener |
+
+**Главное правило:** Observer = «**что-то происходит с моделью**», Event = «**случилось бизнес-событие**».
+
+**Подводные камни:**
+
+- **Observer не срабатывает на bulk** — `User::where(...)->update(...)` идёт в БД без hydration. Нужен `foreach` или `chunkById`.
+- **Observer в Event-стиле** (Observer диспатчит `event()`) — нормальная связка: `created` в Observer → `event(new UserRegistered)` → Listener-ы.
+- **Транзакции** — для Listener-ов и Job-ов на событиях из транзакции используйте `ShouldQueueAfterCommit` или `$afterCommit = true`, иначе уведомления уйдут до COMMIT.',
                 'code_example' => '<?php
+// === Observer - привязан к модели ===
+#[ObservedBy(UserObserver::class)] // Laravel 11+
+class User extends Model {}
+
 class UserObserver {
-    public function created(User $u): void { Mail::to($u)->send(new Welcome()); }
-    public function deleting(User $u): void { $u->posts()->delete(); }
+    public function creating(User $u): void {
+        $u->uuid = Str::uuid();          // данные самой модели
+    }
+    public function created(User $u): void {
+        // тригерим доменное событие - дальше шину слушают независимые Listener-ы
+        event(new UserRegistered($u));
+    }
+    public function deleting(User $u): void {
+        $u->posts()->delete();           // каскад внутри lifecycle
+    }
 }
-// AppServiceProvider::boot
-User::observe(UserObserver::class);',
+
+// === Event + несколько Listener ===
+class UserRegistered {
+    public function __construct(public User $user) {}
+}
+
+class SendWelcomeEmail implements ShouldQueue {
+    public bool $afterCommit = true;
+    public function handle(UserRegistered $e): void {
+        Mail::to($e->user)->send(new WelcomeMail());
+    }
+}
+
+class NotifySlack implements ShouldQueue {
+    public function handle(UserRegistered $e): void { /* Slack webhook */ }
+}
+
+class GrantBonusPoints {
+    public function handle(UserRegistered $e): void { /* sync, в той же транзакции */ }
+}
+
+// Laravel 11 - auto-discovery подхватит Listener-ы по type-hint первого аргумента
+// (если EventServiceProvider не выключил discovery в bootstrap/providers.php)',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_advanced',
@@ -650,14 +902,83 @@ User::observe(UserObserver::class);',
             [
                 'category' => 'Laravel',
                 'question' => 'Как избежать N+1 при полиморфных связях morphTo?',
-                'answer' => 'Обычный with("commentable") не работает напрямую, потому что для каждого типа нужен отдельный запрос. Используйте with("commentable") + morphWith() для жадной подзагрузки конкретных типов с их связями. Также есть morphMap в boot() - фиксирует строковые алиасы вместо FQCN, что устойчиво к рефакторингу. Альтернативно - явный foreach с groupBy типа.',
+                'answer' => '**Особенность `morphTo`:** под одной полиморфной связью **разные модели** (`Post`, `Video`, `Photo`) — Laravel **не может загрузить всё одним SQL**, потому что у них разные таблицы.
+
+**Что делает обычный `with(\'commentable\')`:**
+
+- `SELECT * FROM comments` — основная выборка.
+- Laravel группирует по `commentable_type`.
+- Для **каждого типа** — **отдельный** запрос: `SELECT ... FROM posts WHERE id IN (...)`, `SELECT ... FROM videos WHERE id IN (...)`.
+
+Итого: `1 + T` запросов, где `T` — число **уникальных типов** (обычно 2-3). Это **уже не N+1**, а константно-малое число.
+
+**Когда N+1 всё-таки появляется — на связях ВНУТРИ полиморфной модели:**
+
+- Подгрузили `comment.commentable` (`Post`), а у `Post` ещё есть `author` → N+1 на каждом посте.
+
+**Решение — `morphWith()` в замыкании:**
+
+- Передать closure типа `MorphTo`-builder.
+- Указать вложенные связи **per type** через `morphWith([Type::class => [\'relation\']])`.
+
+**Дополнительные приёмы:**
+
+| Приём | Зачем |
+|---|---|
+| **`Relation::morphMap([...])`** в `AppServiceProvider::boot` | Хранить **строковые алиасы** (`\'post\'`) вместо FQCN — устойчиво к рефакторингу пространств имён |
+| **`morphWithCount()`** | Аналог `withCount` per type |
+| **`whereHasMorph(\'commentable\', [Post::class, Video::class], $closure)`** | Фильтр с условиями на полиморфного родителя |
+| **Денормализация** — отдельные FK | Если 95% запросов берут конкретный тип — иногда дешевле сделать обычную `belongsTo` |
+
+**Подводные камни:**
+
+- **Индексы** — composite index `(commentable_type, commentable_id)` обязателен, иначе full scan.
+- **FK в БД невозможен** — целостность только на уровне приложения; orphaned-комментарии после удаления родителя — типичная боль (решение — Observer на `deleting`).
+- **Без `morphMap`** — рефакторинг `App\\Models\\Post` → `App\\Domain\\Blog\\Post` сломает все исторические `commentable_type`.',
                 'code_example' => '<?php
-Comment::with(["commentable" => function (MorphTo $morphTo) {
-    $morphTo->morphWith([
-        Post::class => ["author"],
-        Video::class => ["channel"],
-    ]);
-}])->get();',
+// 1. morphMap - фиксирует короткие алиасы в БД, устойчиво к рефакторингу
+// AppServiceProvider::boot
+use Illuminate\\Database\\Eloquent\\Relations\\Relation;
+
+Relation::morphMap([
+    \'post\'  => Post::class,
+    \'video\' => Video::class,
+    \'photo\' => Photo::class,
+]);
+// теперь в БД лежит "post" вместо "App\\\\Models\\\\Post"
+
+// 2. morphWith - eager-load связей ВНУТРИ полиморфного родителя
+use Illuminate\\Database\\Eloquent\\Relations\\MorphTo;
+
+$comments = Comment::with([
+    \'commentable\' => function (MorphTo $morphTo) {
+        $morphTo->morphWith([
+            Post::class  => [\'author\', \'category\'],
+            Video::class => [\'channel\'],
+            Photo::class => [],
+        ]);
+    },
+])->get();
+
+// SQL: 1 (comments) + 3 (posts/videos/photos) + 2 (authors, channels) = 6 фиксированных запросов
+// вместо ~1 + N (по комменту на каждую вложенную связь)
+
+// 3. morphWithCount - агрегат per type
+Comment::with([
+    \'commentable\' => fn (MorphTo $m) => $m->morphWithCount([
+        Post::class => [\'likes\'],
+    ]),
+])->get();
+
+// 4. Фильтр - whereHasMorph
+Comment::whereHasMorph(
+    \'commentable\',
+    [Post::class, Video::class],
+    fn ($q, $type) => $q->where(\'published\', true),
+)->get();
+
+// 5. Защита на этапе разработки - prevent lazy load для morphTo тоже работает
+Model::preventLazyLoading(! app()->isProduction());',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_advanced',
@@ -665,18 +986,96 @@ Comment::with(["commentable" => function (MorphTo $morphTo) {
             [
                 'category' => 'Laravel',
                 'question' => 'Чем отличаются local query scope от global scope и какие подводные камни у global?',
-                'answer' => 'Local scope - public method scopeXxx, явно вызывается в цепочке (User::active()->get()). Global scope автоматически применяется ко всем запросам модели, реализуется через Scope-интерфейс или Closure в booted(). Проблема: можно забыть и удивляться "куда делись записи". Снимать глобальный scope через withoutGlobalScope/withoutGlobalScopes. Также job, сериализующий модель и достающий её через query, может зависеть от текущего auth/tenant контекста, который во время выполнения job уже другой.',
-                'code_example' => 'protected static function booted(): void {
-    static::addGlobalScope(\'tenant\', function (Builder $b) {
+                'answer' => '**Два механизма инкапсуляции query-условий с принципиально разной семантикой.**
+
+| Параметр | **Local scope** | **Global scope** |
+|---|---|---|
+| Применение | **Явное** — `User::active()->get()` | **Автоматически** ко всем запросам модели |
+| Объявление | Метод `scopeActive(Builder $q)` или `#[Scope]` (L11+) | Класс с `Scope` или closure в `booted()` |
+| Видимость | Очевиден из кода | **Невидим** — нужно знать о его существовании |
+| Отключение | Не нужно — не активен по умолчанию | `withoutGlobalScope(\'tenant\')` / `withoutGlobalScopes()` |
+| Типичный use case | `active`, `published`, `recent` | Soft delete, multi-tenancy, скрытие черновиков |
+
+**Подводные камни global scope (главная боль):**
+
+**1. Невидимая магия — «куда делись записи?»**
+
+- Новичок пишет `Post::find($id)` и получает `null` — потому что `TenantScope` отфильтровал.
+- Симптом: «у меня в БД запись лежит, а Laravel её не видит». Документируйте global scopes **обязательно** в `README.md` модели.
+
+**2. Утечка контекста в Job/Queue:**
+
+```php
+static::addGlobalScope(\'tenant\', function (Builder $b) {
+    $b->where(\'tenant_id\', auth()->user()->tenant_id);
+});
+```
+
+- Job сериализуется → попадает в Redis → воркер забирает через 10 минут.
+- В воркере **`auth()->user()` = `null`** (нет HTTP-запроса) → `tenant_id` = `null` → запрос вернёт пусто или упадёт.
+- Решение: фиксировать `tenant_id` **явно** в конструкторе Job, передавать через контейнер, или применять scope в момент выполнения, а не на этапе resolve.
+
+**3. Системные задачи нужно «снимать»:**
+
+- Админка, импорты, миграции данных: `Post::withoutGlobalScope(TenantScope::class)->...`.
+- Все воркеры/cron — проверяйте, не нужен ли снять.
+
+**4. Сломанные связи:**
+
+- `$user->posts` через `belongsTo`/`hasMany` **тоже применяет** global scope `Post`. Если scope зависит от `auth()`, а связь грузится из cron — пусто.
+
+**5. Octane/RoadRunner — scope считается один раз при boot:**
+
+- Если `booted()` использует `auth()`, на новых запросах оно уже другое. Используйте closure (которое выполнится при каждом запросе), а не значение.
+
+**Когда global выбирать — только когда нужно ВСЕГДА, по всему приложению** (SoftDeletes — канонический пример). Иначе — local scope.',
+                'code_example' => '<?php
+// === Local scope - явный, безопасный ===
+class User extends Model {
+    public function scopeActive(Builder $q): Builder {
+        return $q->where(\'active\', true);
+    }
+
+    // Laravel 11+ - через атрибут, без префикса
+    #[Scope]
+    protected function popular(Builder $q, int $min = 1000): Builder {
+        return $q->where(\'views\', \'>=\', $min);
+    }
+}
+
+User::active()->popular()->get();
+
+// === Global scope - класс ===
+class TenantScope implements Scope {
+    public function apply(Builder $b, Model $m): void {
+        // ✅ Closure внутри apply - вычисляется в момент SQL, не при boot
         if ($tenantId = auth()->user()?->tenant_id) {
             $b->where(\'tenant_id\', $tenantId);
         }
-    });
+    }
 }
 
-// Снять
-Post::withoutGlobalScope(\'tenant\')->get();
-Post::withoutGlobalScopes()->get();',
+class Post extends Model {
+    protected static function booted(): void {
+        static::addGlobalScope(new TenantScope);
+    }
+}
+
+// === Снять scope - обязательно для системных задач ===
+Post::withoutGlobalScope(TenantScope::class)->get();      // снять конкретный
+Post::withoutGlobalScopes()->get();                       // снять ВСЕ
+Post::withoutGlobalScope(\'tenant\')->get();                // если scope-closure именованный
+
+// === Job-friendly паттерн - фиксируем tenant в конструкторе ===
+class ExportTenantPosts implements ShouldQueue {
+    public function __construct(public int $tenantId) {} // не auth()
+
+    public function handle(): void {
+        Post::withoutGlobalScope(TenantScope::class)
+            ->where(\'tenant_id\', $this->tenantId)
+            ->chunkById(1000, fn ($posts) => /* ... */);
+    }
+}',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_advanced',
@@ -738,12 +1137,89 @@ $users = User::with("latestPost")->get();',
             [
                 'category' => 'Laravel',
                 'question' => 'Как работают Laravel-транзакции с deadlock и как их повторять?',
-                'answer' => 'DB::transaction($callback, $attempts) повторяет колбэк только при ОШИБКАХ КОНКУРЕНЦИИ - не при любом QueryException. Решение принимает Illuminate\Database\ConcurrencyErrorDetector::causedByConcurrencyError(): срабатывает на SQLSTATE 40001 (serialization failure - канон Postgres) и на текстовые маркеры в сообщении драйвера: "Deadlock found when trying to get lock" (MySQL ER_LOCK_DEADLOCK = 1213), "deadlock detected" (Postgres), "Lock wait timeout exceeded" (MySQL ER_LOCK_WAIT_TIMEOUT = 1205), "database is locked" (SQLite), и аналогичные в MariaDB Galera/WSREP. Что НЕ повторяется и сразу пробросится наверх: violation уникального индекса (23000/23505), foreign key (23503), check constraint, синтаксические ошибки, lost connection - на это есть отдельная ветка causedByLostConnection() и она ретраит уже по другому правилу (только если транзакция не начата). Без указания attempts (default 1) DB::transaction бросает первое же исключение. Для nested-транзакций Laravel использует SAVEPOINT - DB::transaction внутри другой создаёт точку отката, а не новую транзакцию. afterCommit-хуки сработают только после внешнего коммита.',
+                'answer' => '**`DB::transaction($callback, $attempts)`** автоматически **повторяет** callback при ошибках **конкуренции** — но **не при любом** `QueryException`.
+
+**Что считается concurrency error** (повторяется):
+
+| SQLSTATE / Сообщение | СУБД | Что это |
+|---|---|---|
+| **`40001`** Serialization failure | Postgres (канон) | Конфликт сериализации в `SERIALIZABLE` |
+| **`Deadlock found when trying to get lock`** | MySQL (ER 1213) | Классический deadlock |
+| **`deadlock detected`** | Postgres | То же на PG |
+| **`Lock wait timeout exceeded`** | MySQL (ER 1205) | `innodb_lock_wait_timeout` истёк |
+| **`database is locked`** | SQLite | WAL-блокировка |
+
+Решение принимает `Illuminate\\Database\\DetectsConcurrencyErrors::causedByConcurrencyError($e)` — он матчит **SQLSTATE 40001** и **текстовые маркеры**.
+
+**Что НЕ повторяется** (сразу пробрасывается):
+
+- **`23000` / `23505`** — violation UNIQUE.
+- **`23503`** — violation foreign key.
+- **`23514`** — violation CHECK.
+- Синтаксические ошибки SQL.
+- **Lost connection** — отдельная ветка `causedByLostConnection()`, повторяется **только если транзакция ещё не начата**.
+
+**Поведение по `attempts`:**
+
+- **`attempts: 1`** (дефолт) — бросает первое же исключение.
+- **`attempts: 3`** — между попытками **нет sleep** (отличие от Job `backoff`), повторение моментальное. На сильно нагруженной БД лучше комбинировать с `SKIP LOCKED` или backoff в коде.
+
+**Вложенные транзакции (savepoint):**
+
+- `DB::transaction` внутри другой — **SAVEPOINT trans2**, не новая транзакция.
+- При deadlock на внутренней — Laravel `ROLLBACK TO SAVEPOINT` и пробует **только внутренний** callback заново. Внешняя транзакция продолжается.
+- **`afterCommit`-хуки** сработают только после **внешнего** COMMIT.
+
+**Подводные камни:**
+
+- **Side effects в callback** — если внутри callback писали в Redis/файлы/отправляли HTTP — на retry это **повторится**. Решение: только БД-операции, остальное — `DB::afterCommit`.
+- **`attempts` без `lockForUpdate`** — retry на deadlock без локов = маскировка race condition. Сначала разберитесь, почему deadlock возникает.
+- **Канонический паттерн порядка локов** — всегда брать локи в **одном** порядке (например, по возрастанию `id`), чтобы избежать deadlock в принципе.',
                 'code_example' => '<?php
+// 1. Базовый retry на deadlock
 DB::transaction(function () use ($from, $to, $sum) {
-    $from->lockForUpdate()->decrement("balance", $sum);
-    $to->lockForUpdate()->increment("balance", $sum);
-}, attempts: 3);',
+    // КАНОНИЧНО: брать локи в фиксированном порядке (по ID), иначе deadlock
+    [$first, $second] = $from->id < $to->id ? [$from, $to] : [$to, $from];
+
+    $first->lockForUpdate();
+    $second->lockForUpdate();
+
+    $from->refresh()->decrement(\'balance\', $sum);
+    $to->refresh()->increment(\'balance\', $sum);
+}, attempts: 3);
+
+// 2. Что повторяется (deadlock) - что нет (unique violation)
+try {
+    DB::transaction(function () {
+        User::create([\'email\' => \'taken@example.com\']);
+    }, attempts: 3);
+} catch (QueryException $e) {
+    // Сюда попадаем СРАЗУ - 23000 не считается concurrency
+    if ($e->getCode() === \'23000\') {
+        return response(\'Email уже занят\', 422);
+    }
+    throw $e;
+}
+
+// 3. Опасный паттерн - side effects в transaction-callback
+DB::transaction(function () use ($order) {
+    $order->save();
+    Mail::to($order->user)->send(new OrderPaid()); // ❌ на retry уйдёт ДВА письма
+}, attempts: 3);
+
+// ✅ Правильно - side effects через afterCommit
+DB::transaction(function () use ($order) {
+    $order->save();
+    DB::afterCommit(fn () => Mail::to($order->user)->send(new OrderPaid()));
+}, attempts: 3);
+
+// 4. Вложенные - retry только внутренний callback
+DB::transaction(function () {
+    /* внешняя работа */
+    DB::transaction(function () {
+        /* при deadlock здесь - ROLLBACK TO SAVEPOINT + retry только этой части */
+    }, attempts: 5);
+});',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_advanced',
@@ -751,7 +1227,39 @@ DB::transaction(function () use ($from, $to, $sum) {
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между whereIn и whereIntegerInRaw, и когда выбирать второй?',
-                'answer' => 'whereIn($col, $array) использует PDO-bindings: для каждого элемента массива добавляется плейсхолдер (?), значение проходит через драйвер БД и экранируется. Это безопасно для строк/смешанных типов, но имеет цену: на 50 000 ID будет 50 000 плейсхолдеров, что упирается в лимит wire-протокола - и у MySQL/MariaDB, и у PostgreSQL число параметров кодируется 2-байтовым полем, поэтому потолок ровно 65 535 (0xFFFF) плейсхолдеров на запрос; в SQL Server лимит ещё жёстче - 2 100. Не путать с MySQL-настройкой max_prepared_stmt_count (по умолчанию 16 382) - она ограничивает общее число одновременно живущих prepared statement-ов на сервере, а не параметров в одном запросе. Помимо потолка большой whereIn сильно нагружает парсер SQL и сжирает память при подготовке запроса. whereIntegerInRaw($col, $array) поступает иначе: каждый элемент массива принудительно кастится в (int) и подставляется ПРЯМО в SQL-строку без bindings: WHERE id IN (1, 2, 3, ...). Безопасно потому что (int) гарантирует - там не может оказаться SQL-инъекции; профит - запрос обходит протокольный лимит на параметры и снижает память приложения при подготовке. Когда использовать: импорты, синхронизация с внешним источником, broadcast-операции вида "обновить статус у списка из 100k записей". Работает ТОЛЬКО с одиночными числовыми колонками - для строк, UUID и составных ключей аналога нет: там либо ->whereIn() с chunk на части по 1000-5000, либо JOIN со временной таблицей.',
+                'answer' => 'Оба строят `WHERE col IN (...)`, но **принципиально по-разному**.
+
+| Параметр | **`whereIn($col, $array)`** | **`whereIntegerInRaw($col, $array)`** |
+|---|---|---|
+| Подстановка | PDO-bindings (`?`) на каждый элемент | Каждый элемент `(int)$value`, склейка строкой |
+| SQL | `WHERE id IN (?, ?, ?, ...)` | `WHERE id IN (1, 2, 3, ...)` |
+| Безопасность | Драйвер экранирует | `(int)` гарантирует, что инъекции нет |
+| Лимит элементов | **65 535** (см. ниже) | Практически без лимита |
+| Память на подготовку | Растёт линейно с размером | Маленькая (просто строка) |
+| Типы | Любые (строки, UUID, числа) | **Только целые числа** |
+
+**Откуда лимит 65 535 у `whereIn`:**
+
+- В wire-протоколе **MySQL/MariaDB и PostgreSQL** число параметров prepared statement кодируется **2-байтовым полем** → потолок `0xFFFF` = **65 535** плейсхолдеров на запрос.
+- В **SQL Server** лимит жёстче — **2 100**.
+- **Не путать** с MySQL `max_prepared_stmt_count` (дефолт 16 382) — это число **одновременно живущих** prepared statements на сервере, а не параметров в одном.
+- Помимо потолка большой `whereIn` нагружает парсер SQL и съедает память на подготовку.
+
+**Когда выбирать `whereIntegerInRaw`:**
+
+- **Импорт/sync** — обновить статус у 100 000 ID одной командой.
+- **GDPR broadcast** — пометить пачку пользователей.
+- **ETL** — массовые batch-операции, где ID берутся из доверенного источника (своя БД, не пользовательский ввод).
+
+**Ограничения:**
+
+- **Только целые числа** на одной колонке.
+- Для **строк/UUID** — `whereIn` + `chunk` по 1000-5000: `collect($emails)->chunk(1000)->each(fn ($c) => User::whereIn(\'email\', $c->all())->update(...))`.
+- Для **составных ключей** — JOIN со временной таблицей или CTE.
+
+**Парный метод:** **`whereIntegerNotInRaw($col, $array)`** — инверсия (`NOT IN`).
+
+**Альтернатива при подозрении на инъекцию** — `array_map(\'intval\', $ids)` руками + `whereIn` (то же самое, но через bindings — медленнее).',
                 'code_example' => '<?php
 // проблема - массив на 50_000 ID
 $ids = User::where("region", "EU")->pluck("id")->all();
@@ -775,7 +1283,41 @@ collect($emails)->chunk(1000)->each(function ($chunk) {
             [
                 'category' => 'Laravel',
                 'question' => 'Как настроить read/write connections в Laravel и что делает опция sticky?',
-                'answer' => 'В config/database.php у соединения можно указать массив "read" и "write" с отдельными хостами: SELECT-запросы пойдут на read-реплику, INSERT/UPDATE/DELETE - на write (master). Это горизонтально масштабирует чтение в типичном "много чтений / мало записей" приложении. Подводный камень: репликация асинхронна, лаг между master и реплики - десятки миллисекунд (а под нагрузкой - секунды), поэтому SELECT сразу после INSERT может вернуть старые данные или 404. Опция "sticky" => true в конфиге соединения (по умолчанию false): после ЛЮБОЙ операции записи в текущем PHP-процессе все последующие SELECT идут на write-соединение. Реализация - флаг $recordsModified на инстансе Connection (Illuminate\Database\Connection), который проверяется в getPdoForSelect(). КРИТИЧЕСКОЕ ОГРАНИЧЕНИЕ: sticky работает ТОЛЬКО в рамках одного PHP-запроса, потому что флаг живёт на инстансе Connection. Классический PRG-паттерн (POST /users → 302 → GET /users/{id}) sticky НЕ спасёт: следующий GET - это новый HTTP-запрос, новый bootstrap, новый Connection с recordsModified=false. Чтобы выжить с PRG: 1) на стороне Laravel - пробрасывать данные через session flash или сразу рендерить ответ без редиректа; 2) на инфраструктурном уровне - sticky-сессии на балансировщике (привязка пользователя к ноде), причинно-следственные токены (LSN/GTID-токен в куке/заголовке, по которому реплика дожидается нужной позиции), синхронная репликация для критичных таблиц. В Octane/долгоживущих воркерах sticky опасен в обратную сторону: флаг между запросами обнуляется через ConnectionsHaveBeenForgottenEvent / app reset, но если кастомизировал жизненный цикл - проверь, что recordsModified сбрасывается. Разово принудить master: Model::on("mysql")->useWritePdo()->find($id) или DB::connection()->getPdo() с явным write-pdo.',
+                'answer' => '**Read/Write split** — в `config/database.php` для одного соединения указываются **отдельные хосты** для чтения и записи. SELECT идут на реплику, `INSERT/UPDATE/DELETE` — на master. Горизонтально масштабирует read-heavy нагрузку.
+
+**Главная проблема — replication lag:**
+
+- Репликация **асинхронна**: десятки ms на лёгкой нагрузке, секунды под нагрузкой.
+- SELECT сразу после INSERT может вернуть **старые данные или 404**.
+
+**Опция `sticky` (по умолчанию `false`) — частичное решение:**
+
+- После **любого** write в текущем PHP-процессе все последующие SELECT идут на **master**.
+- Реализация — флаг **`$recordsModified`** на инстансе `Illuminate\\Database\\Connection`, проверяется в `getPdoForSelect()`.
+
+**КРИТИЧЕСКОЕ ограничение sticky** — работает только в **одном** HTTP-запросе:
+
+| Сценарий | Спасает ли sticky |
+|---|---|
+| `User::create()` → `User::find($id)` в **том же** запросе | **Да** — флаг живёт на Connection до конца запроса |
+| **PRG**: `POST /users` → `302` → `GET /users/{id}` | **Нет** — новый запрос, новый Connection, флаг сброшен |
+| Job отложенный из транзакции | **Нет** — другой процесс, нужен `afterCommit` + GTID/LSN |
+
+**Что делать с PRG:**
+
+| Решение | Уровень |
+|---|---|
+| Рендерить view вместо `redirect()` | Laravel — самое простое |
+| Передать данные через `session()->flash()` | Laravel — без БД-чтения после редиректа |
+| **Sticky session** на балансировщике (привязка юзера к ноде) | Infrastructure |
+| **Causality tokens** (LSN/GTID в cookie/header) — реплика ждёт нужной позиции | Postgres logical replication, ProxySQL |
+| **Synchronous replication** для критичных таблиц | Postgres `synchronous_commit = on`, MySQL Group Replication |
+| **`useWritePdo()`** разово на конкретном запросе | Laravel — для одной критичной выборки |
+
+**Octane/долгоживущие воркеры:**
+
+- Между запросами Octane вызывает `ConnectionsHaveBeenForgottenEvent` → флаг `$recordsModified` сбрасывается.
+- Если кастомизировал lifecycle — проверьте, что флаг чистится, иначе все запросы на воркере пойдут на master.',
                 'code_example' => '<?php
 // config/database.php
 "connections" => [
@@ -811,7 +1353,38 @@ $fresh = User::on("mysql")->useWritePdo()->find($user->id);',
             [
                 'category' => 'Laravel',
                 'question' => 'Как использовать PHP 8.1 Backed Enums в роутах, $casts моделей и валидации?',
-                'answer' => 'Laravel 9+ поддерживает PHP 8.1 backed enums (string или int) в трёх ключевых местах. 1) В роутах через Implicit Enum Binding: если параметр в сигнатуре контроллера затайпхинчен enum-классом, Laravel автоматически попытается создать экземпляр через Enum::tryFrom($urlValue); если значение не соответствует ни одному case - бросается BackedEnumCaseNotFoundException, который Laravel-овский ExceptionHandler по умолчанию рендерит как 404 (NotFoundHttpException). Чтобы кастомизировать (например, отдать 422 с описанием доступных значений), перехватите исключение в bootstrap/app.php через ->withExceptions(fn ($e) => $e->render(...)); метод ->missing() на роуте, который работает для Route Model Binding, для Enum НЕ применим. 2) В модели в массиве $casts: "status" => UserStatus::class - при чтении атрибута получаете объект Enum, при сохранении в БД уходит ->value (строка/int); работает и с однозначными, и с массивами enums (AsEnumCollection). 3) В валидации через Rule::enum(UserStatus::class) - проверяет, что значение есть в case-ах. Также есть has() / In::enum() для расширенных кейсов. Бонус: в Blade и Resource классе можно сравнивать через ===, потому что enum - это singleton по case, а не строка. Подводный камень: чистый enum (без ": string"/": int") НЕ поддерживается ни в роутах, ни в $casts - нужен именно backed enum, потому что нужно соответствие БД-значению.',
+                'answer' => 'Laravel 9+ поддерживает **PHP 8.1 backed enums** (`enum X: string`/`enum X: int`) в трёх ключевых местах.
+
+**Важно:** только **backed** enum — pure enum без `: string`/`: int` **не работает** ни в роутах, ни в `$casts` (нужно соответствие БД-значению).
+
+**1. В роутах — Implicit Enum Binding:**
+
+- Type-hint в сигнатуре контроллера или closure — Laravel пытается `Enum::tryFrom($urlValue)`.
+- При несоответствии — `BackedEnumCaseNotFoundException` → дефолтный handler рендерит **404**.
+- **`->missing()`** на роуте (как для Route Model Binding) для Enum **не применим**.
+- Кастомный ответ (например, 422) — перехват в `bootstrap/app.php`.
+
+**2. В модели — `$casts`:**
+
+- `\'status\' => UserStatus::class` — двусторонний каст:
+  - На чтение — объект Enum.
+  - На запись — `->value` (строка/int).
+- **Коллекция enum-ов** — `AsEnumCollection::class . \':\' . Permission::class` (L11+).
+- Сравнение через **`===`** — enum это singleton по case, **не строка**.
+
+**3. В валидации — `Rule::enum()`:**
+
+- `Rule::enum(UserStatus::class)` — проверит, что значение есть в case-ах.
+- В FormRequest или массиве правил.
+- **`Rule::enum(...)->only([...])`** / **`->except([...])`** — подмножество case-ов (L11+).
+
+**Подводные камни:**
+
+- **Прямое сравнение со строкой** — `$user->status === \'active\'` всегда **false** (объект Enum vs string). Правильно: `$user->status === UserStatus::Active` **или** `$user->status->value === \'active\'`.
+- **`MassAssignmentException`** при `User::create([\'status\' => UserStatus::Active])` если `status` не в `$fillable`.
+- **JSON-сериализация** — `JsonResource` сам сериализует enum в `->value`; в массивах через `$user->toArray()` — тоже **value**.
+- **`whereIn` с enum-ами** — `User::whereIn(\'status\', [UserStatus::Active, UserStatus::Pending])` работает (Laravel сам берёт `->value`).
+- **Миграция БД** — храните как `string` (varchar) или `tinyint` под backed-тип; для добавления нового case — миграция не нужна.',
                 'code_example' => '<?php
 // 1) Enum
 enum UserStatus: string {
@@ -864,7 +1437,36 @@ protected $casts = [
             [
                 'category' => 'Laravel',
                 'question' => 'Как вытащить одно поле из связанной модели одним запросом без with()? (Subquery select)',
-                'answer' => 'Классическая задача: показать список пользователей с датой их последнего логина. with("logins") тащит ВСЕ логины каждого юзера - нерационально, нужен только один. withCount() считает только количество. withMax/Min/Avg/Sum - считают агрегат, но не возвращают другие поля связанной строки. Решение - subquery select через addSelect() (Laravel 6+). Пишете SELECT со скалярным подзапросом: SELECT users.*, (SELECT created_at FROM logins WHERE user_id = users.id ORDER BY created_at DESC LIMIT 1) AS last_login_at FROM users. Один запрос, никакого N+1, можно ORDER BY этого виртуального поля. Преимущества: 1) Только нужные данные. 2) Ноль дополнительных запросов. 3) Можно сортировать и фильтровать по subselect-полю на стороне БД. Подводные камни: тип значения - сырая строка из БД (для дат - timestamp-строка, не Carbon). Чтобы получить нормальный тип, добавьте в модель $casts (или addSelect + ->withCasts(["last_login_at" => "datetime"]) на лету в Laravel 8+). Если subselect возвращает несколько колонок - не подойдёт; нужно либо несколько отдельных subselect-ов, либо JOIN c GROUP BY. Альтернативный синтаксис в L9+: HasOne::ofMany("created_at", "max") - "latest of many" relation, который превращает hasMany в hasOne по агрегату.',
+                'answer' => '**Задача:** показать список юзеров **с датой последнего логина** одним запросом.
+
+**Почему стандартные подходы не подходят:**
+
+| Подход | Почему не годится |
+|---|---|
+| `with(\'logins\')` | Тащит **все** логины каждого юзера — мегабайты лишнего |
+| `with([\'logins\' => fn ($q) => $q->latest()->limit(1)])` | В L≤10 — лимит на ВСЮ выборку (баг); в L11+ — per-parent, но всё равно отдельный SQL |
+| `withCount(\'logins\')` | Только **число**, не дата |
+| `withMax(\'logins\', \'created_at\')` | Возвращает агрегат, **но только одну колонку** |
+
+**Решение — `addSelect()` со скалярным подзапросом** (Laravel 6+):
+
+- Один SQL: `SELECT users.*, (SELECT created_at FROM logins WHERE user_id = users.id ORDER BY ... LIMIT 1) AS last_login_at FROM users`.
+- **Ноль** доп. запросов.
+- Можно **`orderBy(\'last_login_at\')`** прямо на этом виртуальном поле.
+
+**Преимущества:**
+
+- **Только нужные данные** — одна колонка вместо всей связанной таблицы.
+- **Сортировка/фильтрация на стороне БД** — `orderByDesc(\'last_login_at\')` оптимизатор может использовать индекс.
+- **`->withCasts([...])`** на лету — Carbon на выходе вместо сырой строки (L8+).
+
+**Подводные камни:**
+
+- **Тип значения** — сырая строка из БД (timestamp как `string`, не Carbon). Решение: `withCasts([\'last_login_at\' => \'datetime\'])` или `$casts` на модели.
+- **Несколько колонок** — `addSelect` берёт **одну** колонку из subselect. Для нескольких — несколько отдельных `addSelect` или JOIN с GROUP BY.
+- **Performance** — subselect выполняется **на каждую строку** основного запроса; нужен индекс на FK + `ORDER BY` в подзапросе. Иначе на 100k юзерах — N сканов.
+- **Альтернатива через `latestOfMany()` (L9+)** — `hasOne(...)->latestOfMany()` или `->ofMany(\'score\', \'max\')` — превращает `hasMany` в `hasOne` по агрегату. Чище для частых паттернов «last X», но всё ещё **отдельный SQL** через `with`.
+- **Window functions** — `ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY ...)` через `selectRaw` — для top-N связей (N > 1).',
                 'code_example' => '<?php
 // Подзапрос: дата последнего логина
 $users = User::query()
@@ -901,7 +1503,42 @@ User::with("lastLogin")->get();',
             [
                 'category' => 'Laravel',
                 'question' => 'Почему массовый UPDATE через Query Builder/Model::where->update НЕ триггерит события Eloquent (saving/updating/saved/updated)?',
-                'answer' => 'Очень частая боль уровня middle/senior. Когда вы вызываете $model->save() / $model->update($data) / $model->delete() на КОНКРЕТНОМ инстансе - Eloquent проходит через весь lifecycle: events (saving, updating, saved, updated), observers, мутаторы, $casts, апдейт updated_at, индексы Scout (Searchable), broadcasting. А когда вы делаете BULK-операцию через query builder вида User::where("active", false)->update(["status" => "archived"]) или Post::where(...)->delete() - это превращается в одиночный SQL "UPDATE ... WHERE / DELETE ... WHERE", который улетает в БД минуя инстансы моделей. Никаких событий, наблюдателей, мутаторов, обновления Scout-индекса, рассылки broadcast - ничего. Классический баг: бизнес-логика "при архивации юзера отправь email" висит в наблюдателе UserObserver::updated; разработчик пишет batch-скрипт User::where(...)->update(["status" => "archived"]) - письма не уходят, никто не замечает месяцами. Решения: 1) если важны события - foreach с $u->update() или $u->save() (медленнее, но lifecycle цел); 2) chunk-обработка: User::where(...)->chunkById(500, fn ($users) => $users->each->update([...])) - компромисс между скоростью и тем, что события сработают; 3) если bulk важен по скорости - сознательно дублируем нужные побочные эффекты (Scout::reindex, явный dispatch события) после массового запроса. То же самое верно для DB::table(...)->update(): query builder событий моделей не знает в принципе. Проверяйте: если рядом с update лежит observer/cast/Scout - ищите явный foreach или дозированный bulk.',
+                'answer' => 'Очень частая боль уровня middle/senior — **bulk-операции через query builder идут прямо в SQL, минуя слой моделей**.
+
+**Сравнение:**
+
+| Вызов | Lifecycle |
+|---|---|
+| `$model->save()` / `$model->update([...])` / `$model->delete()` | **Полный**: events (`saving`, `updating`, `saved`, `updated`), observers, мутаторы, `$casts`, `updated_at`, Scout reindex, broadcasting |
+| `Model::where(...)->update([...])` / `->delete()` | **Только SQL**: `UPDATE/DELETE ... WHERE ...` |
+| `DB::table(...)->update([...])` | То же — query builder не знает о моделях в принципе |
+
+**Что НЕ срабатывает на bulk:**
+
+- **События** — `saving/updating/saved/updated/deleting/deleted`.
+- **Observers** — Observer-методы молчат.
+- **Мутаторы и accessors** — `set...Attribute` / `Attribute::make(set: ...)` не вызываются.
+- **`$casts`** — данные идут в БД **в сыром виде**; например, передали Carbon — БД получит непредсказуемое значение, передали enum — упадёт.
+- **`updated_at`** — Laravel **сам** добавляет в SET для Eloquent-builder (НЕ для `DB::table`), но через мутатор оно не пройдёт.
+- **Scout** — индекс остаётся **со старыми данными**.
+- **Broadcasting** — события через `BroadcastsEvents` не уйдут.
+
+**Классический баг:**
+
+- Логика «при архивации юзера → отправь email» висит в `UserObserver::updated`.
+- Batch-скрипт: `User::where(\'last_login\', \'<\', now()->subYear())->update([\'status\' => \'archived\'])`.
+- **Письма не уходят**, баг живёт месяцами, пока кто-то не заметит.
+
+**Решения:**
+
+| Решение | Когда |
+|---|---|
+| **`foreach` + `$u->update()`** | Маленькие выборки — точно сработают события, медленно (N запросов) |
+| **`chunkById` + `$chunk->each->update()`** | Большие выборки — компромисс: события работают, запросов меньше |
+| **Bulk + явный side effect** | Огромные выборки — bulk-update, потом руками `event(...)`, `Scout::reindex()`, `Cache::flush()` |
+| **`updateQuietly([...])`** | Намеренно без событий — массовое обновление `updated_at` и т.п. |
+
+**Правило ревью:** если рядом с моделью лежит **Observer**, **Searchable**, **broadcast**, или сложные **мутаторы** — `where(...)->update(...)` это **анти-паттерн**, ищите `foreach` / `chunkById`.',
                 'code_example' => '<?php
 // ❌ События НЕ сработают - observer молчит
 User::where("last_login_at", "<", now()->subYear())
@@ -933,7 +1570,50 @@ User::whereIn("id", $affectedIds)->searchable(); // если нужен Scout',
             [
                 'category' => 'Laravel',
                 'question' => 'Когда выгоднее DB::table вместо Eloquent? Цена гидратации моделей.',
-                'answer' => 'Eloquent на каждый ряд из БД создаёт полноценный объект Model: вызывает конструктор, наполняет $original/$attributes, прогоняет $casts, регистрирует наблюдателей, готовит lazy load связей. Для одной записи это ~10-30 микросекунд + ~2-3 КБ памяти на объект; на 50 000 строк это уже секунды и сотни МБ - реальный риск Out of Memory. Senior-правило: если результат запроса - это просто "массив скалярных строк, которые надо отдать дальше / посчитать / экспортировать в CSV", а методы и связи модели не нужны - используй DB::table("users")->select(...)->get() или ->cursor(). Возвращаются stdClass-объекты, никаких events, casts, мутаторов - в разы быстрее и меньше памяти. Когда оставить Eloquent: когда нужны связи (with), мутаторы/casts, бизнес-методы модели ($user->canDoX()), события/observers, или результат маленький. Промежуточный вариант: ->cursor() / ->lazy() возвращает по одной записи через генератор - O(1) памяти, но всё ещё гидратирует модели; ->toBase() на Eloquent-Builder - скастует результат к stdClass и пропустит гидратацию.',
+                'answer' => '**Цена гидратации Eloquent** на каждый ряд из БД:
+
+- Конструктор `new Model()`.
+- Наполнение `$original` и `$attributes`.
+- Прогон через **`$casts`** (Carbon, enum, JSON-decode).
+- Регистрация observers, подготовка lazy-load связей.
+- **~10-30 микросекунд + ~2-3 КБ памяти на объект.**
+
+На 50k записей это уже **секунды и сотни МБ** — реальный риск **OOM** на 512 МБ-воркере.
+
+**Sentor-правило:** если запрос — это просто **«массив скалярных строк»** (экспорт CSV, агрегаты, рассылка email), а методы/связи модели не нужны — **`DB::table()`** вместо Eloquent.
+
+**Сравнение вариантов:**
+
+| Вариант | Гидратация моделей | Память | События/casts | Когда |
+|---|---|---|---|---|
+| **`User::all()`** | Полная | O(N), большая | Да | Маленькие выборки, нужны модели |
+| **`User::cursor()`** | Полная (по одной) | **O(1)** | Да | Большие выборки, нужны модели |
+| **`User::query()->toBase()->cursor()`** | **stdClass** | **O(1)** | **Нет** | Большие, без модели — гибрид |
+| **`DB::table(\'users\')->get()`** | stdClass | O(N) | **Нет** | Read-only данные, скаляры |
+| **`DB::table(\'users\')->cursor()`** | stdClass | **O(1)** | **Нет** | Стрим, экспорт |
+| **`DB::select(\'...raw SQL...\')`** | array of stdClass | O(N) | **Нет** | Сложный SQL (CTE, window) |
+
+**Когда оставить Eloquent:**
+
+- Нужны **связи** (`with`).
+- Нужны **`$casts`/мутаторы** (decimal:2, Carbon, JSON).
+- Бизнес-методы модели — `$user->canDoX()`, `$order->total()`.
+- **Events/observers** — обновление Scout, audit-log.
+- **Resources** — `UserResource` ожидает модель.
+
+**Промежуточные приёмы:**
+
+- **`->cursor()`** — O(1) памяти, генератор, **всё ещё гидратирует** модели → выигрыш только в памяти, не в CPU.
+- **`->lazy(1000)`** / **`->lazyById(1000)`** — то же, но порциями по N (под капотом chunk).
+- **`->toBase()`** на Eloquent-Builder — скастует результат к stdClass и **пропустит гидратацию**.
+- **`pluck(\'email\')`** на DB-builder — возвращает Collection строк, минимум памяти.
+
+**Когда переходить:**
+
+- **>10k записей и просто перечитываем** — `DB::table()`.
+- **Экспорт в CSV** — `cursor()` с любого слоя.
+- **Bulk-операции** — `DB::table()->update(...)` (но помним: события моделей не сработают).
+- **Сложный SQL с window/CTE** — `DB::select($sql)` гораздо чище.',
                 'code_example' => '<?php
 // ❌ Из 100k юзеров - OOM на 512МБ воркере
 $emails = User::all()->pluck("email")->toArray();

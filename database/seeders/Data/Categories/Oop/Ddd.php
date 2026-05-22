@@ -12,7 +12,28 @@ class Ddd
                 'topic' => 'oop.ddd',
                 'difficulty' => 4,
                 'question' => 'Что такое Domain-Driven Design (DDD)?',
-                'answer' => 'DDD (предметно-ориентированное проектирование) - это подход к разработке сложных систем, в центре которого глубокое понимание предметной области. Идея: код должен отражать бизнес-домен, а не техническую реализацию. Делится на Strategic DDD (стратегические паттерны: Bounded Context, Context Map, Ubiquitous Language) и Tactical DDD (тактические паттерны: Entity, Value Object, Aggregate, Repository, Domain Service, Domain Event). DDD оправдан в проектах со сложной бизнес-логикой; для CRUD-приложений - оверкилл.',
+                'answer' => '**DDD (Domain-Driven Design)** — подход к разработке сложных систем, в центре которого **глубокое понимание предметной области**. Код отражает **бизнес-домен**, а не техническую реализацию.
+
+**Делится на два уровня:**
+
+| Уровень | Что включает |
+|---|---|
+| **Strategic DDD** | `Bounded Context`, `Context Map`, `Ubiquitous Language`, типы интеграций |
+| **Tactical DDD** | `Entity`, `ValueObject`, `Aggregate`, `Repository`, `Domain Service`, `Domain Event` |
+
+**Когда оправдан:**
+
+- Сложная бизнес-логика, **не CRUD**.
+- Долгоживущий продукт с активным участием экспертов домена.
+- Команда, готовая инвестировать в **общий язык** с бизнесом.
+
+**Когда оверкилл:**
+
+- Простые CRUD-приложения.
+- Прототипы и MVP без устоявшегося домена.
+- Тонкая обёртка над БД — добавит сложности без выигрыша.
+
+**Главная идея:** **модель → код → разговор с бизнесом** идут на одном языке.',
                 'code_example' => null,
                 'code_language' => null,
             ],
@@ -21,10 +42,28 @@ class Ddd
                 'topic' => 'oop.ddd',
                 'difficulty' => 4,
                 'question' => 'Что такое Aggregate Root в DDD?',
-                'answer' => 'Aggregate Root (корень агрегата) - это главный объект внутри группы связанных объектов (агрегата). Простыми словами: представь корзину покупок - она объединяет товары, скидки, итоговую сумму. Корзина - это Aggregate Root, всё взаимодействие извне идёт через неё, а не напрямую с товарами внутри. Это гарантирует согласованность данных: правила (например, лимит на товары) проверяются в одном месте. Запрет именно на МОДИФИКАЦИЮ внутренних сущностей извне (внешний код не должен ссылаться на child entities за пределами транзакции корня) и на прямые ссылки между агрегатами - они связываются только по id корня.',
+                'answer' => '**Aggregate Root (корень агрегата)** — главный объект внутри группы связанных объектов (**агрегата**). Всё взаимодействие извне идёт **через него**, а не напрямую с child-сущностями внутри.
+
+**Пример — корзина покупок:** корзина объединяет товары, скидки, итоговую сумму. **Корзина = Aggregate Root**, `OrderItem` — child entity внутри.
+
+**Зачем нужен:**
+
+- **Согласованность данных** — все инварианты проверяются в одном месте.
+- **Транзакционная граница** — один агрегат = одна транзакция.
+- **Понятный API** — внешний код не лазит в кишки.
+
+**Жёсткие правила:**
+
+1. **Нельзя модифицировать** child-сущности извне — только через методы корня.
+2. **Нельзя ссылаться** на child entities из других агрегатов.
+3. Связь между агрегатами — **только по `id` корня** (а не по ссылке на объект).
+4. Изменения внутри агрегата атомарны — `save(Aggregate)` сохраняет всё разом.
+
+**Анти-паттерн:** `$order->getItems()[0]->setQuantity(5)` — обход корня, инварианты не проверяются.',
                 'code_example' => '<?php
 class Order // Aggregate Root
 {
+    /** @var OrderItem[] */
     private array $items = [];
 
     public function addItem(Product $p, int $qty): void
@@ -32,13 +71,22 @@ class Order // Aggregate Root
         if (count($this->items) >= 100) {
             throw new \DomainException(\'Лимит товаров\');
         }
-        $this->items[] = new OrderItem($p, $qty); // правила в корне
+        $this->items[] = new OrderItem($p, $qty); // правила проверяются в корне
     }
 
-    // нельзя получить items напрямую и менять их
+    public function removeItem(string $itemId): void
+    {
+        // изменение child проходит через корень
+        $this->items = array_filter(
+            $this->items,
+            fn (OrderItem $i) => $i->id() !== $itemId
+        );
+    }
+
+    /** @return OrderItem[] readonly snapshot */
     public function items(): array
     {
-        return $this->items;
+        return $this->items; // только чтение, мутация через addItem/removeItem
     }
 }',
                 'code_language' => 'php',
@@ -48,7 +96,27 @@ class Order // Aggregate Root
                 'topic' => 'oop.ddd',
                 'difficulty' => 4,
                 'question' => 'Что такое Value Object в DDD?',
-                'answer' => 'Value Object (объект-значение) - объект, у которого нет идентичности; он определяется только своими значениями. Если у двух VO одинаковые поля - они равны. Примеры: Money (100 USD), Address, DateRange, Email. Свойства: иммутабельны (не меняются после создания, новое значение - новый объект), сравниваются по значению, инкапсулируют валидацию. В отличие от Entity, у которой есть id и идентичность сохраняется во времени.',
+                'answer' => '**ValueObject (объект-значение)** — объект **без идентичности**: он определяется только своими значениями. Если у двух VO одинаковые поля — они **равны**.
+
+**Примеры:** `Money` (`100 USD`), `Address`, `DateRange`, `Email`, `Coordinates`.
+
+**Ключевые свойства:**
+
+- **Иммутабельность** — после создания не меняется; новое значение = **новый объект**.
+- **Сравнение по значению** — `equals()`, не по ссылке.
+- **Инкапсуляция валидации** — невозможно создать невалидный VO.
+- **Самодостаточность** — операции возвращают новый VO (`add()`, `withCurrency()`).
+
+**ValueObject vs Entity:**
+
+| Свойство | `ValueObject` | `Entity` |
+|---|---|---|
+| Идентичность | по значению | по `id` |
+| Изменчивость | **иммутабелен** | мутабельна |
+| Сравнение | `equals()` по полям | по `id` |
+| Жизненный цикл | заменяется целиком | существует во времени |
+
+**В PHP** удобно через `final readonly class` (PHP 8.2+).',
                 'code_example' => '<?php
 final readonly class Money
 {
@@ -74,7 +142,9 @@ final readonly class Money
         return $this->amount === $other->amount
             && $this->currency === $other->currency;
     }
-}',
+}
+
+// иммутабельность: new Money(100, \'USD\') ===-эквивалентен любому другому Money(100, \'USD\')',
                 'code_language' => 'php',
             ],
             [
@@ -82,7 +152,26 @@ final readonly class Money
                 'topic' => 'oop.ddd',
                 'difficulty' => 4,
                 'question' => 'Что такое Entity в DDD?',
-                'answer' => 'Entity (сущность) - объект, у которого есть уникальный идентификатор (id) и идентичность сохраняется во времени, даже если меняются другие свойства. Простыми словами: пользователь может сменить имя, email, адрес, но это всё ещё тот же пользователь (с тем же id). Entity сравниваются по id, а не по полям. Примеры: User, Order, Article. Противоположность - Value Object, у которого идентичности нет.',
+                'answer' => '**Entity (сущность)** — объект с **уникальным идентификатором (`id`)**, чья идентичность **сохраняется во времени**, даже если меняются другие свойства.
+
+**Пример:** пользователь может сменить имя, email, адрес — но это **всё тот же пользователь** с тем же `id`.
+
+**Ключевые свойства:**
+
+- **Сравнение по `id`**, не по полям — `equals()` смотрит только на идентификатор.
+- **Жизненный цикл** — создание, изменения, удаление.
+- **Мутабельна** — методы меняют состояние (но через бизнес-операции, не сеттеры).
+- **Инкапсулирует инварианты** — `changeEmail()` валидирует, не позволяет невалидное состояние.
+
+**Entity vs ValueObject:**
+
+| Признак | `Entity` | `ValueObject` |
+|---|---|---|
+| Идентичность | `id` обязателен | нет |
+| Изменчивость | можно менять поля | **иммутабелен** |
+| Сравнение | по `id` | по значению |
+
+**Когда сомневаешься** — спроси: «Важно ли отличать два экземпляра с одинаковыми полями?». Да → `Entity`. Нет → `ValueObject`.',
                 'code_example' => '<?php
 class User // Entity
 {
@@ -94,14 +183,18 @@ class User // Entity
 
     public function changeName(string $name): void
     {
-        $this->name = $name; // меняется, но id - тот же
+        $this->name = $name; // поля меняются, но id - тот же
     }
 
     public function equals(User $other): bool
     {
-        return $this->id === $other->id; // по id, не по полям
+        return $this->id === $other->id; // идентичность по id, не по полям
     }
-}',
+}
+
+$u1 = new User(\'u-1\', \'Alice\', \'a@x\');
+$u2 = new User(\'u-1\', \'Bob\',   \'b@x\'); // тот же user после rename
+$u1->equals($u2); // true',
                 'code_language' => 'php',
             ],
             [
@@ -109,8 +202,31 @@ class User // Entity
                 'topic' => 'oop.ddd',
                 'difficulty' => 4,
                 'question' => 'Что такое Repository в DDD?',
-                'answer' => 'Repository (репозиторий) - паттерн, абстрагирующий доступ к хранилищу агрегатов. Простыми словами: репозиторий выглядит как коллекция в памяти - find/save/remove - а внутри обращается к БД, кешу или внешнему API. Доменный код не знает о деталях хранения. Один репозиторий обычно работает с одним Aggregate Root. Это даёт возможность менять способ хранения без изменения бизнес-логики.',
+                'answer' => '**Repository (репозиторий)** — паттерн, **абстрагирующий доступ к хранилищу агрегатов**. Снаружи выглядит как **коллекция в памяти** (`find`, `save`, `remove`), а внутри обращается к БД, кешу, внешнему API.
+
+**Зачем нужен:**
+
+- **Доменный код не знает** о деталях хранения — ни SQL, ни ORM в бизнес-слое.
+- **Подменяемость** — `InMemoryRepository` для тестов, `PostgresRepository` в проде.
+- **Чёткий API** — `findById`, `save`, `remove` — а не «универсальный QueryBuilder».
+
+**Правила:**
+
+1. **Один репозиторий = один Aggregate Root**. Нет `OrderItemRepository` — только `OrderRepository`.
+2. Возвращает **полные агрегаты**, а не плоские строки.
+3. **Интерфейс — в домене**, реализация — в инфраструктуре (Hexagonal).
+
+**Repository vs DAO:**
+
+| Признак | `Repository` (DDD) | `DAO` |
+|---|---|---|
+| Работает с | агрегатами | таблицами |
+| Возвращает | целые объекты домена | строки/DTO |
+| Где живёт интерфейс | в домене | в data-слое |
+
+**В Laravel:** Eloquent-модель часто **сразу выступает** Active Record + Repository. В строгом DDD интерфейс выносят отдельно.',
                 'code_example' => '<?php
+// интерфейс - в слое домена
 interface UserRepository
 {
     public function findById(string $id): ?User;
@@ -118,21 +234,21 @@ interface UserRepository
     public function remove(User $user): void;
 }
 
-// Реализация для PostgreSQL
+// реализация - в инфраструктурном слое
 class PostgresUserRepository implements UserRepository
 {
     public function __construct(private \PDO $pdo) {}
 
     public function findById(string $id): ?User
     {
-        // SELECT * FROM users WHERE id = :id ...
+        // SELECT ... FROM users WHERE id = :id
         return null;
     }
     public function save(User $user): void { /* INSERT/UPDATE */ }
     public function remove(User $user): void { /* DELETE */ }
 }
 
-// Доменный код работает с интерфейсом, не зная об SQL
+// доменный/прикладной код знает только интерфейс
 class RegisterUser
 {
     public function __construct(private UserRepository $users) {}
@@ -144,17 +260,60 @@ class RegisterUser
                 'topic' => 'oop.ddd',
                 'difficulty' => 4,
                 'question' => 'Что такое Domain Service в DDD?',
-                'answer' => 'Domain Service (доменный сервис) - объект, содержащий бизнес-логику, которая не принадлежит ни одной Entity или Value Object естественным образом. Живёт ВНУТРИ слоя домена (не application). Например, перевод денег между двумя счетами - это операция над двумя агрегатами, не принадлежит ни одному из них. Domain Service оперирует доменными объектами, не имеет состояния (stateless). Не путать с Application Service - тот оркестрирует use case (транзакции, события, авторизация) и живёт в application-слое.',
+                'answer' => '**Domain Service (доменный сервис)** — объект с **бизнес-логикой**, которая **не принадлежит** ни одной `Entity` или `ValueObject` естественным образом. Живёт **в слое домена**, не в application.
+
+**Пример:** перевод денег между двумя счетами. Это операция **над двумя агрегатами**, не принадлежащая ни одному.
+
+**Ключевые свойства:**
+
+- **Stateless** — без состояния, только методы.
+- **Имена на доменном языке** — `MoneyTransferService`, не `AccountManager`.
+- **Оперирует доменными объектами**, не примитивами.
+- Содержит **бизнес-правила**, а не оркестрацию инфраструктуры.
+
+**Domain Service vs Application Service:**
+
+| Признак | `Domain Service` | `Application Service` |
+|---|---|---|
+| Слой | домен | application |
+| Знает про | агрегаты и VO | use case целиком |
+| Транзакции | нет | **да** — `DB::transaction()` |
+| События | публикует через агрегат | **диспатчит** наружу |
+| Авторизация | нет | **да** |
+| Пример | `MoneyTransferService` | `RegisterUserUseCase` |
+
+**Анти-паттерн:** запихнуть всё в Domain Service вместо метода в `Entity` — это **anaemic domain model**. Сначала ищи место в агрегате, и только потом — сервис.',
                 'code_example' => '<?php
-class MoneyTransferService // Domain Service
+// Domain Service: операция между двумя агрегатами
+class MoneyTransferService
 {
     public function transfer(
         Account $from,
         Account $to,
         Money $amount,
     ): void {
-        $from->withdraw($amount);
+        $from->withdraw($amount); // инварианты внутри Account
         $to->deposit($amount);
+    }
+}
+
+// Application Service: оркестрирует use case вокруг доменного сервиса
+class TransferMoneyUseCase
+{
+    public function __construct(
+        private AccountRepository $accounts,
+        private MoneyTransferService $transfer,
+    ) {}
+
+    public function execute(string $fromId, string $toId, Money $amount): void
+    {
+        \DB::transaction(function () use ($fromId, $toId, $amount) {
+            $from = $this->accounts->findById($fromId);
+            $to   = $this->accounts->findById($toId);
+            $this->transfer->transfer($from, $to, $amount);
+            $this->accounts->save($from);
+            $this->accounts->save($to);
+        });
     }
 }',
                 'code_language' => 'php',
@@ -164,10 +323,38 @@ class MoneyTransferService // Domain Service
                 'topic' => 'oop.ddd',
                 'difficulty' => 4,
                 'question' => 'Что такое Bounded Context в DDD?',
-                'answer' => 'Bounded Context (ограниченный контекст) - граница, внутри которой модель имеет конкретное значение. Простыми словами: слово "продукт" в контексте продаж - это товар с ценой, а в контексте склада - это коробка с весом и габаритами. Это разные модели! BC разделяет систему на независимые куски, у каждого своя модель и язык. Между контекстами - явные интеграции (anti-corruption layer, shared kernel). Помогает бороться со сложностью больших доменов.',
+                'answer' => '**Bounded Context (ограниченный контекст)** — **граница**, внутри которой модель и язык имеют **конкретное значение**.
+
+**Пример со словом «Продукт»:**
+
+| Контекст | Что такое «Продукт» |
+|---|---|
+| **Sales** | товар с **ценой** и наличием |
+| **Warehouse** | коробка с **весом** и габаритами |
+| **Catalog** | карточка с **описанием** и фото |
+| **Shipping** | груз с **габаритами** и зоной доставки |
+
+**Один и тот же SKU — разные модели в разных контекстах.**
+
+**Зачем нужен:**
+
+- Разделяет систему на **независимые куски** со своей моделью.
+- **Свой `Ubiquitous Language`** внутри контекста — никакой путаницы.
+- Контексты — **кандидаты на микросервисы** (но не обязательно).
+
+**Интеграция между контекстами:**
+
+- **Shared Kernel** — общий маленький модуль (риск связности).
+- **Customer-Supplier** — один зависит от другого, есть договорённость.
+- **Anti-Corruption Layer (`ACL`)** — слой-переводчик, защищает свою модель от чужой.
+- **Open Host Service** — публичный API контекста.
+- **Published Language** — общий формат обмена (JSON Schema, protobuf).
+
+**`Context Map`** — диаграмма всех контекстов и их связей.',
                 'code_example' => '<?php
-// Контекст продаж: важна цена и наличие
+// Контекст Sales: важна цена и наличие
 namespace Sales;
+
 final class Product
 {
     public function __construct(
@@ -177,8 +364,9 @@ final class Product
     ) {}
 }
 
-// Контекст склада: важны габариты и расположение
+// Контекст Warehouse: важны габариты и расположение
 namespace Warehouse;
+
 final class Product
 {
     public function __construct(
@@ -188,7 +376,9 @@ final class Product
         public readonly string $shelf,
     ) {}
 }
-// Один и тот же SKU - разные модели в разных контекстах',
+
+// один и тот же SKU - разные модели в разных контекстах
+// связь только через ACL или published language',
                 'code_language' => 'php',
             ],
             [
@@ -196,7 +386,27 @@ final class Product
                 'topic' => 'oop.ddd',
                 'difficulty' => 4,
                 'question' => 'Что такое Ubiquitous Language в DDD?',
-                'answer' => 'Ubiquitous Language (вездесущий язык) - единый язык, на котором общаются разработчики, бизнес-аналитики и заказчики. Этот же язык используется в коде: имена классов, методов, переменных совпадают с терминами бизнеса. Простыми словами: если бизнес говорит "оформить заказ" - в коде должен быть метод placeOrder(), а не doStuff(). Это устраняет двусмысленность и потери при переводе требований в код. Язык живёт в рамках одного Bounded Context - в другом контексте те же слова могут значить иное.',
+                'answer' => '**Ubiquitous Language (вездесущий язык)** — **единый язык** между разработчиками, бизнес-аналитиками и заказчиками, который **дословно живёт в коде**.
+
+**Правило:** если бизнес говорит «оформить заказ» — в коде **должен быть** метод `placeOrder()`, а не `doStuff()` / `process()` / `update()`.
+
+**Что устраняет:**
+
+- **Двусмысленность** — все говорят одними словами.
+- **Потери при переводе** требований в код.
+- Разрыв «**аналитик пишет одно, программист понимает другое**».
+
+**Правила использования:**
+
+1. Имена классов, методов, переменных = **термины бизнеса**.
+2. **Никаких** технических `Manager`, `Helper`, `Processor` — это запах.
+3. Язык живёт **внутри `Bounded Context`** — в другом контексте те же слова могут значить иное.
+4. Если бизнес поменял термин — **меняй и код** (рефакторинг имён).
+
+**Признак плохого UL:**
+
+- Метод называется `update($data)` — но бизнес говорит «отгрузить», «отменить», «оплатить» — три **разные операции**, не одна.
+- В коде термины из БД (`OrderTable`) — а не из домена.',
                 'code_example' => '<?php
 // Плохо: технические термины, оторванные от бизнеса
 class OrderManager
@@ -213,6 +423,7 @@ class Order
     public function ship(Address $to): void { /* отгрузить */ }
     public function cancel(string $reason): void { /* отменить */ }
 }
+
 // В разговоре с бизнесом и в коде - одни и те же слова',
                 'code_language' => 'php',
             ],

@@ -119,7 +119,75 @@ add("abc", 5); // TypeError',
             [
                 'category' => 'PHP',
                 'question' => 'Как перехватить Warning или Notice в try/catch?',
-                'answer' => 'Сами по себе Warning, Notice, Deprecated НЕ являются исключениями - это сообщения движка через систему ошибок PHP. Их нельзя поймать через try/catch напрямую: PHP залогирует и пойдёт дальше, или (для @-suppressed) тихо проигнорирует. Чтобы превратить их в перехватываемые исключения, регистрируется глобальный set_error_handler($callback) - функция, которая будет вызвана для каждой ошибки уровня E_WARNING/E_NOTICE/E_DEPRECATED/E_USER_*. Внутри handler-а бросают throw new ErrorException($msg, 0, $level, $file, $line) - и теперь это полноценное исключение, ловится через catch. Это стандартный приём для "нулевой толерантности к warning-ам" в проде. Laravel так и делает: Illuminate\\Foundation\\Bootstrap\\HandleExceptions::handleError превращает все non-fatal ошибки в ErrorException и пробрасывает через свой ExceptionHandler. Альтернатива - error_reporting + наблюдение в логах, но для надёжного фейла теста / отказа в API лучше ErrorException. Подводный камень: set_error_handler НЕ ловит fatal errors (Out of memory, Stack overflow, ParseError) - для них есть register_shutdown_function + error_get_last.',
+                'answer' => '**`Warning`, `Notice`, `Deprecated` НЕ являются исключениями** — это сообщения движка через систему ошибок PHP.
+
+**Что с ними происходит по умолчанию:**
+- **залогируются** и выполнение **продолжится**
+- при **`@`-suppression** (`@file_get_contents(...)`) — тихо проигнорируются
+- **`try/catch`** их **НЕ** ловит — нечего ловить, не объект
+
+**Решение — `set_error_handler($cb)`:**
+- регистрирует **глобальный обработчик** для уровней **`E_WARNING`**, **`E_NOTICE`**, **`E_DEPRECATED`**, **`E_USER_*`**
+- внутри handler-а **`throw new ErrorException($msg, 0, $level, $file, $line)`** — превращаем в **перехватываемое** исключение
+
+**Используется как:**
+- **«нулевая толерантность к warning-ам»** в проде
+- **Laravel** делает это в `Illuminate\\Foundation\\Bootstrap\\HandleExceptions::handleError` — превращает все non-fatal в `ErrorException` и шлёт в свой `ExceptionHandler`
+
+**Уровни ошибок, которые попадают в handler:**
+
+| Уровень | Когда |
+| --- | --- |
+| `E_WARNING` | runtime warning (например, `file_get_contents` не нашёл файл) |
+| `E_NOTICE` | undefined variable, undefined index |
+| `E_DEPRECATED` | использование устаревших функций |
+| `E_USER_*` | `trigger_error()` из user-space |
+| `E_STRICT` | устарело (в современных PHP не используется) |
+
+**Что `set_error_handler` НЕ ловит (fatal errors):**
+
+| Уровень | Что |
+| --- | --- |
+| `E_ERROR` | Out of memory, runtime fatal |
+| `E_PARSE` | синтаксическая ошибка |
+| `E_CORE_ERROR` / `E_COMPILE_ERROR` | ошибки ядра |
+| Stack overflow | переполнение стека |
+
+Для них — **`register_shutdown_function`** + **`error_get_last()`**.',
+                'code_example' => '<?php
+// Превращаем все warning/notice в исключения
+set_error_handler(function (int $severity, string $message, string $file, int $line) {
+    if (!(error_reporting() & $severity)) return false; // уважаем @
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+// Теперь это ловится
+try {
+    $data = file_get_contents("/no/such/file"); // обычно Warning
+} catch (ErrorException $e) {
+    Log::warning("read failed", ["err" => $e->getMessage()]);
+    $data = "";
+}
+
+// Восстановить предыдущий обработчик
+restore_error_handler();
+
+// Локально для одного блока — set + finally + restore
+$prev = set_error_handler(fn() => throw new ErrorException("..."));
+try {
+    json_decode($maybe, flags: JSON_THROW_ON_ERROR); // JsonException
+} finally {
+    set_error_handler($prev);
+}
+
+// Fatal errors — только через shutdown function
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err["type"], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        Log::critical("fatal", $err);
+        // отправить sentry/bugsnag-нотификацию до выхода
+    }
+});',
                 'code_example' => '<?php
 // Превращаем все warning/notice в исключения
 set_error_handler(function (int $severity, string $message, string $file, int $line) {
@@ -160,7 +228,43 @@ register_shutdown_function(function () {
             [
                 'category' => 'PHP',
                 'question' => 'Что делает оператор @ (shut up) и почему кастомный set_error_handler ломается без проверки error_reporting()?',
-                'answer' => 'Оператор @ перед выражением (@file_get_contents("/no/such"), @json_decode($s)) ВРЕМЕННО устанавливает error_reporting() в 0 на время вычисления выражения. Сами warning-и/notice-ы при этом всё равно ГЕНЕРИРУЮТСЯ внутри PHP - просто стандартный обработчик ошибок их игнорирует, потому что error_reporting() пуст. ВАЖНОЕ ВЗАИМОДЕЙСТВИЕ: если вы поставили свой set_error_handler() (например, чтобы превращать warning-и в ErrorException), ваш callback вызывается по-прежнему, даже если выражение под @. Если внутри callback вы наивно throw new ErrorException(...) безусловно - получите исключение там, где legacy-код или фреймворк рассчитывали на тихое подавление через @ (типичные места: file_get_contents() для опционального файла, json_decode() от мусора, fopen() с проверкой результата). Правильный паттерн: внутри error_handler-а проверяйте (error_reporting() & $severity) === 0 и в этом случае возвращайте false (значит "PHP, обрабатывай как обычно, то есть тихо"). Это поведение явно описано в документации set_error_handler. С PHP 8.0 @ больше НЕ подавляет fatal-ошибки и убил часть исторических трюков. Совет: новый код не должен полагаться на @, использовать явные проверки (file_exists, is_resource); кастомный handler писать с error_reporting()-чеком, чтобы не ломать чужие вызовы под @.',
+                'answer' => '**Оператор `@` перед выражением** (`@file_get_contents("/no/such")`, `@json_decode($s)`) — **временно** устанавливает **`error_reporting() = 0`** на время вычисления выражения.
+
+**Важный нюанс:**
+- сами warning-и/notice-ы **всё равно ГЕНЕРИРУЮТСЯ** внутри PHP
+- стандартный обработчик ошибок их **игнорирует**, потому что `error_reporting()` пуст
+- логи **не пополняются**, выполнение продолжается
+
+**Взаимодействие с `set_error_handler`:**
+- ваш callback **вызывается по-прежнему**, даже если выражение под `@`
+- если внутри **наивно** `throw new ErrorException(...)` **безусловно** — получите исключение там, где legacy-код рассчитывал на **тихое подавление**
+
+**Где это ломается типично:**
+
+| Legacy-вызов | Что ожидалось | Что получается с наивным handler |
+| --- | --- | --- |
+| **`@file_get_contents("/optional.json")`** | вернёт `false`, дальше fallback | `ErrorException` ломает fallback |
+| **`@json_decode($maybe_string)`** | вернёт `null`, дальше проверка | исключение в неожиданном месте |
+| **`@fopen($path, "r")`** | вернёт `false`, обработать | то же |
+
+**Правильный паттерн в handler:**
+```php
+set_error_handler(function ($severity, $msg, ...) {
+    if ((error_reporting() & $severity) === 0) {
+        return false;  // PHP, обрабатывай как обычно (т. е. тихо)
+    }
+    throw new ErrorException($msg, 0, $severity, ...);
+});
+```
+
+`return false` означает «**PHP, делай дефолт**» — что в случае `@` = тихо проигнорировать. Это поведение **явно описано** в документации `set_error_handler`.
+
+**PHP 8.0+:** `@` **больше не подавляет fatal-ошибки** — `@$obj->method()` на `null` всё равно даёт `Error`. Это убрало часть исторических трюков (раньше `@` глотало даже `Fatal Error: Allowed memory size`).
+
+**Best practice:**
+- **новый код** — **не полагаться на `@`**, использовать **явные проверки** (`file_exists`, `is_resource`, `array_key_exists`)
+- **кастомный handler** — обязательно с `error_reporting()`-чеком
+- **`@` остаётся** уместен в нескольких сценариях: вызов legacy-функций с не-throw API, где альтернатива — громоздкая проверка перед каждым обращением',
                 'code_example' => '<?php
 // ❌ Плохой error handler - игнорирует @
 set_error_handler(function ($severity, $msg, $file, $line) {
@@ -187,7 +291,32 @@ set_error_handler(function ($severity, $msg, $file, $line) {
             [
                 'category' => 'PHP',
                 'question' => 'Что такое Fatal Error Backtraces в PHP 8.5?',
-                'answer' => 'С PHP 8.5 фатальные ошибки, включая превышение max_execution_time и out-of-memory, печатают полную трассировку стека с именами функций и файлами. Раньше такие ошибки давали лишь точку остановки, и причину долгих циклов или утечек приходилось искать вслепую.',
+                'answer' => '**Fatal Error Backtraces (PHP 8.5+)** — фатальные ошибки печатают **полную трассировку стека** с именами функций и файлами.
+
+**Что попадает под нововведение:**
+
+| Ошибка | До 8.5 | С 8.5 |
+| --- | --- | --- |
+| Превышение **`max_execution_time`** | «Maximum execution time of 30 exceeded» — **где** именно? | **полный backtrace** последнего кадра |
+| **Out of memory** | «Allowed memory size of 128M exhausted» | + стек, где это случилось |
+| Stack overflow | terse-сообщение | стек до точки переполнения |
+| Прочие `E_ERROR` | минимум данных | trace с файлами и строками |
+
+**Почему это важно:**
+- **до 8.5**: причину долгого цикла или утечки приходилось искать **вслепую** через xdebug-tracer / strace / профилирование
+- **с 8.5**: сразу видно, какая функция «зависла» — typically замкнувшийся `while`, рекурсия без выхода, обход циклического графа
+
+**Как включить / настроить:**
+- **по умолчанию включено** в PHP 8.5
+- глубину контролирует **`zend.exception_string_param_max_len`** (для аргументов в trace)
+- интегрируется с **`error_log`** и SAPI-логами
+
+**Связанные тюнинги (актуальны и до 8.5):**
+- **`memory_get_peak_usage(true)`** в shutdown-handler — кэп памяти
+- **xdebug.show_local_vars** — local-переменные в trace
+- **Sentry / Bugsnag** теперь получают значительно более полезные backtrace на OOM, без обвязки
+
+**Best practice:** не отключать (`zend.exception_ignore_args=0` для read-only), и логировать на критичных сервисах в **отдельный файл**, чтобы автоматизированный анализ мог парсить trace.',
                 'difficulty' => 4,
                 'topic' => 'php.exceptions',
             ],

@@ -171,7 +171,70 @@ message UserReply { int32 id = 1; string name = 2; string email = 3; }
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое gRPC и Protocol Buffers?',
-                'answer' => 'gRPC - RPC-фреймворк от Google поверх HTTP/2. Protocol Buffers (protobuf) - бинарный формат сериализации с .proto-схемами. Плюсы: в 5-10 раз меньше JSON, в разы быстрее парсится, типизированные контракты, кодогенерация на 11+ языков, streaming. Минусы: бинарный (сложнее дебажить), хуже для браузеров (нужен grpc-web). Используется для внутреннего общения микросервисов.',
+                'answer' => '**gRPC** — RPC-фреймворк от **Google** поверх **HTTP/2**. **Protocol Buffers (protobuf)** — бинарный формат сериализации с **`.proto`-схемами**.
+
+**Как работает:**
+
+1. Описываешь сервис в `.proto`-файле (контракт)
+2. `protoc` генерирует **клиентский и серверный код** для нужного языка
+3. Клиент вызывает метод как обычную функцию — gRPC сериализует в protobuf, шлёт по HTTP/2
+4. Сервер десериализует, выполняет, отвечает
+
+**Что даёт HTTP/2 (vs HTTP/1.1 REST):**
+
+- **Multiplexing** — много запросов в одном TCP-соединении
+- **Binary framing** — компактнее текста
+- **Header compression** (`HPACK`)
+- **Server push** и **streaming**
+
+**Сравнение с JSON:**
+
+| | **JSON** | **Protobuf** |
+|---|---|---|
+| **Размер** | 100 байт | **5-10x меньше** |
+| **Парсинг** | strings | **бинарь, типы из схемы** |
+| **Скорость** | медленный | **в разы быстрее** |
+| **Читаемость** | **да** | нет (нужен `.proto`) |
+| **Schema** | необязательна | **обязательна** |
+| **Браузер** | везде | **нужен `grpc-web`** |
+
+**4 типа методов в gRPC:**
+
+| Тип | Поток |
+|---|---|
+| **Unary** | один запрос → один ответ |
+| **Server streaming** | один запрос → поток ответов (например, live updates) |
+| **Client streaming** | поток запросов → один ответ (например, upload) |
+| **Bidirectional streaming** | поток ↔ поток (например, chat) |
+
+**Плюсы:**
+
+- **Размер и скорость** — критично для микросервисов с миллионами RPS
+- **Типизированные контракты** — компилятор ловит несовместимость на ранней стадии
+- **Кодогенерация** на **11+ языков** — Go, Java, Python, C++, Rust, PHP, JS
+- **Backward/forward compatibility** через **поля с тегами** (`int32 id = 1;`)
+- **Streaming** из коробки
+
+**Минусы:**
+
+- **Бинарь** — сложнее дебажить (`grpcurl`, `BloomRPC`)
+- **Браузер** — нужен **`grpc-web`** + прокси
+- **Кэширование на HTTP-уровне не работает** (POST + binary)
+- **Тулинг беднее** REST (`OpenAPI`, `Postman`)
+- **Не для публичных API** — обычно internal
+
+**Когда брать:**
+
+- **Внутреннее общение** микросервисов
+- **Высокий throughput** (миллионы RPS)
+- **Streaming** (live data, file upload)
+- **Полиглотная** экосистема с typed contracts
+
+**Когда НЕ брать:**
+
+- **Публичный API** для веба
+- **Простой CRUD** между двумя сервисами
+- Маленькая команда без infra-поддержки',
                 'code_example' => 'syntax = "proto3";
 service UserService {
   rpc GetUser (UserRequest) returns (UserReply);
@@ -185,7 +248,61 @@ message UserReply { string name = 1; string email = 2; }',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Какие способы версионирования API существуют?',
-                'answer' => '1) URI: /api/v1/users, /api/v2/users - просто, видно сразу, легко кэшировать; нарушает REST-идею, что URL = ресурс (Roy Fielding не любит). 2) Header: Accept: application/vnd.myapi.v2+json (media type versioning) - чище URL, но скрытнее, сложнее тестировать в браузере. 3) Custom header: API-Version: 2. 4) Query: /api/users?version=2 - не каноничен, плохо кэшируется. 5) Subdomain: v1.api.example.com. На практике чаще URI - просто и читаемо. Стратегия: deprecation в headers (Sunset, Deprecation), 6-12 мес поддержки старой версии, semver: ломающие изменения - major.',
+                'answer' => 'Пять способов с разными trade-offs:
+
+| Способ | Пример | Плюсы | Минусы |
+|---|---|---|---|
+| **URI versioning** | `/api/v1/users` | просто, видно сразу, легко кэшировать | нарушает REST-идею «URL = ресурс» (Roy Fielding критикует) |
+| **Media type** (`Accept`) | `Accept: application/vnd.myapi.v2+json` | чище URL, **HATEOAS-friendly** | скрытнее, сложнее тестировать в браузере |
+| **Custom header** | `API-Version: 2` | URL стабилен | нестандартно |
+| **Query parameter** | `/api/users?version=2` | гибко | не каноничен, **плохо кэшируется** |
+| **Subdomain** | `v1.api.example.com` | разделение инфры | DNS overhead, CORS |
+
+**На практике чаще всего — URI versioning** (Twitter, Stripe, GitHub). Просто и читаемо.
+
+**Strategy patterns:**
+
+**1. Deprecation через headers (RFC 8594):**
+
+```http
+HTTP/1.1 200 OK
+Deprecation: true
+Sunset: Sat, 31 Dec 2026 23:59:59 GMT
+Link: </api/v3/users>; rel="successor-version"
+```
+
+Клиент видит, что версия устаревает, и до какой даты будет жить.
+
+**2. Semantic Versioning для контракта:**
+
+- **MAJOR** — breaking changes (новый endpoint, удалили поле) → новая `/v2/`
+- **MINOR** — добавили опциональное поле (backward compatible) → ту же версию
+- **PATCH** — баги, документация → ту же версию
+
+**3. Параллельная поддержка:**
+
+- **6–12 месяцев** старая версия живёт параллельно с новой
+- Метрики **usage** старой версии (Datadog/Prometheus) — смотреть, кто ещё ходит
+- Уведомления крупным клиентам **за квартал** до отключения
+
+**4. Внутреннее versioning через flags:**
+
+```php
+if ($request->header("API-Version") >= 2) {
+    return new UserResourceV2($user);
+}
+return new UserResourceV1($user);
+```
+
+**Грабли:**
+
+- **Версионирование "на каждое изменение"** — через год у тебя `v15`, никто не помнит, что в каждой
+- **Breaking changes без version bump** — клиенты ломаются молча
+- **Нет deprecation policy** — старая версия живёт вечно, нагрузка двойная
+
+**Альтернатива versioning — Evolution:**
+
+Не делать breaking changes вообще, только добавлять (additive). Клиенты не падают, новые поля игнорируют старые. Сложно для крупных рефакторингов, но для большинства API работает.',
                 'code_example' => 'GET /api/v2/users HTTP/1.1
 Host: api.example.com
 Accept: application/json
@@ -346,7 +463,66 @@ return response()->json(["errors" => ...], 422);  // validation',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Главная боль масштабирования WebSockets - чем её решают?',
-                'answer' => 'WebSocket - STATEFUL протокол: после handshake соединение между клиентом и КОНКРЕТНЫМ сервером живёт долго. В отличие от stateless HTTP, нельзя "положить запрос в любой инстанс через round-robin". Это создаёт проблемы при горизонтальном масштабировании. ОСНОВНАЯ ПРОБЛЕМА: если у вас 3 WS-сервера и пользователь A подключён к ws-1, а пользователь B - к ws-3, то когда A пишет сообщение в чат, ws-1 не знает, что B существует, и не может ему отдать. РЕШЕНИЯ: 1) Pub/Sub Backplane - все WS-серверы подписываются на общий канал в Redis (или NATS / RabbitMQ / Kafka). При получении сообщения ws-сервер публикует его в Redis канал "chat:42", все остальные WS-серверы (тоже подписанные) получают его и рассылают своим подключённым клиентам. Это де-факто стандарт для Socket.io adapters, Laravel Reverb с pub/sub режимом, ActionCable в Rails. 2) Sticky sessions на L4/L7-балансировщике - привязка клиента к конкретному серверу по IP/cookie, помогает с переподключением, но НЕ решает проблему обмена между серверами - всё равно нужен backplane. 3) Specialized router/gateway - один frontend-сервер хранит routing table "user_id → ws-server" и форвардит сообщения. 4) "Безсерверные" решения (AWS API Gateway WebSocket, Pusher, Ably) - SaaS берёт routing на себя, ваш бэкенд только обрабатывает event-ы по HTTP. Дополнительные подводные камни WS на проде: heartbeat (ping/pong) для обнаружения мёртвых соединений, лимит на дескрипторы (ulimit -n), правильная остановка (graceful shutdown с уведомлением клиентов о disconnect), обновление сертификатов и rotation API-ключей без обрыва коннектов, бэкбоны NAT/proxy (некоторые корп-сети режут WS-handshake - fallback на long-polling).',
+                'answer' => '**WebSocket — stateful протокол**: после handshake соединение между клиентом и **конкретным сервером** живёт долго. В отличие от stateless HTTP, **нельзя «положить запрос в любой инстанс через round-robin»**. Это создаёт проблемы при горизонтальном масштабировании.
+
+**Основная проблема:**
+
+```
+3 WS-сервера, пользователи распределены:
+  user A → ws-1
+  user B → ws-3
+
+user A пишет в чат → ws-1
+ws-1 НЕ ЗНАЕТ, что user B существует на ws-3 → сообщение теряется
+```
+
+**Решения:**
+
+| Решение | Принцип | Когда |
+|---|---|---|
+| **Pub/Sub Backplane** | все ws-серверы подписаны на общий Redis/Kafka | **стандартный выбор** |
+| **Sticky sessions** | привязка клиента к серверу по IP/cookie | помогает с переподключением, **не заменяет backplane** |
+| **Specialized router** | frontend хранит routing table `user_id → ws-server` | внутренний контроль, redundancy сложнее |
+| **Managed SaaS** | AWS API Gateway WebSocket, Pusher, Ably | если не хочется заморачиваться |
+
+**1. Pub/Sub Backplane — де-факто стандарт:**
+
+```
+client_A ─┐                           ┌─ client_B
+          ↓                           ↑
+       [ws-1]                     [ws-3]
+          ↓ publish "chat:42"        ↑ deliver to client_B
+          └──→  [Redis Pub/Sub]  ────┘
+                    ↑ subscribe by "chat:42"
+                 [ws-2] (нет подписчиков на этот канал)
+```
+
+Все ws-серверы подписываются на общие каналы в **`Redis`/`NATS`/`RabbitMQ`/`Kafka`**. При получении сообщения ws-сервер публикует его в канал `"chat:42"`, все остальные ws-серверы (тоже подписанные) получают и рассылают своим подключённым клиентам.
+
+Используется в: **`Socket.io adapters`**, **`Laravel Reverb`** с pub/sub режимом, **`ActionCable`** в Rails.
+
+**2. Sticky sessions** — `ip_hash` или cookie-based на nginx/HAProxy:
+
+```
+upstream ws_backend {
+    ip_hash;
+    server ws-1:8080;
+    server ws-2:8080;
+    server ws-3:8080;
+}
+```
+
+Помогает с **переподключением** (клиент попадает на тот же сервер), но **не решает** проблему обмена между серверами — всё равно нужен backplane.
+
+**Дополнительные подводные камни WS на проде:**
+
+- **Heartbeat (ping/pong)** для обнаружения мёртвых соединений (`ws-ping-interval`)
+- **Лимит файловых дескрипторов** (`ulimit -n` обычно `1024`, для WS нужно `65535+`)
+- **Graceful shutdown** с уведомлением клиентов о disconnect
+- **Обновление сертификатов** и rotation API-ключей без обрыва коннектов
+- **NAT/proxy** — некоторые корп-сети режут WS-handshake, нужен fallback на **long-polling** (Socket.io делает автоматически)
+- **Memory** — 10k открытых соединений = десятки МБ только под буферы
+- **Auth** — токен в URL query (`wss://...?token=...`) логируется, лучше через первое сообщение или cookie',
                 'code_example' => '<?php
 // Laravel Reverb с Redis backplane для multi-server деплоя
 // config/reverb.php
@@ -481,7 +657,90 @@ id: 42
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Какие главные архитектурные проблемы у GraphQL на публичном API?',
-                'answer' => 'GraphQL даёт клиентам гибкость (запрос только нужных полей, один round-trip вместо нескольких REST-вызовов, типизированный schema), но в продакшене порождает три серьёзные проблемы, которых нет в REST. 1) КЕШИРОВАНИЕ. GraphQL обычно делает все запросы как POST на /graphql с телом в JSON - стандартный HTTP-кеш (browser cache, CDN типа Cloudflare/Fastly, Varnish) полностью неэффективен, потому что они умеют кешировать GET по URL. Решения: Persisted Queries (клиент шлёт хеш query, сервер по хешу находит и выполняет - запрос становится GET-able), APQ (Automatic Persisted Queries в Apollo - первый раз шлётся вся query, потом только хеш), клиентские кеши (Apollo Client / Relay с нормализацией по __typename + id). На уровне приложения - кеширование на уровне резолверов (DataLoader). 2) RATE LIMITING. Лимитировать GraphQL по запросам в минуту бессмысленно: один query может вытащить полбазы (User { posts { comments { author { posts { ... } } } } }). Нужен Query Complexity Analysis - оцениваем "стоимость" каждого поля и резолвера ДО выполнения, складываем, превышение лимита - 429 без выполнения. Библиотеки: graphql-cost-analysis, query-complexity. Дополнительно: ограничить max query depth (например, максимум 7 уровней), отключить introspection в проде (или закрыть auth-ом), ограничить количество aliases (защита от alias-attack). 3) N+1 запросы. GraphQL резолверы вызываются по одному на каждое поле/запись - наивная реализация for ($posts as $post) { $post->user } делает N+1. Решение - DataLoader (изобретён Facebook): пакетирует запросы внутри одного tick event loop, дедуплицирует, кеширует на время запроса. В PHP-эквиваленты: webonyx/graphql-php + lighthouse-php имеют batch loading. Дополнительные подводные камни: обработка ошибок (один query может частично succeed/partially fail в одном HTTP 200 ответе), сложность мониторинга (нет per-endpoint метрик - всё /graphql), сложность file uploads (multipart spec костыльный), нагрузка на schema (большая schema - долгая инициализация и память). Когда GraphQL имеет смысл: BFF (backend-for-frontend) для разных клиентов с разными нуждами, federation между микросервисами (Apollo Federation), внутренние API. Когда лучше REST: публичные API с акцентом на кеш и стандарты, простые CRUD, файлы.',
+                'answer' => '**GraphQL** даёт клиентам гибкость (запрос только нужных полей, один round-trip вместо нескольких REST-вызовов, типизированный schema), но в продакшене порождает **три серьёзные проблемы**, которых нет в REST.
+
+**1. Кэширование — HTTP-кэш не работает.**
+
+GraphQL обычно делает все запросы как `POST /graphql` с телом в JSON — стандартный HTTP-кэш (browser, CDN типа Cloudflare/Fastly, Varnish) **полностью неэффективен**, потому что они умеют кэшировать **`GET` по URL**.
+
+**Решения:**
+
+- **Persisted Queries** — клиент шлёт **хеш query**, сервер по хешу находит и выполняет. Запрос становится **GET-able**: `GET /graphql?id=abc123` → кэшируется на CDN
+- **APQ** (Automatic Persisted Queries в Apollo) — первый раз шлётся вся query, потом только хеш
+- **Клиентские кэши** — `Apollo Client` / `Relay` с нормализацией по `__typename + id`
+- **Резолверный кэш** — DataLoader + Redis на уровне приложения
+
+**2. Rate limiting — обычный per-minute не работает.**
+
+Лимитировать GraphQL по запросам в минуту **бессмысленно**: один query может вытащить **полбазы**:
+
+```graphql
+query Evil {
+  user(id: 1) {
+    posts {
+      comments {
+        author {
+          posts { comments { author { ... } } }
+        }
+      }
+    }
+  }
+}
+```
+
+**Нужен Query Complexity Analysis:**
+
+- Оцениваем **«стоимость»** каждого поля и резолвера **ДО выполнения**
+- Складываем по всему query
+- Превышение лимита → **`429` без выполнения**
+
+**Дополнительные защиты:**
+
+- **Max query depth** (например, 7 уровней)
+- **Отключить introspection в проде** (или auth-only)
+- **Ограничить aliases** (защита от alias-attack)
+- **Persisted-queries-only** в проде (запретить произвольные queries)
+
+**Библиотеки:** `graphql-cost-analysis`, `query-complexity`, `graphql-armor`.
+
+**3. N+1 запросы — фундаментальная проблема резолверов.**
+
+GraphQL резолверы вызываются **по одному на каждое поле/запись** — наивная реализация делает N+1:
+
+```
+100 постов → 1 запрос на posts + 100 запросов на user → 101 запрос
+```
+
+**Решение — DataLoader** (изобретён Facebook):
+
+- Пакетирует запросы внутри одного tick event loop
+- **Дедуплицирует** одинаковые запросы
+- **Кэширует** на время запроса
+
+С DataLoader: `100 постов → 2 запроса (1 для постов + 1 для всех users)`.
+
+В PHP — **`webonyx/graphql-php`** + **`nuwave/lighthouse`** имеют batch loading.
+
+**Дополнительные подводные камни:**
+
+- **Обработка ошибок** — query может **частично succeed/partially fail** в одном `HTTP 200`. Нужны конвенции по полю `errors`
+- **Мониторинг** — нет per-endpoint метрик, всё `/graphql`. Нужно tagging по `operation_name`
+- **File uploads** — multipart spec костыльный (`graphql-multipart-request-spec`)
+- **Schema bloat** — большая schema → долгая инициализация и память
+- **Versioning** — GraphQL deprecates fields, не URL версии. Поля могут жить вечно с `@deprecated`
+
+**Когда GraphQL имеет смысл:**
+
+- **BFF** (backend-for-frontend) для разных клиентов
+- **Federation** между микросервисами (Apollo Federation)
+- **Внутренние API** с мобильными/SPA клиентами
+
+**Когда REST лучше:**
+
+- **Публичные API** с акцентом на кэш и стандарты
+- **Простые CRUD**
+- **File uploads / streaming**
+- **OpenAPI ecosystem** уже есть',
                 'code_example' => '<?php
 // 1) Query Complexity (lighthouse-php / webonyx-php)
 // schema.graphql
@@ -733,28 +992,290 @@ DELETE /users/42                  → 204',
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Можно ли ввести свой HTTP-метод вроде POSTAWESOME и остаётся ли это REST?',
-                'answer' => 'Технически HTTP допускает кастомные методы, и nginx/Apache можно научить их пробрасывать, а PHP-фреймворк — на них роутить. Но это нарушает Uniform Interface — одно из фундаментальных ограничений REST: интероперабельность держится на том, что весь мир знает GET/POST/PUT/PATCH/DELETE. С POSTAWESOME ломаются прокси и кэши (они не знают, safe он или нет), CORS preflight не пропускает нестандартные методы без явного allow, клиентские библиотеки не умеют его ретраить корректно. На практике если стандартных глаголов мало — добавляют под-ресурс (POST /orders/42/cancel) или action-эндпоинт, а не выдумывают новые методы.',
+                'answer' => '**Технически** HTTP допускает кастомные методы (`RFC 9110` про IANA registry), и `nginx`/Apache можно научить пробрасывать, а PHP-фреймворк — на них роутить. **Но это нарушает Uniform Interface** — одно из фундаментальных ограничений REST.
+
+**Почему ломается:**
+
+| Что | Что ломается |
+|---|---|
+| **Прокси и кэши** | не знают, **safe** ли метод, **идемпотентен** ли — не кэшируют, не ретраят правильно |
+| **CORS preflight** | не пропускает нестандартные методы без явного `Access-Control-Allow-Methods` |
+| **Клиентские либы** | не умеют ретраить корректно (не знают семантики) |
+| **Load balancers** | могут не пропускать неизвестные методы |
+| **WAF / IDS** | могут блокировать как «подозрительный»  трафик |
+| **Logging tools** | не агрегируют — каждый кастомный метод как unknown |
+| **Documentation tools** (`OpenAPI`, Postman) | не поддерживают custom methods |
+
+**REST Uniform Interface принцип:**
+
+> Интероперабельность держится на том, что **весь мир знает `GET`/`POST`/`PUT`/`PATCH`/`DELETE`** и их семантику.
+
+Вводя `POSTAWESOME`, ты заставляешь **каждого** клиента и инфраструктурный компонент учить твою кастомную семантику. Это **anti-REST**.
+
+**Если стандартных глаголов мало — правильные паттерны:**
+
+**1. Под-ресурс для действия:**
+
+```
+POST /orders/42/cancel
+POST /orders/42/refund
+POST /users/42/activate
+```
+
+Здесь `cancel`/`refund`/`activate` — **подресурс**, а не глагол. **`POST`** значит «создаю запись об отмене».
+
+**2. State transition через PATCH:**
+
+```
+PATCH /orders/42
+{"status": "cancelled"}
+```
+
+Если статусы — first-class в твоей модели.
+
+**3. Command endpoint:**
+
+```
+POST /commands
+{"type": "CancelOrder", "orderId": 42}
+```
+
+Для CQRS-стиля.
+
+**4. RPC-стиль если REST не подходит:**
+
+Не выдумывай свои HTTP-методы — переходи на **JSON-RPC** или **gRPC**, где RPC-семантика **родная**:
+
+```
+POST /jsonrpc
+{"method": "orders.cancel", "params": {"id": 42}}
+```
+
+**Краткое правило:** если хочется свой метод — это **сигнал**, что либо ты используешь не тот протокол (REST не подходит), либо у тебя есть **скрытый ресурс**, который стоит выделить.',
                 'difficulty' => 4,
                 'topic' => 'system_design.api',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое HATEOAS и почему его так редко доводят до конца?',
-                'answer' => 'HATEOAS (Hypermedia as the Engine of Application State) — это уровень зрелости REST по Ричардсону, на котором ответ сервера содержит не только данные, но и ссылки на возможные следующие действия: {"id":42,"status":"new","_links":{"cancel":"/orders/42/cancel"}}. Идея в том, чтобы клиент двигался по API как браузер по гиперссылкам и не зашивал URL-шаблоны. На практике почти никто не делает: фронтенд всё равно знает структуру URL, генерация клиентов из OpenAPI решает проблему контракта проще, а гипермедийные форматы (HAL, JSON:API, Siren) добавляют сложности без явной выгоды. HATEOAS уместен в долгоживущих публичных API и в гипермедийных платформах, для типового бизнес-API он избыточен.',
+                'answer' => '**HATEOAS** (Hypermedia as the Engine of Application State) — **уровень 3 зрелости REST по Ричардсону**, на котором **ответ сервера содержит не только данные**, но и **ссылки на возможные следующие действия**:
+
+```json
+{
+  "id": 42,
+  "status": "new",
+  "_links": {
+    "self": "/orders/42",
+    "cancel": {"href": "/orders/42/cancel", "method": "POST"},
+    "ship": {"href": "/orders/42/ship", "method": "POST"},
+    "customer": "/customers/7"
+  }
+}
+```
+
+**Идея:** клиент **двигается по API как браузер по гиперссылкам** и **не зашивает URL-шаблоны**. Если завтра поменяется URL — клиент узнает из ответа.
+
+**Уровни Ричардсона (Richardson Maturity Model):**
+
+| Уровень | Что |
+|---|---|
+| **0** | Один URL, всё через POST (SOAP-стиль) |
+| **1** | Ресурсы (`/users`, `/orders`) |
+| **2** | HTTP-методы (`GET`, `POST`, `PUT`, `DELETE`) — **большинство «REST API»** |
+| **3** | **HATEOAS** — гипермедийные ссылки в ответах |
+
+**По Roy Fielding** настоящий REST — **только уровень 3**. Без HATEOAS это «HTTP-API», а не REST.
+
+**Гипермедийные форматы:**
+
+- **HAL** (`application/hal+json`) — `_links`, `_embedded`
+- **JSON:API** — стандарт с `relationships`, `links`
+- **Siren** — `actions`, `entities`, `links`
+- **JSON Hyper-Schema**
+
+**Почти никто не делает HATEOAS — почему:**
+
+1. **Фронтенд всё равно знает структуру URL** — генерируется из OpenAPI/Swagger
+2. **Генерация клиентов из OpenAPI** решает проблему контракта **проще**
+3. **Гипермедийные форматы добавляют сложности** без явной выгоды
+4. **Кэширование становится сложнее** — каждый ответ зависит от ссылок
+5. **Размер ответов растёт** на 30-50%
+6. **Mobile/embedded** клиенты предпочитают предсказуемый shape ответа
+7. **TypeScript-codegen из OpenAPI** даёт type safety, HATEOAS — нет
+
+**Когда HATEOAS уместен:**
+
+- **Долгоживущие публичные API** (Spotify, GitHub частично использует)
+- **Гипермедийные платформы** (Atom feed, Web)
+- **API с переменным workflow** — `payment` может быть в разных состояниях, ссылки динамически отражают доступные действия
+- **Loose coupling** долгосрочных интеграций
+
+**Когда НЕ нужно:**
+
+- **Типовой бизнес-API** для своего фронтенда
+- **gRPC/protobuf** — там типизация контракта другая
+- **Маленькая команда** без compliance-требований
+
+**Современный консенсус:** **OpenAPI + типизированный клиент** покрывает 90% задач HATEOAS за меньшую цену. HATEOAS остаётся как **архитектурная стрелка**, чем как практика.',
                 'difficulty' => 4,
                 'topic' => 'system_design.api',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Что такое content negotiation через Accept и зачем нужен Vary?',
-                'answer' => 'Клиент шлёт Accept: application/json или application/xml, q-весами расставляет приоритеты, и сервер выбирает формат ответа из доступных, выставляя Content-Type. Аналогично работают Accept-Language и Accept-Encoding для локали и сжатия. Серверу важно вернуть заголовок Vary: Accept (или Accept-Language/Encoding), иначе CDN отдаст одному клиенту JSON, а следующему с Accept: application/xml — закэшированный JSON. Через Accept удобно версионировать API (Accept: application/vnd.acme.v2+json) — это держит URL стабильным, но усложняет дебаг через браузер.',
+                'answer' => '**Content negotiation** — механизм HTTP, в котором клиент указывает **что хочет** получить, а сервер выбирает **подходящий** вариант из доступных.
+
+**Заголовки negotiation:**
+
+| Запрос (клиент) | Ответ (сервер) | Что регулирует |
+|---|---|---|
+| **`Accept`** | `Content-Type` | формат ответа (JSON/XML/HTML) |
+| **`Accept-Language`** | `Content-Language` | локаль |
+| **`Accept-Encoding`** | `Content-Encoding` | сжатие (gzip/br/zstd) |
+| **`Accept-Charset`** *(устар.)* | `Content-Type` charset | кодировка |
+
+**q-веса (quality values):**
+
+```
+Accept: application/json;q=1.0, application/xml;q=0.8, */*;q=0.1
+```
+
+Сервер выбирает формат с **максимальным `q`** из доступных.
+
+**Пример flow:**
+
+```
+GET /users/42
+Accept: application/xml, application/json;q=0.9
+
+→ HTTP/1.1 200 OK
+   Content-Type: application/json   # XML не поддерживаем, отдаём JSON
+   Vary: Accept
+
+{"id": 42, ...}
+```
+
+**`Vary` — критичен для кэша:**
+
+Без `Vary: Accept` CDN/Varnish/browser **кэширует** один ответ и отдаёт всем, **игнорируя `Accept`** клиента:
+
+```
+Клиент A: GET /users/42, Accept: application/json
+  → закэшировано JSON
+
+Клиент B: GET /users/42, Accept: application/xml
+  → CDN отдаёт ЗАКЭШИРОВАННЫЙ JSON 🚫
+```
+
+С `Vary: Accept` CDN **хранит отдельные копии** для каждого значения `Accept`.
+
+**Versioning через `Accept`:**
+
+```
+GET /users/42
+Accept: application/vnd.acme.v2+json
+```
+
+Сервер видит `vnd.acme.v2` → отдаёт v2-формат. **Плюсы:** URL стабилен. **Минусы:** сложнее дебажить в браузере, нужно объяснять клиентам.
+
+**`Vary` в комбинации:**
+
+```
+Vary: Accept, Accept-Language, Authorization
+```
+
+CDN держит **отдельные копии** для каждой комбинации. **Грабли:** слишком много `Vary` headers = **взрывная кардинальность кэша**, hit rate падает.
+
+**Anti-pattern:**
+
+- **Echo `Origin`** в `Access-Control-Allow-Origin` + `Vary: Origin` — корректно, без `Vary` — security/cache problem
+- **Забыть `Vary: Accept-Encoding`** при gzip — старые прокси отдают gzip клиентам, которые не понимают
+
+**Современный подход:**
+
+- **CDN** (Cloudflare/Fastly) уважают `Vary` headers, но лучше **минимизировать** их количество
+- Для **versioning** проще URI versioning (`/v2/`) — кэш не страдает',
                 'difficulty' => 4,
                 'topic' => 'system_design.api',
             ],
             [
                 'category' => 'Архитектура систем',
                 'question' => 'Как работают ETag и If-None-Match для условных запросов?',
-                'answer' => 'Сервер вместе с ответом шлёт ETag — хеш или версию ресурса (например, "v3-abc"). При следующем запросе клиент отправляет If-None-Match: "v3-abc"; если ресурс не изменился, сервер отвечает 304 Not Modified без тела, экономя трафик и время. Тот же ETag в If-Match защищает от lost update при PUT/PATCH: если на сервере уже "v4", запрос с If-Match: "v3-abc" получит 412 Precondition Failed, и клиент перечитает свежую версию. Аналогичная схема со временем — Last-Modified и If-Modified-Since, но ETag точнее, потому что не страдает от секундной гранулярности.',
+                'answer' => '**ETag** (Entity Tag) — **хеш или версия ресурса**, который сервер отдаёт в ответе. Клиент использует его для **условных запросов**, экономя трафик и защищаясь от потерянных обновлений.
+
+**Два сценария:**
+
+### 1. **Кэширование — `If-None-Match`:**
+
+```http
+# Первый запрос
+GET /users/42
+→ HTTP/1.1 200 OK
+   ETag: "v3-abc"
+   Content-Type: application/json
+   {"id": 42, "name": "John"}
+
+# Второй запрос
+GET /users/42
+If-None-Match: "v3-abc"
+→ HTTP/1.1 304 Not Modified
+   (без тела — экономия трафика!)
+```
+
+Если ресурс **не изменился** → `304` без тела. Если изменился → `200` с новым ETag и новым телом.
+
+### 2. **Optimistic concurrency — `If-Match`:**
+
+Защита от **lost update** при `PUT`/`PATCH`:
+
+```http
+# Клиент прочитал v3-abc, делает изменения
+PUT /users/42
+If-Match: "v3-abc"
+{"name": "John Updated"}
+
+# Если на сервере уже v4-xyz (кто-то обновил раньше):
+→ HTTP/1.1 412 Precondition Failed
+# Клиент перечитывает свежую версию и решает конфликт
+```
+
+Без `If-Match` — **last writer wins**, изменения первого затираются молча.
+
+**Сильные (strong) vs слабые (weak) ETag:**
+
+```
+ETag: "v3-abc"        ← strong (бит-в-бит идентичность)
+ETag: W/"v3-abc"      ← weak (семантически эквивалентно)
+```
+
+- **Strong** — для байтовой проверки (CDN, range requests)
+- **Weak** — для семантической эквивалентности (gzip vs non-gzip — одно содержимое)
+
+**Как генерировать ETag:**
+
+| Способ | Плюсы | Минусы |
+|---|---|---|
+| **`MD5`/`SHA1` от тела** | точно | дорого считать |
+| **`updated_at` + `id`** | дешёво | секундная гранулярность |
+| **Version column** (`int`) | дёшево, точно | нужно обновлять при `UPDATE` |
+| **Хеш от ключевых полей** | компромисс | сложнее |
+
+**`Last-Modified` + `If-Modified-Since` — аналог по времени:**
+
+```
+Last-Modified: Wed, 22 May 2026 12:00:00 GMT
+If-Modified-Since: Wed, 22 May 2026 12:00:00 GMT
+```
+
+**ETag точнее** — не страдает от **секундной гранулярности**. Если в одну секунду было 10 апдейтов, `Last-Modified` не различит.
+
+**Поддерживается стандартно:**
+
+- **`fetch()` API** в браузере — автоматически шлёт `If-None-Match` для cached responses
+- **CDN** (Cloudflare, Varnish) проверяют `If-None-Match` без обращения к origin
+- **Laravel** — `$response->setEtag($hash)` или middleware
+
+**Не забыть `Cache-Control`:** ETag сам по себе не активирует кэширование — нужны `Cache-Control: private, must-revalidate` для конкретного клиента или `public` для CDN.',
                 'difficulty' => 4,
                 'topic' => 'system_design.api',
             ],

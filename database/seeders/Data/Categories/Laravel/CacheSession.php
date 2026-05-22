@@ -94,21 +94,93 @@ Cache::tags(\'users\')->flush(); // удалит всё с тегом users',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое atomic locks в Cache?',
-                'answer' => 'Atomic lock - это распределённая блокировка через кеш, чтобы только один процесс мог выполнять секцию кода в один момент. Простыми словами: защита от одновременного выполнения (например, чтобы cron-задача не запустилась дважды).',
-                'code_example' => '$lock = Cache::lock(\'process-orders\', 10);
+                'answer' => '**Atomic lock** — **распределённая блокировка** через cache-стор, гарантирующая, что **только один процесс одновременно** может выполнять секцию кода.
 
-if ($lock->get()) {
+**Зачем нужны:**
+
+- Запретить **двойной запуск cron-задачи** (один cron на нескольких серверах).
+- Сериализовать **доступ к внешнему API** с лимитом на параллельные запросы.
+- Защитить **переход состояния** сущности (заказ → paid).
+- Реализовать **leader election** между N воркерами.
+
+**API:**
+
+| Метод | Семантика |
+|---|---|
+| **`Cache::lock($key, $seconds)`** | Создать lock-объект (НЕ блокирует) |
+| **`->get()`** | Попытаться взять lock; вернёт `true`/`false` сразу |
+| **`->get($callback)`** | Взять + выполнить callback + auto-release |
+| **`->block($wait, $callback)`** | **Подождать до `$wait` секунд** lock-а, потом выполнить (если не дождались — `LockTimeoutException`) |
+| **`->release()`** | Отпустить вручную |
+| **`->forceRelease()`** | Отпустить **любой** держатель (опасно!) |
+
+**Поддержка по cache-сторам:**
+
+| Стор | Atomic lock |
+|---|---|
+| **`redis`** | **Да** (через `SET NX EX`) |
+| **`memcached`** | Да (`add` с TTL) |
+| **`database`** | Да (через `INSERT` с unique) |
+| **`dynamodb`** | Да |
+| **`file`** | Да (flock) |
+| **`array`** | Да (in-process only) |
+
+**Критичные паттерны:**
+
+- **`$seconds` обязателен** — без TTL зависший процесс заблокирует ключ навсегда.
+- **`->owner()`** — string-токен владельца, чтобы только держатель мог `release()`.
+- **`try/finally`** — обязательно отпускать lock в `finally`, иначе exception оставит lock висеть.
+
+**Подводные камни:**
+
+- **Lock != транзакция** — между взятием lock и работой состояние БД могло измениться.
+- **TTL должно быть БОЛЬШЕ** времени работы — иначе lock истечёт во время выполнения и второй процесс зайдёт параллельно.
+- **`ShouldBeUnique` под капотом** использует именно `Cache::lock`.',
+                'code_example' => '<?php
+// 1) Простой lock — выйти, если занят
+\$lock = Cache::lock("process-orders", 10);
+
+if (\$lock->get()) {
     try {
         // эксклюзивная работа
+        ProcessAllOrders::run();
     } finally {
-        $lock->release();
+        \$lock->release();  // обязательно в finally!
     }
+} else {
+    Log::info("Another worker is processing orders");
 }
 
-// или короче
-Cache::lock(\'foo\', 10)->block(5, function () {
-    // ...
-});',
+// 2) Короче — auto-release через callback
+Cache::lock("process-orders", 10)->get(function () {
+    ProcessAllOrders::run();
+});
+
+// 3) Подождать до 5 секунд, если занят
+try {
+    Cache::lock("critical-section", 30)->block(5, function () {
+        // выполнить эксклюзивно
+    });
+} catch (LockTimeoutException \$e) {
+    Log::warning("Could not acquire lock in 5s");
+}
+
+// 4) Lock с owner-токеном — передать в другой процесс/job
+\$lock = Cache::lock("export-report", 600);
+if (\$lock->get()) {
+    \$owner = \$lock->owner();  // токен владельца
+    GenerateReportJob::dispatch(\$reportId, \$owner);
+}
+
+// В job — release по токену (только если мы держатели)
+class GenerateReportJob implements ShouldQueue
+{
+    public function handle()
+    {
+        // долгая генерация...
+        Cache::restoreLock("export-report", \$this->lockOwner)->release();
+    }
+}',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.cache_session',

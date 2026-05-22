@@ -287,7 +287,37 @@ WHERE t.total > 1000;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое CTE (WITH ... AS) и зачем он нужен?',
-                'answer' => 'CTE (Common Table Expression) - это именованный временный набор результатов, который существует только в рамках одного запроса. Делает сложные запросы читаемее, разбивая их на логические шаги. Также CTE позволяет рекурсивные запросы (RECURSIVE) для работы с иерархиями.',
+                'answer' => '**`CTE`** (Common Table Expression) — **именованный временный набор результатов**, который существует **только в рамках одного SQL-запроса**.
+
+**Синтаксис:**
+```sql
+WITH name1 AS ( SELECT ... ),
+     name2 AS ( SELECT ... FROM name1 ... )
+SELECT * FROM name2;
+```
+
+**Зачем нужен:**
+- **читабельность** — разбиваем сложный запрос на **логические шаги** (как переменные в коде);
+- избавляет от **повторений** одного и того же подзапроса несколько раз;
+- **рекурсия** через `WITH RECURSIVE` — иерархии (дерево категорий, оргструктура, граф связей);
+- упрощает **отладку** — каждый CTE можно запустить отдельно.
+
+**Важный нюанс материализации:**
+
+| СУБД | По умолчанию |
+|---|---|
+| **PostgreSQL 12+** | CTE **inline** (как subquery) — оптимизатор может протолкнуть предикаты; `WITH ... AS MATERIALIZED` форсирует материализацию |
+| **PostgreSQL до 12** | всегда **материализуется** — был optimization fence |
+| **MySQL 8+** | CTE **не материализуется**, ведёт себя как subquery |
+
+**Когда CTE лучше subquery / temp table:**
+- запрос длинный → читаемость важнее;
+- одна выборка используется **2+ раза**;
+- нужна **рекурсия**.
+
+**Когда нет:**
+- одноразовый простой subquery (избыточно);
+- старый PG (< 12) — CTE мешал оптимизатору проталкивать `WHERE`.',
                 'code_example' => '-- Обычный CTE
 WITH active_users AS (
     SELECT id, name FROM users WHERE active = true
@@ -498,7 +528,59 @@ SELECT * FROM products WHERE name ILIKE \'%pro%\';',
             [
                 'category' => 'Базы данных',
                 'question' => 'Защищают ли prepared statements от SQL-инъекции в ORDER BY? Можно ли передать имя колонки через параметр?',
-                'answer' => 'НЕТ. Prepared statements / PDO bindings / Eloquent параметризация защищают только ЗНАЧЕНИЯ в WHERE / VALUES / SET - то, что в SQL заменяется плейсхолдером ?. Имена ТАБЛИЦ, КОЛОНОК и ключевые слова (ASC/DESC, LIMIT, OFFSET, GROUP BY, ORDER BY) ПАРАМЕТРИЗОВАТЬ НЕЛЬЗЯ. Парсер БД распарсивает SQL ДО подстановки параметров - на этапе разбора имена идентификаторов и keywords уже должны быть в строке. SELECT * FROM users ORDER BY ? - здесь ? может быть только value (например, порядковый номер ORDER BY 1), но не "name". Это не баг, а архитектура подготовленных запросов - так работает сетевой протокол PDO/MySQL/Postgres. Прямая дыра возникает, когда разработчик принимает имя колонки от пользователя для сортировки и подставляет в строку: ORDER BY {$_GET["sort"]} - классический SQL-injection ("id; DROP TABLE users--" в URL уничтожит базу). Аналогично с динамическими WHERE colname (имя колонки), таблицами, JOIN-ами. Решение - whitelist на стороне приложения: фиксированный список разрешённых полей, и если запрос пришёл вне него - либо подменить на дефолт, либо вернуть 422. В Laravel используют match, in_array или enum-валидацию. Для совсем сложных кейсов (динамические JOIN-ы, динамические колонки SELECT) - запрос собирается на стороне приложения по белому списку, никогда конкатенацией user input. То же самое относится к ASC/DESC: $direction = $request->input("dir") === "desc" ? "desc" : "asc"; - нельзя передавать произвольную строку. Бонус: LIMIT/OFFSET - это ЗНАЧЕНИЯ, их параметризовать можно (PDO с PDO::PARAM_INT для надёжности).',
+                'answer' => '**НЕТ.** Prepared statements / PDO bindings / Eloquent параметризация защищают **только значения**.
+
+**Что можно параметризовать (`?`/`:name`):**
+- значения в `WHERE col = ?`;
+- `VALUES (?, ?, ?)`;
+- `SET col = ?`;
+- `LIMIT ?` / `OFFSET ?` (это значения).
+
+**Что НЕЛЬЗЯ параметризовать:**
+
+| Категория | Примеры |
+|---|---|
+| Имена таблиц | `FROM ?` |
+| Имена колонок | `SELECT ?, col2 FROM t` |
+| Keywords | `ORDER BY ?`, `ASC`/`DESC` |
+| Структурные выражения | `GROUP BY ?`, тип JOIN |
+
+**Почему так:** парсер БД **разбирает SQL до подстановки параметров** — имена идентификаторов и keywords **должны быть в строке** на момент prepare. Это **архитектура** подготовленных запросов, **не баг**.
+
+**Классическая дыра:**
+
+```php
+$sort = $_GET[\'sort\']; // "id; DROP TABLE users--"
+DB::select("SELECT * FROM users ORDER BY $sort"); // ⚠️ catastrophic
+```
+
+**Решение — whitelist на стороне приложения:**
+
+| Что фильтруем | Как |
+|---|---|
+| Имя колонки сортировки | `in_array($sort, $allowed, true)` или `match`/Form Request |
+| Направление | `$dir = $request->input(\'dir\') === \'desc\' ? \'desc\' : \'asc\';` |
+| Имя таблицы | конструировать в коде, **никогда** из input |
+| Имена в `SELECT` | белый список или ORM |
+
+**В Laravel** — лучший паттерн через **Form Request** с правилом `in:...`:
+
+```php
+public function rules(): array {
+    return [
+        \'sort\' => \'in:id,name,email,created_at\',
+        \'dir\'  => \'in:asc,desc\',
+    ];
+}
+```
+
+**Бонус — `LIMIT`/`OFFSET`:** **это значения**, их можно биндить. В PDO для надёжности с `PDO::PARAM_INT`, иначе некоторые версии MySQL квотируют число и `LIMIT \'10\'` ломается:
+
+```php
+$stmt = $pdo->prepare(\'SELECT * FROM users LIMIT :limit OFFSET :offset\');
+$stmt->bindValue(\':limit\',  20,  PDO::PARAM_INT);
+$stmt->bindValue(\':offset\', 100, PDO::PARAM_INT);
+```',
                 'code_example' => '<?php
 // ❌ КРИТИЧНАЯ дыра - имя колонки от пользователя
 $sortField = $_GET[\'sort\']; // может быть "id; DROP TABLE users--"
@@ -724,7 +806,49 @@ WHERE salary > (SELECT MAX(salary) FROM employees WHERE dept_id = 5);',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое оконные функции (window functions) в SQL и чем они отличаются от GROUP BY?',
-                'answer' => 'Оконная функция считает агрегат или ранжирование над «окном» строк, но НЕ схлопывает их в одну, как GROUP BY — каждая строка результата сохраняется, рядом появляется колонка с вычислением. Синтаксис: func() OVER (PARTITION BY ... ORDER BY ... ROWS/RANGE BETWEEN ...). PARTITION BY — на какие группы разбить (внутри партиции считается окно), ORDER BY — порядок внутри партиции (важен для running totals и ранжирования), frame — какие именно строки в текущем окне (по умолчанию для агрегатных без ORDER BY — вся партиция, c ORDER BY — RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW). Категории функций: 1) Агрегатные как окно — SUM/AVG/COUNT OVER (...) для running totals, скользящего среднего. 2) Ранжирование — ROW_NUMBER() (уникальный номер), RANK() (одинаковые значения = одинаковый ранг, пропуски), DENSE_RANK() (без пропусков), NTILE(n) (разбиение на n квантилей). 3) Навигация — LAG(col, n)/LEAD(col, n) (значение из предыдущей/следующей строки — для расчёта дельт), FIRST_VALUE/LAST_VALUE/NTH_VALUE. Типовые задачи: топ-N по группе (ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) <= 3), running balance, скользящее среднее 7 дней, разница с предыдущей строкой. GROUP BY теряет детали (одна строка на группу), window сохраняет все строки и доступ к контексту вокруг. Поддерживаются в PG (давно), MySQL 8.0+, SQLite 3.25+, MariaDB 10.2+.',
+                'answer' => '**Оконная функция** считает агрегат или ранжирование **над «окном» строк**, **НЕ схлопывая** их в одну, как `GROUP BY` — каждая исходная строка остаётся, рядом появляется колонка с вычислением.
+
+**Синтаксис:**
+```sql
+func() OVER (
+    PARTITION BY col1, col2   -- на какие группы разбить
+    ORDER BY     col3          -- порядок внутри партиции
+    ROWS BETWEEN N PRECEDING AND M FOLLOWING   -- frame
+)
+```
+
+**Три категории функций:**
+
+| Категория | Функции | Применение |
+|---|---|---|
+| **Агрегатные как окно** | `SUM`, `AVG`, `COUNT`, `MIN`, `MAX` `OVER (...)` | running totals, скользящее среднее, доля от общего |
+| **Ранжирование** | `ROW_NUMBER`, `RANK`, `DENSE_RANK`, `NTILE(n)`, `PERCENT_RANK` | топ-N по группе, квантили |
+| **Навигация** | `LAG(col, n)`, `LEAD(col, n)`, `FIRST_VALUE`, `LAST_VALUE`, `NTH_VALUE` | дельты, сравнение со «вчера», предыдущий/следующий |
+
+**Разница `ROW_NUMBER` vs `RANK` vs `DENSE_RANK`:**
+
+| Значение | `ROW_NUMBER` | `RANK` | `DENSE_RANK` |
+|---|---|---|---|
+| 100 | 1 | 1 | 1 |
+| 100 | 2 | **1** | **1** |
+| 90 | 3 | **3** (пропуск) | **2** (без пропуска) |
+| 80 | 4 | 4 | 3 |
+
+**`GROUP BY` vs `Window`:**
+
+| | `GROUP BY` | Window function |
+|---|---|---|
+| Что с исходными строками | **схлопывает** в одну на группу | **сохраняет все** |
+| Доступ к деталям | нет | да |
+| Можно ли смешивать с обычными колонками | только агрегаты + GROUP BY ключ | **любые колонки** + window |
+
+**Типовые задачи:**
+- **топ-N по группе** — `ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC)` + `WHERE rn <= 3`;
+- **running balance** — `SUM(amount) OVER (ORDER BY created_at)`;
+- **скользящее среднее 7 дней** — `AVG(value) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)`;
+- **дельта с предыдущей строкой** — `amount - LAG(amount) OVER (ORDER BY created_at)`.
+
+**Поддержка:** `PostgreSQL` (давно), **MySQL 8.0+**, **MariaDB 10.2+**, **SQLite 3.25+**.',
                 'code_example' => '-- топ-3 заказа на каждого юзера + сумма всех его заказов
 SELECT user_id, order_id, amount,
        SUM(amount) OVER (PARTITION BY user_id) AS user_total,

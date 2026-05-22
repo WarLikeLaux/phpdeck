@@ -43,7 +43,39 @@ ALTER TABLE legacy_table ENGINE=InnoDB;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое Clustered index в InnoDB?',
-                'answer' => 'В InnoDB строки физически хранятся в порядке primary key - это и есть кластерный индекс. Поэтому PK lookup очень быстрый - данные сразу с ним. Все остальные (вторичные) индексы хранят PK как ссылку на строку. Следствия: PK должен быть коротким (он повторяется в каждом вторичном индексе), последовательный PK даёт лучшую локальность записи.',
+                'answer' => '**Кластерный индекс** = строки таблицы **физически хранятся в порядке `PRIMARY KEY`**. Сам индекс **и есть таблица** — листовые страницы B-tree содержат **целые строки данных**, а не указатели на них.
+
+**Последствия для производительности:**
+- **`PK lookup` — самый быстрый** доступ: один спуск по B-tree → строка уже в листе, лишнего I/O нет;
+- **вторичные (secondary) индексы** хранят в качестве «ссылки на строку» **значение `PK`**, а не физический адрес — каждый lookup по secondary index делает **два спуска**: secondary → PK → строка;
+- **range-сканы по `PK`** идут по соседним страницам — отличная **локальность диска**.
+
+**Design rules:**
+
+| Правило | Почему |
+|---|---|
+| **PK короткий** | дублируется в каждом secondary index — длинный PK раздувает все индексы |
+| **PK последовательный** (`BIGINT AUTO_INCREMENT`, `ULID`) | вставка всегда в конец B-tree → нет page splits, локальность записи |
+| **PK не меняется** | при `UPDATE PK` строка физически переезжает + обновляются все secondary |
+| **`UUID v4` как PK — анти-паттерн** | рандомные вставки по всему B-tree, fragmentation, дорогие inserts |
+
+**Если PK явно не задан** — InnoDB возьмёт **первый `UNIQUE NOT NULL`** или сгенерит скрытый **6-байтный `DB_ROW_ID`** (его лучше не допускать — он недоступен через SQL).
+
+**В PostgreSQL** наоборот — таблицы хранятся в **heap** (без кластеризации); `CLUSTER table USING idx` — разовая операция, не поддерживается автоматически.',
+                'code_example' => '-- Хороший PK: компактный, монотонный
+CREATE TABLE orders (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT,
+    INDEX idx_user (user_id) -- secondary хранит (user_id, id)
+) ENGINE=InnoDB;
+
+-- Антипаттерн: UUID v4 как PK
+-- CREATE TABLE bad (id CHAR(36) PRIMARY KEY, ...);
+-- Случайные вставки по всему дереву → page splits, медленная запись.
+
+-- Лучше для распределённых ID — UUID v7 / ULID (монотонные)
+-- или BIGINT + отдельная UNIQUE-колонка под UUID.',
+                'code_language' => 'sql',
                 'difficulty' => 4,
                 'topic' => 'database.mysql',
             ],
@@ -73,14 +105,79 @@ ALTER TABLE legacy_table ENGINE=InnoDB;',
             [
                 'category' => 'Базы данных',
                 'question' => 'REPEATABLE READ в InnoDB и gap locks?',
-                'answer' => 'В стандарте SQL уровень REPEATABLE READ защищает от non-repeatable read, но не от phantoms. В InnoDB на REPEATABLE READ механизм ДВОЙНОЙ и зависит от типа чтения. (1) Для CONSISTENT READS (обычный SELECT без FOR UPDATE / LOCK IN SHARE MODE) phantom-ы исключены за счёт MVCC-снимка: транзакция читает на момент первого SELECT, новые строки от других транзакций для неё просто не существуют - блокировки тут ни при чём. (2) Для LOCKING READS (SELECT ... FOR UPDATE / LOCK IN SHARE MODE, UPDATE/DELETE по диапазону) включаются next-key и gap locks - блокировки на "промежутках" между значениями индекса. SELECT * FROM t WHERE x BETWEEN 5 AND 10 FOR UPDATE заблокирует не только существующие строки, но и пустые промежутки - вторая транзакция не сможет вставить x=7. Это и предотвращает фантомы для locking reads. ВАЖНО: gap locks - частая причина неожиданных deadlock-ов под нагрузкой; на READ COMMITTED InnoDB их отключает (только row locks), но тогда фантомы возможны и для locking reads тоже. Уникальная особенность InnoDB - именно сочетание MVCC + gap locks на одном уровне изоляции.',
+                'answer' => 'По стандарту SQL **`REPEATABLE READ`** защищает от **non-repeatable read**, но **не от phantoms**. **В InnoDB механизм двойной** и зависит от типа чтения.
+
+**(1) Consistent reads** (обычный `SELECT` без блокировок):
+- работает **MVCC-снимок** — транзакция читает версии **на момент первого `SELECT`**;
+- новые строки от других транзакций **просто не существуют** в этом snapshot;
+- **phantoms исключены**, **без блокировок** на стороне читателя.
+
+**(2) Locking reads** (`SELECT ... FOR UPDATE`, `LOCK IN SHARE MODE`, `UPDATE`/`DELETE` по диапазону):
+- включаются **next-key locks** = **record lock** + **gap lock** на промежутках между значениями индекса;
+- блокируются не только существующие строки, **но и «пустоты» между ними**;
+- вторая транзакция **не сможет вставить** в защищённый диапазон.
+
+**Пример next-key lock:**
+
+```sql
+-- Транзакция T1
+START TRANSACTION;
+SELECT * FROM t WHERE x BETWEEN 5 AND 10 FOR UPDATE;
+-- Заблокировано: строки с x ∈ [5..10] + промежутки (5,6), (6,7) ... (10,∞]
+
+-- Транзакция T2 - повиснет
+INSERT INTO t (x) VALUES (7); -- ⚠ block
+```
+
+**Сравнение уровней в InnoDB:**
+
+| Уровень | MVCC consistent reads | Locking reads | Phantoms возможны? |
+|---|---|---|---|
+| `READ COMMITTED` | свежий snapshot **на каждый `SELECT`** | **только row locks** | **да** |
+| `REPEATABLE READ` (default) | snapshot **на всю транзакцию** | **next-key + gap locks** | **нет** (даже для locking reads) |
+| `SERIALIZABLE` | все `SELECT` → `LOCK IN SHARE MODE` | full locking | нет |
+
+**Боль gap locks:** **частая причина неожиданных deadlock-ов** под нагрузкой — две транзакции цепляются за смежные gap-ы и блокируют друг друга. На `READ COMMITTED` gap locks **отключены** (только row locks) — но возвращаются phantoms.
+
+**Уникальная фишка InnoDB** — именно **MVCC + gap locks на одном уровне изоляции**. В PostgreSQL `REPEATABLE READ` решает фантомы **только через MVCC** (snapshot transactions), gap locks отсутствуют.',
                 'difficulty' => 5,
                 'topic' => 'database.mysql',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое ONLY_FULL_GROUP_BY и почему он часто ломает легаси-MySQL-запросы?',
-                'answer' => 'ONLY_FULL_GROUP_BY - режим в sql_mode MySQL (по умолчанию ВКЛЮЧЁН с MySQL 5.7.5), который требует строгое соответствие SQL-стандарту: каждое поле в SELECT, которое не является агрегатом (SUM/COUNT/AVG/MIN/MAX) или константой, должно либо присутствовать в GROUP BY, либо быть функционально зависимым от GROUP BY-колонок (PK / UNIQUE NOT NULL). До 5.7.5 (и в MySQL по дефолту до того) MySQL разрешал писать SELECT u.id, u.name, COUNT(*) ... GROUP BY u.id - и для каждой группы возвращал ПРОИЗВОЛЬНОЕ значение u.name, что часто приводило к неочевидным багам в отчётах. С включённым ONLY_FULL_GROUP_BY такой запрос валится с ошибкой 1055 "Expression #N of SELECT list is not in GROUP BY clause and contains nonaggregated column". Решения: 1) добавить все non-aggregate колонки в GROUP BY; 2) обернуть лишние колонки агрегатами вроде ANY_VALUE(u.name) - явно сказать "мне всё равно, какое значение"; 3) переписать через subquery / window функции; 4) (НЕ рекомендуется в проде) выключить режим в sql_mode. На собесе spotter: запросы вида "SELECT * FROM orders GROUP BY user_id" - нарушение ONLY_FULL_GROUP_BY и одновременно бизнес-ошибка (какие * вернутся - непредсказуемо).',
+                'answer' => '**`ONLY_FULL_GROUP_BY`** — режим в **`sql_mode`** MySQL (**включён по умолчанию с MySQL 5.7.5**), который заставляет соблюдать стандарт SQL для `GROUP BY`.
+
+**Правило:** каждая колонка в `SELECT`, которая **не агрегат** (`SUM`/`COUNT`/`AVG`/`MIN`/`MAX`) и **не константа**, должна:
+- **либо** присутствовать в `GROUP BY`;
+- **либо** быть **функционально зависимой** от `GROUP BY` (т.е. однозначно определяться через `PK` или `UNIQUE NOT NULL`).
+
+**Что было до 5.7.5:** MySQL **молча возвращал произвольное значение** для несгруппированных колонок:
+
+```sql
+SELECT u.id, u.name, COUNT(*) FROM users u JOIN orders o ON ... GROUP BY u.id;
+-- u.name = первое попавшееся (или вообще ни от куда) — UB!
+```
+
+Это **классический источник скрытых багов в отчётах**.
+
+**С включённым режимом** запрос валится с **ошибкой 1055**:
+> `Expression #N of SELECT list is not in GROUP BY clause and contains nonaggregated column`
+
+**Четыре способа починить:**
+
+| # | Способ | Когда уместен |
+|---|---|---|
+| 1 | Добавить **все non-aggregate колонки** в `GROUP BY` | если по бизнесу значения и так одинаковые в группе |
+| 2 | Обернуть в **`ANY_VALUE(col)`** | явно: «значение не важно, дай любое» |
+| 3 | Переписать через **window functions** (`OVER (PARTITION BY ...)`) | MySQL 8+, элегантно сохраняет все строки |
+| 4 | **Выключить режим** в `sql_mode` | **не рекомендуется** на проде |
+
+**Антипаттерн** на собесе:
+```sql
+SELECT * FROM orders GROUP BY user_id;
+-- Нарушает ONLY_FULL_GROUP_BY И возвращает непредсказуемые данные.
+```',
                 'code_example' => '-- ❌ Сломается при ONLY_FULL_GROUP_BY (1055)
 SELECT u.id, u.name, u.email, COUNT(o.id) AS orders
 FROM users u LEFT JOIN orders o ON o.user_id = u.id
@@ -110,7 +207,40 @@ SELECT @@sql_mode;',
             [
                 'category' => 'Базы данных',
                 'question' => 'В чём разница между MySQL DATETIME и TIMESTAMP, и какая боль возникает при смене таймзоны сервера?',
-                'answer' => 'DATETIME и TIMESTAMP - оба хранят дату и время, но семантика принципиально разная. TIMESTAMP: 4 байта, диапазон 1970-01-01 00:00:01 UTC - 2038-01-19 03:14:07 UTC (Y2K38), хранится ВНУТРЕННЕ В UTC. При записи MySQL конвертирует значение из текущей session timezone в UTC, при чтении - обратно из UTC в timezone сессии. То есть значение "плавает" вместе с настройкой time_zone клиента/сервера. DATETIME: исторически 8 байт; начиная с MySQL 5.6.4 формат пересчитан в 5 байт + 0–3 байта на дробные секунды (TIMESTAMP по той же схеме — 4 + 0–3 байта), цель изменения — компактнее хранить и поддержать дроби секунд. Диапазон DATETIME — 1000-9999 годы, хранится КАК ЕСТЬ - никаких преобразований; что положили строкой "2024-06-15 12:00:00" - то и достанете, независимо от timezone. ПРАКТИЧЕСКАЯ БОЛЬ при миграции сервера в другую таймзону: TIMESTAMP-колонки начинают возвращать другие значения для тех же физических байтов (потому что меняется конверсия из UTC), DATETIME-колонки остаются неизменными. Прод-история: проект начат в Москве, сервер MSK (UTC+3), миграция в AWS Frankfurt (UTC+1) - все TIMESTAMP-поля "сдвинулись" на 2 часа в отчётах. Лечение: либо заранее держать time_zone="+00:00" на серверах и фронте, либо использовать DATETIME для бизнес-дат (заказ оформлен в "12:00") и TIMESTAMP только для технических полей (created_at/updated_at, где UTC-семантика как раз нужна). Laravel дефолт - timestamp() в миграции для created_at/updated_at, $casts =>"datetime" для отдельных полей; CARBON_TIMEZONE и app.timezone в config влияют только на PHP-сторону.',
+                'answer' => 'Оба хранят дату и время, но **семантика принципиально разная**.
+
+| | **`TIMESTAMP`** | **`DATETIME`** |
+|---|---|---|
+| Размер | 4 байта (+0..3 на дробные сек) | 5 байт (+0..3 на дробные сек, с 5.6.4) |
+| Диапазон | **1970-01-01 — 2038-01-19** (Y2K38) | **1000 — 9999** годы |
+| Хранение | **внутри в UTC** | **как есть**, без преобразований |
+| При записи | конвертация из `session time_zone` → UTC | байт-в-байт |
+| При чтении | конвертация UTC → `session time_zone` | байт-в-байт |
+| `DEFAULT CURRENT_TIMESTAMP` | да | да (с 5.6.5) |
+| Реакция на смену TZ сервера | **значения «сдвигаются»** | **не меняются** |
+
+**Боль при миграции в другую таймзону:**
+
+```
+Проект: MSK (UTC+3) → AWS Frankfurt (UTC+1)
+TIMESTAMP-поля: «сдвинулись» на 2 часа в отчётах
+DATETIME-поля:   остались как были
+```
+
+**Правило выбора:**
+
+| Что хранить | Тип |
+|---|---|
+| **Технические `created_at`/`updated_at`** | **`TIMESTAMP`** — UTC-семантика как раз нужна |
+| **Бизнес-даты** (заказ оформлен в `"12:00"` локального времени) | **`DATETIME`** |
+| **Даты после 2038** (день рождения, дата окончания контракта) | **`DATETIME`** — `TIMESTAMP` упрётся в Y2K38 |
+
+**Дисциплина:** на серверах и в клиенте держать **`time_zone = "+00:00"`** — тогда оба типа ведут себя предсказуемо.
+
+**Laravel-нюансы:**
+- метод `$table->timestamp()` в миграции = `TIMESTAMP`;
+- `$casts = [\'col\' => \'datetime\']` — приведение к `Carbon` на PHP-стороне;
+- `app.timezone` и `CARBON_TIMEZONE` влияют **только на PHP**, не на MySQL.',
                 'code_example' => '-- TIMESTAMP - хранится в UTC, конвертируется на лету
 CREATE TABLE events_ts (
     id INT PRIMARY KEY,
@@ -141,7 +271,47 @@ SELECT @@global.time_zone, @@session.time_zone;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Зачем отключают FOREIGN_KEY_CHECKS на массовых импортах и почему "NOT NULL DEFAULT ..." - design rule?',
-                'answer' => 'Foreign keys - не бесплатны: на каждый INSERT/UPDATE/DELETE InnoDB проверяет валидность ссылки, что требует look-up в индексе родительской таблицы и часто берёт shared lock на родительскую строку. На массовых операциях (миграции данных, dump-restore, bulk-import 10M строк) это: а) сильно тормозит, потому что проверки на каждую строку; б) ломает порядок: нельзя залить детей раньше родителей. Стандартный паттерн на тяжёлых импортах: SET FOREIGN_KEY_CHECKS=0 в начале, заливаем данные в любом порядке/любым методом (LOAD DATA INFILE или multi-row INSERT), SET FOREIGN_KEY_CHECKS=1 в конце. ВАЖНО: после этого FK не валидируются автоматически - ответственность на разработчике; рекомендуется отдельно прогнать аудит-запросы на сирот (LEFT JOIN ... WHERE parent.id IS NULL). MySQL также пропускает запись о дочерних строках в binary log для slave-репликации в этом режиме - на репликах нужны те же чек-настройки. Связанное design rule "NOT NULL DEFAULT ...": NULL семантически означает "значение неизвестно", это специальное состояние с трёхзначной логикой (TRUE/FALSE/NULL), которое усложняет запросы (WHERE x = 5 не вернёт строки, где x IS NULL; индексы по nullable-колонкам в некоторых СУБД не покрывают IS NULL - см. Oracle). Если по бизнес-смыслу значение всегда есть - объявляйте NOT NULL DEFAULT 0/-1/""/sentinel: меньше боли в WHERE, чище семантика, чуть лучше планы запросов, нет ловушек NULL-распространения в выражениях. NULL только когда NULL имеет ОТДЕЛЬНЫЙ смысл "ещё не задано" (deleted_at, completed_at, archived_at).',
+                'answer' => '**Foreign keys не бесплатны:** на каждый `INSERT`/`UPDATE`/`DELETE` InnoDB:
+- делает **lookup** в индексе родительской таблицы;
+- часто берёт **shared lock** на родительскую строку.
+
+На **массовых операциях** (миграции данных, dump-restore, bulk-import 10M строк) это:
+- **сильно тормозит** (проверка на каждую строку);
+- **ломает порядок** — нельзя залить детей раньше родителей.
+
+**Паттерн массового импорта:**
+
+```sql
+SET FOREIGN_KEY_CHECKS = 0;
+SET UNIQUE_CHECKS = 0;
+SET autocommit = 0;
+
+LOAD DATA INFILE \'/tmp/orders.csv\' INTO TABLE orders ...;
+LOAD DATA INFILE \'/tmp/order_items.csv\' INTO TABLE order_items;
+
+COMMIT;
+SET FOREIGN_KEY_CHECKS = 1;
+SET UNIQUE_CHECKS = 1;
+```
+
+**Важно:**
+- после выключения FK **не валидируются** — **ответственность на разработчике**;
+- после импорта **прогнать аудит-запросы** на сирот (`LEFT JOIN parent WHERE parent.id IS NULL`);
+- **на репликах** нужны те же `_CHECKS = 0`, иначе binlog-events упадут.
+
+**Связанный design rule — `NOT NULL DEFAULT ...`:**
+
+**Почему `NULL` проблемный:**
+- семантически — «значение **неизвестно**»;
+- **трёхзначная логика** (`TRUE`/`FALSE`/`NULL`) усложняет `WHERE`:
+  - `WHERE x = 5` **не вернёт** строки с `x IS NULL`;
+  - `NOT IN (subquery с NULL)` **возвращает ничего**;
+- `COUNT(col)` пропускает `NULL` (а `COUNT(*)` — нет);
+- индексы по nullable-колонкам ведут себя по-разному в разных СУБД.
+
+**Правило:** **если значение всегда есть** по бизнес-смыслу — объявлять **`NOT NULL DEFAULT 0/-1/""/sentinel`**.
+
+**`NULL` оставляем только когда он имеет отдельный смысл** «ещё не задано» — `deleted_at`, `completed_at`, `archived_at`, `email_verified_at`.',
                 'code_example' => '-- Bulk-импорт миллионов строк - FK выключаем
 SET FOREIGN_KEY_CHECKS = 0;
 SET UNIQUE_CHECKS = 0;     -- бонус: пропустить уникальные проверки
@@ -290,21 +460,123 @@ SELECT * FROM users WHERE CHAR_LENGTH(nickname) > 30;',
             [
                 'category' => 'Базы данных',
                 'question' => 'Какие скрытые системные колонки InnoDB использует для MVCC?',
-                'answer' => 'У каждой строки в InnoDB есть три скрытых поля: DB_TRX_ID — идентификатор транзакции, последней изменившей строку; DB_ROLL_PTR — указатель в undo log на предыдущую версию, по цепочке которого можно восстановить любое состояние; DB_ROW_ID — внутренний идентификатор строки, который InnoDB использует как кластерный ключ только если у таблицы нет ни PRIMARY KEY, ни подходящего UNIQUE NOT NULL индекса (сначала пробуется первый такой UNIQUE NOT NULL, и только при его отсутствии генерируется DB_ROW_ID). При SELECT InnoDB сравнивает DB_TRX_ID с собственным read view транзакции и, если запись новее, идёт по DB_ROLL_PTR назад, пока не найдёт подходящую версию. Это и есть механизм неблокирующего чтения InnoDB, в отличие от PostgreSQL, который хранит версии прямо в heap через xmin/xmax.',
+                'answer' => 'У каждой строки в InnoDB есть **три скрытых системных поля**, на которых построен **MVCC** (Multi-Version Concurrency Control).
+
+| Колонка | Размер | Что хранит |
+|---|---|---|
+| **`DB_TRX_ID`** | 6 байт | id транзакции, **последней изменившей строку** |
+| **`DB_ROLL_PTR`** | 7 байт | **указатель в `undo log`** на предыдущую версию строки |
+| **`DB_ROW_ID`** | 6 байт | внутренний id строки — **используется как PK**, только если нет ни `PRIMARY KEY`, ни подходящего `UNIQUE NOT NULL` |
+
+**Как работает чтение с MVCC:**
+1. Каждая транзакция имеет **read view** — снимок состояния на момент старта (или первого `SELECT` в `READ COMMITTED`);
+2. При `SELECT` InnoDB сравнивает **`DB_TRX_ID`** строки с **read view**;
+3. Если строка изменена **позже** view → идём **по `DB_ROLL_PTR`** в undo log;
+4. Шагаем назад по цепочке версий, пока не найдём подходящую;
+5. Получили **consistent read без блокировок**.
+
+**Сравнение с PostgreSQL:**
+
+| | **InnoDB** | **PostgreSQL** |
+|---|---|---|
+| Где старые версии | **`undo log`** (отдельный сегмент) | **прямо в heap** через `xmin`/`xmax` |
+| Откат транзакции | играем `undo log` | переписывание не нужно — `xmax` указывает на dead tuple |
+| Очистка старых версий | автоматическая, фоновый purge | **`VACUUM`** (autovacuum) |
+| Боль | долгие транзакции тормозят purge → distended undo | долгие транзакции **держат view** → bloat heap |
+
+**Видимость `DB_ROW_ID`:**
+- если у таблицы **нет `PRIMARY KEY`** и нет `UNIQUE NOT NULL` — InnoDB **молча сгенерит `DB_ROW_ID`** как cluster key;
+- эта колонка **недоступна через SQL** — её не запросить;
+- **антипаттерн**: всегда явно объявляй `PRIMARY KEY`.',
                 'difficulty' => 4,
                 'topic' => 'database.mysql',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Зачем InnoDB нужны redo log и undo log?',
-                'answer' => 'Redo log (ib_logfile) — это последовательный журнал физических изменений страниц, который пишется до фиксации данных в табличном пространстве. После сбоя сервер прокручивает redo log и восстанавливает зафиксированные транзакции, обеспечивая Durability из ACID. Undo log хранит обратные операции для каждой модификации и нужен сразу для двух целей: ROLLBACK откатывает транзакцию, проигрывая undo-записи, а MVCC по DB_ROLL_PTR строит старые версии строк для consistent read. Если undo log распух (долгая транзакция держит view), MVCC не может почистить старые версии, и InnoDB теряет производительность.',
+                'answer' => 'InnoDB ведёт **два независимых лога** — без них не было бы ни Durability, ни MVCC, ни `ROLLBACK`.
+
+**`redo log`** (файлы `ib_logfile0`/`ib_logfile1`, с MySQL 8.0.30 — `#innodb_redo/`):
+- **последовательный журнал физических изменений страниц**;
+- пишется **до** фиксации данных в табличное пространство (**WAL-принцип**: Write-Ahead Logging);
+- даёт **`D`urability** из ACID:
+  - после `COMMIT` транзакция записана в redo, страницы пока могут лежать в buffer pool;
+  - при крахе сервер при старте **проигрывает redo log** и восстанавливает все commited транзакции (**crash recovery**);
+- размер контролируется `innodb_redo_log_capacity` (8.0.30+);
+- паттерн **circular write** — два файла переключаются по очереди.
+
+**`undo log`** (раньше в системном tablespace, сейчас обычно в `undo_001`/`undo_002`):
+- хранит **обратные операции** для каждой модификации (insert → delete, update → старое значение, delete → resurrect);
+- нужен **сразу для двух целей**:
+
+| Применение | Как используется |
+|---|---|
+| **`ROLLBACK`** | проигрываем undo-записи в обратном порядке |
+| **MVCC consistent read** | по `DB_ROLL_PTR` восстанавливаем старую версию строки для другой транзакции |
+
+**Сравнение:**
+
+| | **`redo log`** | **`undo log`** |
+|---|---|---|
+| Что хранит | физические изменения «вперёд» | логические изменения «назад» |
+| Когда играем | при **crash recovery** | при `ROLLBACK` или MVCC read |
+| Свойство ACID | **`D`urability** | **`A`tomicity** + MVCC |
+
+**Боль с распухшим undo log:**
+- **долгая транзакция** (например, забытый `START TRANSACTION` на час) **держит read view**;
+- purge thread **не может почистить** старые версии — они нужны для view;
+- undo log **раздувается до сотен ГБ** → InnoDB **деградирует**;
+- мониторить через `SHOW ENGINE INNODB STATUS` → `History list length`.',
                 'difficulty' => 4,
                 'topic' => 'database.mysql',
             ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Как делать ALTER TABLE на больших живых таблицах без даунтайма?',
-                'answer' => 'Многие операции в MySQL 5.6+ поддерживают Online DDL (ALGORITHM=INPLACE, LOCK=NONE) — добавление nullable-колонки, переименование, создание secondary-индекса проходят без блокировки записи. Тяжёлые изменения (изменение типа PK, добавление NOT NULL колонки без default) используют COPY и блокируют таблицу — для них берут внешние инструменты: pt-online-schema-change от Percona создаёт теневую таблицу и синхронизирует через триггеры, gh-ost от GitHub читает binlog без триггеров и нагружает основной поток меньше. Оба инструмента переключают таблицы атомарным RENAME в самом конце.',
+                'answer' => '**Online DDL** (`ALGORITHM=INPLACE` или `INSTANT`, **MySQL 5.6+**) покрывает многие операции **без блокировки записи** или почти без неё:
+
+| Операция | Алгоритм | Блокировка |
+|---|---|---|
+| `ADD COLUMN ... NULL` в конец таблицы (8.0+) | **`INSTANT`** | ~0, mgnа изменение метаданных |
+| `ADD INDEX` (secondary) | `INPLACE` | DML работает |
+| `RENAME COLUMN` | `INPLACE` | DML работает |
+| `ADD COLUMN NOT NULL DEFAULT ...` | в 8.0 — `INSTANT`; раньше `COPY` | блокировка таблицы при COPY |
+| `MODIFY COLUMN` (смена типа) | **`COPY`** | **полная блокировка** записи |
+| Смена `PRIMARY KEY` | **`COPY`** | блокировка |
+
+**Команды для контроля:**
+```sql
+ALTER TABLE orders ADD INDEX idx_user (user_id), ALGORITHM=INPLACE, LOCK=NONE;
+-- Если такой режим недоступен — MySQL вернёт ошибку, а не перейдёт в COPY.
+```
+
+**Когда даже Online DDL не подходит** — берут **внешние инструменты**:
+
+| Инструмент | Как работает |
+|---|---|
+| **`pt-online-schema-change`** (Percona Toolkit) | создаёт **теневую таблицу** с новой схемой, **триггеры** на оригинале синхронизируют записи, в конце — `RENAME` |
+| **`gh-ost`** (GitHub) | читает **binlog** (не триггеры) — меньше нагрузки на основной поток, можно паузить и резать throttle |
+
+**Оба инструмента:**
+1. Создают «теневую» таблицу с целевой схемой;
+2. Копируют данные **порциями**, не нагружая прод;
+3. Догоняют изменения через triggers (`pt-osc`) или binlog (`gh-ost`);
+4. **Атомарно** делают `RENAME TABLE old TO _old, new TO old;` в самом конце;
+5. Дроп старой таблицы по таймауту.
+
+**Выбор:** `gh-ost` обычно мягче по нагрузке (нет триггеров), `pt-osc` — лучше с FK и старее (проверено годами).',
+                'code_example' => '# pt-online-schema-change: добавить колонку
+pt-online-schema-change \\
+    --alter "ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT \'new\'" \\
+    --execute D=mydb,t=orders
+
+# gh-ost: то же, через binlog
+gh-ost \\
+    --user=root --password=... --host=replica.host \\
+    --database=mydb --table=orders \\
+    --alter="ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT \'new\'" \\
+    --execute',
+                'code_language' => 'bash',
                 'difficulty' => 4,
                 'topic' => 'database.mysql',
             ],

@@ -13,13 +13,64 @@ class OctaneHorizon
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Octane? Какие у него плюсы и подводные камни?',
-                'answer' => 'Octane - это пакет для Laravel, который держит приложение в памяти между запросами вместо перезагрузки. Простыми словами: обычный PHP при каждом запросе заново загружает Laravel - это медленно. Octane загружает один раз и потом каждый запрос обрабатывается мгновенно. Серверы: Swoole, RoadRunner, FrankenPHP. Подводные камни: 1) Утечки памяти - переменные класса не сбрасываются. 2) Состояние singleton-ов сохраняется. 3) Глобальные/статические переменные опасны. 4) Нужно использовать scoped-биндинги вместо singleton там, где состояние per-request. 5) Долгоживущие соединения с БД могут отваливаться по wait_timeout (gone away) - нужны reconnect-стратегии или DB::reconnect() на лонг-айдл.',
-                'code_example' => 'composer require laravel/octane
-php artisan octane:install
-php artisan octane:start --workers=4 --task-workers=2  # --task-workers только для Swoole
+                'answer' => '**`Laravel Octane`** — пакет, заменяющий PHP-FPM на **долгоживущие воркеры**, которые держат приложение **в памяти между запросами** вместо перезагрузки фреймворка.
 
-// scoped binding для per-request состояния
-$this->app->scoped(RequestContext::class);',
+**Базовая идея:**
+
+- **PHP-FPM:** каждый запрос → fork → autoload → providers → routes → handler → exit. Bootstrap ~10-50 ms на каждый запрос.
+- **Octane:** воркер стартует **один раз**, фреймворк уже в памяти, каждый запрос — только handler. **RPS x3-5**.
+
+**Поддерживаемые серверы:**
+
+| Сервер | Язык runtime | Особенности |
+|---|---|---|
+| **`Swoole`** | C extension | Самый зрелый, **task workers**, корутины, `octane:install --server=swoole` |
+| **`RoadRunner`** | Go | Чистый бинарь без PHP-расширения, `Goridge` протокол |
+| **`FrankenPHP`** | Go (Caddy) | HTTP/2, HTTP/3, worker mode, новейший |
+
+**Главные подводные камни (state leakage):**
+
+1. **Утечки памяти** — переменные класса/`use static` накапливаются между запросами. Лечение — `--max-requests=500`.
+2. **Singleton-ы переживают** между запросами — `Auth::user()` в singleton-е утечёт следующему запросу. Используй **`$this->app->scoped()`** для per-request зависимостей.
+3. **Глобальные/статические свойства** — `static $cache = []` будет расти бесконечно.
+4. **Long-lived DB connections** — отваливаются по `wait_timeout` (`MySQL server has gone away`). Решение: **`DB::reconnect()`** на исключение, **PDO ATTR_PERSISTENT = false**, либо `--max-requests`.
+5. **Фасады закешированы** — `Config::set()` в одном запросе **видит** следующий запрос; нужно `Octane::tick()` или сброс state в `RequestTerminated`.
+
+**Lifecycle hooks** (`config/octane.php → listeners`):
+
+- `WorkerStarting` — поднялся воркер (один раз).
+- `RequestReceived` — пришёл запрос.
+- `RequestHandled` — обработан.
+- `RequestTerminated` — последний шанс сбросить state.
+- `WorkerErrorOccurred` / `WorkerStopping`.',
+                'code_example' => '# Установка
+composer require laravel/octane
+php artisan octane:install --server=roadrunner  # или swoole, frankenphp
+php artisan octane:start --workers=8 --max-requests=500
+
+# --max-requests - перезапуск воркера после N запросов (страховка от утечек)
+# --task-workers=2 - только для Swoole, для async tasks
+
+<?php
+// === Per-request state - НЕ singleton, а scoped ===
+// AppServiceProvider::register
+$this->app->scoped(RequestContext::class, function ($app) {
+    return new RequestContext($app->make(Request::class));
+});
+// Octane сбросит scoped-биндинг между запросами автоматически
+
+// === Очистка состояния через listener ===
+// config/octane.php
+"listeners" => [
+    RequestTerminated::class => [
+        FlushUploadedFiles::class,
+        FlushTemporaryContainerInstances::class,
+        // свой listener: Auditor::reset(), TenantContext::flush() и т.п.
+    ],
+],
+
+// === Deploy без даунтайма ===
+// php artisan octane:reload  # грейсфул-перезапуск воркеров',
                 'code_language' => 'bash',
                 'difficulty' => 5,
                 'topic' => 'laravel.octane_horizon',
@@ -27,22 +78,69 @@ $this->app->scoped(RequestContext::class);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое Laravel Horizon?',
-                'answer' => 'Horizon - это пакет для управления Redis-очередями: красивый dashboard, балансировка воркеров (auto/simple), метрики, мониторинг failed jobs, теги задач. Простыми словами: GUI и автомасштабирование для php artisan queue:work на Redis.',
-                'code_example' => 'composer require laravel/horizon
+                'answer' => '**`Laravel Horizon`** — пакет для управления **Redis-очередями** в Laravel: дашборд, балансировка воркеров, метрики, мониторинг failed jobs, теги задач.
+
+**Что даёт поверх `queue:work`:**
+
+- **Web UI** — `/horizon` — список pending/processing/failed/recent.
+- **Auto-scaling** воркеров — стратегии `simple`/`auto`/`false`.
+- **Метрики** — throughput, runtime, failed rate в реальном времени.
+- **Tags** — у каждого Job свой тег (например, `App\\Models\\User:42`) для фильтрации.
+- **Failed jobs** — детальный stack trace + retry одним кликом.
+- **Notifications** — Slack/SMS при превышении wait time.
+- **Graceful deploy** — `horizon:terminate` дорабатывает текущие jobs и перезапускает.
+
+**Ограничения:**
+
+- **Только Redis** — для SQS/database/RabbitMQ нужен обычный `queue:work` (или RoadRunner Jobs).
+- **Supervisor для самого Horizon** — процесс должен под чем-то жить (systemd/supervisord).
+- **Auth dashboard** — по умолчанию доступ только локально; для прода — `Gate::define(\'viewHorizon\', ...)` в `HorizonServiceProvider`.
+
+**Стратегии `balance`:**
+
+| Стратегия | Что делает |
+|---|---|
+| **`simple`** | Делит `maxProcesses` поровну между всеми очередями |
+| **`auto`** | Перераспределяет процессы динамически по нагрузке (wait time) |
+| **`false`** | Каждая очередь имеет фиксированное число процессов |
+
+**Параметры supervisor-а:**
+
+- `connection` — драйвер очереди (`redis`).
+- `queue` — массив очередей (приоритет по порядку).
+- `balance`, `minProcesses`, `maxProcesses`.
+- `tries`, `timeout`, `memory`, `nice`.
+- `balanceMaxShift` / `balanceCooldown` — скорость auto-balance.',
+                'code_example' => '# Установка
+composer require laravel/horizon
 php artisan horizon:install
 php artisan horizon
 
-// config/horizon.php
-\'environments\' => [
-    \'production\' => [
-        \'supervisor-1\' => [
-            \'connection\' => \'redis\',
-            \'queue\' => [\'default\', \'high\'],
-            \'balance\' => \'auto\',
-            \'maxProcesses\' => 10,
+# config/horizon.php
+"environments" => [
+    "production" => [
+        "supervisor-1" => [
+            "connection"      => "redis",
+            "queue"           => ["high", "default", "emails", "notifications"],
+            "balance"         => "auto",
+            "minProcesses"    => 1,
+            "maxProcesses"    => 20,
+            "balanceMaxShift" => 1,
+            "balanceCooldown" => 3,
+            "tries"           => 3,
+            "timeout"         => 60,
+            "memory"          => 128,
         ],
     ],
-],',
+],
+
+# Deploy hook (zero-downtime)
+php artisan horizon:terminate     # текущие jobs дорабатывают, потом restart
+
+# Авторизация dashboard - HorizonServiceProvider::gate
+Gate::define("viewHorizon", function ($user) {
+    return in_array($user->email, ["admin@example.com"]);
+});',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.octane_horizon',
@@ -50,13 +148,90 @@ php artisan horizon
             [
                 'category' => 'Laravel',
                 'question' => 'Какие подводные камни у Octane по сравнению с обычным FPM?',
-                'answer' => 'Octane держит фреймворк в памяти между запросами. Singletons и статические свойства не сбрасываются - типичный источник утечек данных между пользователями. Запрещено хранить Auth::user() в синглтонах, использовать array-кэши на жизнь приложения, изменять контейнер из контроллеров. Решения: 1) регистрировать per-request сервисы через $this->app->scoped() - Octane сам сбрасывает scoped-биндинги между запросами; 2) подписаться на lifecycle-события Octane (RequestReceived/RequestHandled/RequestTerminated/WorkerStarting в config/octane.php → listeners) и сбрасывать там state, чистить статику, переподключать БД. Также Octane не любит долгие и блокирующие операции - нужна модель Tasks/Coroutines.',
-                'code_example' => '<?php
-// плохо в Octane
-class CartHolder { public static array $items = []; }
+                'answer' => '**Главное отличие:** Octane держит фреймворк в памяти между запросами. Это даёт **x3-5 RPS**, но ломает базовое допущение PHP — «каждый запрос с чистого листа».
 
-// хорошо
-$this->app->scoped(CartHolder::class, fn() => new CartHolder());',
+**Категории подводных камней:**
+
+**1. State leakage (утечка данных между пользователями):**
+
+- **Singleton-ы переживают** — `Auth::user()`, request-scoped сервисы протекают.
+- **Статические свойства** — `static $cache = []` шарится между всеми запросами этого воркера.
+- **Глобальные переменные** — `$GLOBALS`, суперглобальные кеши пакетов.
+- **Закешированные фасады** — `Cache::set()` в одном запросе виден следующему.
+
+**Симптом:** юзер A видит данные юзера B.
+
+**2. Утечки памяти:**
+
+- **Накопление в массивах** статиков, не-`weak`-referenced listeners.
+- **Memory leak в C-расширениях** (особенно Swoole).
+- **Большие объекты в singleton** — закачали 100 МБ в кеш, воркер вырос до GB.
+
+**Лечение:** `--max-requests=500` — перезапуск воркера после N запросов.
+
+**3. Долгоживущие соединения:**
+
+- **MySQL `wait_timeout`** — соединение в idle 8 часов → `gone away`. Решение: `DB::reconnect()` на исключение, либо `--max-requests`.
+- **Redis** — то же самое, но Predis сам делает retry.
+- **PDO `ATTR_PERSISTENT = true`** — нельзя, ломает scoped lifecycle.
+
+**4. Блокирующие операции:**
+
+- Octane **синхронный** в рамках одного воркера — `sleep(10)` блокирует **этот** воркер целиком на 10 секунд.
+- Для async — **Swoole task workers** или **`Octane::concurrently([...])`** для параллельных HTTP/БД-вызовов.
+
+**Запрещённые паттерны в коде:**
+
+| Антипаттерн | Что делать |
+|---|---|
+| Хранить `Auth::user()` в singleton | `$this->app->scoped()` |
+| `static array $cache = []` в моделях/сервисах | Сбрасывать в `RequestTerminated` listener |
+| Изменять контейнер из контроллеров (`app()->bind(...)`) | Только в Service Provider |
+| `Config::set(...)` в контроллере | Сбросить в listener или не использовать |
+
+**Lifecycle hooks** для сброса state:
+
+- `RequestReceived` — пришёл запрос (инициализация per-request).
+- `RequestTerminated` — последний шанс сбросить state (чистим static, reconnect БД, flush tenant context).
+- `WorkerStarting` / `WorkerStopping` — старт/останов воркера.',
+                'code_example' => '<?php
+// === Антипаттерн в Octane: статика накапливается ===
+class CartHolder {
+    public static array $items = [];   // ❌ переживёт ВСЕ запросы воркера
+}
+
+// === Правильно: scoped binding ===
+// AppServiceProvider::register
+$this->app->scoped(CartHolder::class, fn () => new CartHolder());
+
+// === Сброс state через listener ===
+// config/octane.php
+"listeners" => [
+    \\Laravel\\Octane\\Events\\RequestTerminated::class => [
+        \\Laravel\\Octane\\Listeners\\FlushUploadedFiles::class,
+        \\Laravel\\Octane\\Listeners\\FlushTemporaryContainerInstances::class,
+        \\App\\Listeners\\FlushTenantContext::class,
+        \\App\\Listeners\\ReconnectDatabaseIfBroken::class,
+    ],
+],
+
+// === Свой listener сброса tenant контекста ===
+class FlushTenantContext {
+    public function handle(RequestTerminated $event): void {
+        TenantContext::reset();
+        Auditor::flushBuffer();
+        // принудительный reconnect если что-то случилось
+        try { DB::connection()->getPdo(); }
+        catch (\\Throwable) { DB::reconnect(); }
+    }
+}
+
+// === Параллельные операции через Octane::concurrently ===
+[$users, $posts, $stats] = Octane::concurrently([
+    fn () => User::all(),
+    fn () => Post::published()->get(),
+    fn () => Stats::lastMonth(),
+], waitTimeoutInSeconds: 5);',
                 'code_language' => 'php',
                 'difficulty' => 5,
                 'topic' => 'laravel.octane_horizon',
@@ -64,24 +239,94 @@ $this->app->scoped(CartHolder::class, fn() => new CartHolder());',
             [
                 'category' => 'Laravel',
                 'question' => 'Как работает Laravel Horizon и какие метрики он даёт?',
-                'answer' => 'Horizon - дашборд и супервизор для Redis-очередей. Конфигурируется в config/horizon.php: массив supervisors с балансингом (auto/simple/false), maxProcesses, queues, balanceMaxShift, balanceCooldown. Дашборд показывает throughput, runtime, failed jobs, worker memory, recent jobs. auto-balance перераспределяет процессы между очередями по нагрузке. horizon:terminate грейсфул-перезапускает воркеры при деплое (текущие job дорабатываются).',
-                'code_example' => '// config/horizon.php
-\'environments\' => [
-    \'production\' => [
-        \'supervisor-1\' => [
-            \'connection\' => \'redis\',
-            \'queue\' => [\'default\', \'emails\', \'notifications\'],
-            \'balance\' => \'auto\',
-            \'minProcesses\' => 1,
-            \'maxProcesses\' => 20,
-            \'tries\' => 3,
-            \'timeout\' => 60,
+                'answer' => '**`Horizon`** — дашборд и супервизор для **Redis-очередей**. Конфигурируется в **`config/horizon.php`**.
+
+**Архитектура:**
+
+- **Master process** — `php artisan horizon` запускает мастер.
+- **Supervisor(s)** — мастер форкает по одному supervisor-у на каждую запись из `environments[env].supervisor-N`.
+- **Workers** — каждый supervisor поднимает 1..N PHP-воркеров (как `queue:work`) и **балансирует** их по очередям.
+- **Redis** — отдельный prefix `horizon:` для метрик и состояния супервизоров.
+
+**Стратегии `balance`:**
+
+| Стратегия | Что делает |
+|---|---|
+| **`simple`** | Делит `maxProcesses` поровну между очередями |
+| **`auto`** | Перераспределяет процессы по wait time каждой очереди |
+| **`false`** | Фиксированное число процессов per queue |
+
+**Параметры auto-balance:**
+
+- `balanceMaxShift` — макс. число процессов, перемещаемых за раз.
+- `balanceCooldown` — пауза между ребалансировками (секунд).
+- `minProcesses` / `maxProcesses` — нижняя/верхняя граница.
+
+**Что показывает дашборд `/horizon`:**
+
+| Раздел | Метрики |
+|---|---|
+| **Dashboard** | Jobs per minute, max wait, total jobs, recent failed |
+| **Pending Jobs** | Очередь по приоритетам, текущий wait time |
+| **Completed/Failed/Silenced** | История jobs с тегами |
+| **Metrics → Queue** | Throughput, runtime per queue |
+| **Metrics → Job** | По имени класса — runtime distribution, frequency |
+| **Recent Jobs** | Live-таблица последних обработанных |
+
+**Deploy:**
+
+- **`php artisan horizon:terminate`** — мастер посылает SIGTERM всем воркерам, они дорабатывают текущий job и завершаются. Supervisor (systemd) перезапускает мастера с новым кодом — **zero downtime**.
+- **`horizon:pause`** / **`horizon:continue`** — приостановить/возобновить обработку.
+- **`horizon:status`** — статус для health check.
+
+**Notifications** (`config/horizon.php → notifications`):
+
+- `waits` — алёрт, если очередь ждёт >N секунд.
+- Slack/SMS/email каналы.',
+                'code_example' => '<?php
+// config/horizon.php - полная конфигурация
+return [
+    "environments" => [
+        "production" => [
+            "default-supervisor" => [
+                "connection"      => "redis",
+                "queue"           => ["high", "default", "emails"],
+                "balance"         => "auto",
+                "minProcesses"    => 2,
+                "maxProcesses"    => 20,
+                "balanceMaxShift" => 1,
+                "balanceCooldown" => 3,
+                "tries"           => 3,
+                "timeout"         => 60,
+                "memory"          => 128,
+                "nice"            => 0,
+            ],
+
+            // отдельный supervisor под тяжёлые long-running jobs
+            "long-running" => [
+                "connection"   => "redis",
+                "queue"        => ["exports", "imports"],
+                "balance"      => "simple",
+                "maxProcesses" => 4,
+                "timeout"      => 600,
+                "memory"       => 512,
+            ],
         ],
     ],
-],
 
-# деплой
-php artisan horizon:terminate',
+    "waits" => [
+        "redis:default" => 60,        // алёрт, если default ждёт > 60 сек
+        "redis:emails"  => 30,
+    ],
+];
+
+# CLI
+php artisan horizon           # старт мастера (под systemd/supervisord)
+php artisan horizon:status    # для health probe
+php artisan horizon:terminate # graceful restart на деплое
+php artisan horizon:pause     # пауза обработки (но не приёма)
+php artisan horizon:continue
+php artisan horizon:snapshot  # сохранить метрики (по cron каждые 5 минут)',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.octane_horizon',
@@ -287,7 +532,33 @@ http:
             [
                 'category' => 'Laravel',
                 'question' => 'Какие основные подводные камни кода в долгоживущем PHP-окружении (RoadRunner, Octane)?',
-                'answer' => 'Главных четыре: утечки памяти накапливаются между запросами, поэтому ставят max_memory или max_jobs как страховку; статические свойства, синглтоны и глобальное состояние сохраняются и могут «протекать» данные одного пользователя в запрос другого; долгоживущие соединения с БД и файловые дескрипторы могут отвалиться по таймауту, нужен retry или ttl воркера; необработанные исключения роняют воркер целиком, их обязательно ловят и репортят через $worker->error().',
+                'answer' => '**Четыре главных проблемы**, которые ломают код, написанный под обычный PHP-FPM, когда его кладут в долгоживущий воркер.
+
+**1. Утечки памяти:**
+
+- Между запросами накапливаются объекты в `static`-свойствах, listener-ах фасадов, не-`weak`-ссылках.
+- **Симптом:** воркер растёт от 50 МБ до 1 ГБ за час.
+- **Защита:** `max_memory` (`RoadRunner`) или `--max-requests` (`Octane`) — перезапуск после порога.
+
+**2. State leakage через singleton/static:**
+
+- Singleton-ы, статические свойства, глобальное состояние **переживают** между запросами.
+- Самое опасное: данные одного пользователя протекают в запрос другого (`Auth::user()` в singleton, request-scoped кеш в static).
+- **Защита:** `$this->app->scoped()` вместо `singleton()`; listener на `RequestTerminated` сбрасывает свои static-структуры.
+
+**3. Долгоживущие соединения:**
+
+- **MySQL `wait_timeout`** (дефолт 8 часов) — соединение в idle получает `MySQL server has gone away`.
+- **Redis** / **Elasticsearch** / **AMQP** — то же самое со своими таймаутами.
+- **Файловые дескрипторы** — могут утечь через `fopen` без `fclose`.
+- **Защита:** `DB::reconnect()` на исключение, periodic ping, либо `--max-requests` как страховка.
+
+**4. Необработанные исключения роняют воркер:**
+
+- В FPM exception = HTTP 500 и конец процесса. В долгоживущем воркере unhandled exception **убивает весь воркер**, RoadRunner поднимает новый — но текущий запрос потерян.
+- **Защита:** глобальный `try/catch` на уровне HTTP-кернела (в Laravel уже есть через `Handler::report`), для RR — `$worker->error((string) $e)` вместо crash.
+
+**Резюме:** долгоживущий PHP требует **гигиены состояния** — каждый `static`, `singleton`, открытое соединение нужно либо сбрасывать в `RequestTerminated`, либо страховать перезапуском.',
                 'difficulty' => 4,
                 'topic' => 'laravel.octane_horizon',
             ],
@@ -469,14 +740,66 @@ return response()->stream(function () {
             [
                 'category' => 'Laravel',
                 'question' => 'Зачем нужен плагин Centrifuge в RoadRunner?',
-                'answer' => 'Плагин Centrifuge интегрирует RoadRunner с Centrifugo — сервером сообщений в реальном времени по WebSockets и SockJS. Тысячи постоянных соединений держит Go-часть, а PHP-воркеры получают только события и реализуют бизнес-логику. Это снимает с PHP типовую боль с долгими WS-соединениями, для которых однопоточная синхронная модель плохо подходит.',
+                'answer' => '**Плагин `Centrifuge`** интегрирует `RoadRunner` с **Centrifugo** — сервером сообщений реального времени по WebSockets, SSE, SockJS.
+
+**Разделение ответственности:**
+
+| Слой | Что делает | Чем |
+|---|---|---|
+| **Centrifugo + RR** | Держит **тысячи постоянных WS-соединений**, broadcast, presence, history | Go (эффективно с long-lived TCP) |
+| **PHP-воркеры** | **Бизнес-логика** — обрабатывают входящие события, авторизуют, генерируют исходящие | PHP-стек как обычно |
+
+**Зачем именно так:**
+
+- **PHP плохо подходит для долгих WebSocket-соединений** — однопоточная синхронная модель, на каждое WS нужен отдельный воркер.
+- **Centrifugo на Go** — один процесс держит **10k+** соединений в памяти.
+- **RR-плагин** связывает их по `GRPC`/`HTTP` — каждое WS-сообщение проксируется на PHP-воркер, который отвечает и возвращает результат в Centrifugo для рассылки клиентам.
+
+**Возможности через интеграцию:**
+
+- **`connect_proxy`** — авторизация WS-подключения через PHP.
+- **`refresh_proxy`** — обновление JWT-токена.
+- **`publish_proxy`** — модерация сообщений перед публикацией.
+- **`rpc_proxy`** — клиент-серверные RPC поверх WS.
+
+**Альтернативы в Laravel-стеке:**
+
+- **`Laravel Reverb`** (L11+) — официальный PHP WS-сервер, тоже on Go-подобной модели (ReactPHP), но проще в setup.
+- **`Pusher`** — managed SaaS.
+- **`laravel-websockets`** (Beyond Code) — устаревает, заменён Reverb.',
                 'difficulty' => 4,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что делает плагин Service в RoadRunner?',
-                'answer' => 'Плагин Service позволяет RoadRunner запускать произвольный бинарник или скрипт как sidecar-процесс, следить за его работоспособностью и автоматически перезапускать при падении. Это удобно для фоновых консьюмеров, экспортёров метрик, прокси-серверов и других вспомогательных демонов, которые хочется поднимать вместе с приложением одним конфигом, без отдельного supervisord.',
+                'answer' => '**Плагин `Service`** в `RoadRunner` — встроенный **process supervisor**, который позволяет запускать произвольные бинарники/скрипты как **sidecar-процессы** в одном конфиге с приложением.
+
+**Что умеет:**
+
+- **Запуск произвольной команды** — `command: "node worker.js"`, `php artisan custom:daemon`, и т.д.
+- **Restart policy** — `restart_sec`, `restart_after_exit` (`always`/`never`).
+- **Health monitoring** — RR следит за процессом, перезапускает при падении.
+- **Logging** — stdout/stderr процесса попадают в общий лог RR.
+- **Env vars** — пробрасываются из основного конфига.
+
+**Типичные use cases:**
+
+| Сценарий | Что запустить через `service` |
+|---|---|
+| **Фоновый консьюмер** | `php artisan some:consumer` (не Laravel queue) |
+| **Экспортёр метрик** | Prometheus node_exporter, statsd_exporter |
+| **Sidecar proxy** | nginx, envoy для авторизации/rate-limit на отдельном порту |
+| **Cron-aware демон** | `php artisan schedule:work` (Laravel 11 встроенный watcher) |
+| **WebSocket-сервер** | `php artisan reverb:start` |
+
+**Зачем вместо `supervisord` / `systemd`:**
+
+- **Один конфиг** — `.rr.yaml` описывает HTTP + Jobs + sidecars в одном месте.
+- **Автоматическая координация** — все процессы стартуют/останавливаются вместе с RR.
+- **Docker-friendly** — один контейнер = один RoadRunner, который тянет N процессов; не нужен supervisord-base-image.
+
+**Ограничение:** не заменяет полноценный init-систем (systemd) — у service нет cgroups, namespaces, oom_score_adj. На bare metal под production-нагрузкой обычно сочетают `systemd` для RR + `service` для маленьких sidecar-ов.',
                 'difficulty' => 4,
                 'topic' => 'laravel.octane_horizon',
             ],
@@ -544,28 +867,175 @@ if ($lock->lock("user:42", ttl: 60, waitTtl: 5)) {
             [
                 'category' => 'Laravel',
                 'question' => 'Какие лучшие практики запуска RoadRunner в продакшене?',
-                'answer' => 'Главный процесс держат под systemd или supervisord, чтобы он автоматически поднимался. Обязательно ставят max_jobs или max_memory, иначе утечки в сторонних библиотеках раздуют память. Подключают плагин status для liveness/readiness, увеличивают ulimit -n под большое число дескрипторов и настраивают структурированное JSON-логирование для агрегатора. Без этих базовых вещей долгоживущий процесс быстро деградирует.',
+                'answer' => 'Чек-лист продакшен-развёртывания `RoadRunner`:
+
+**1. Process supervisor для самого RR:**
+
+- **`systemd`** unit или **`supervisord`** — главный процесс RR должен автоматически подниматься при crash и при ребуте.
+- `Restart=always` + `RestartSec=5` в systemd unit.
+
+**2. Лимиты пула воркеров (страховка от утечек):**
+
+- **`max_jobs: 500..2000`** — перезапуск воркера после N запросов.
+- **`max_memory: 256..512`** МБ — graceful restart при превышении.
+- Без обоих — утечки в сторонних пакетах раздуют RAM за часы.
+
+**3. Health/Readiness probes — плагин `status`:**
+
+- **`/health`** — liveness, для Kubernetes restart unhealthy pod.
+- **`/ready`** — readiness, исключает pod из балансировки до прогрева пула.
+- В K8s — `livenessProbe` / `readinessProbe` на эти эндпоинты.
+
+**4. Системные лимиты:**
+
+- **`ulimit -n` ≥ 65535** — много открытых сокетов под нагрузкой.
+- **`vm.swappiness=10`** — меньше swap-а, важно для latency.
+- **`net.core.somaxconn`** ≥ 4096.
+
+**5. Логирование:**
+
+- **`mode: production`** + **`encoding: json`** — структурированный лог для агрегатора (ELK, Loki, Datadog).
+- **`level: error`** — без info-спама в проде.
+- Отдельно — централизованный Laravel-лог через `daily`/`stack` → файл → промежуточный shipper.
+
+**6. Метрики:**
+
+- Плагин **`metrics`** — Prometheus endpoint `/metrics` с RPS, latency, worker pool stats.
+
+**7. Graceful deploy:**
+
+- **`./rr reset`** — перечитать конфиг и грейсфул-перезапустить воркеров без потери запросов.
+- Под Laravel — `php artisan octane:reload`.
+
+**8. Resource isolation:**
+
+- В Docker — `--cpus`, `--memory` limits + соответствие `num_workers` числу CPU.
+
+Без этих базовых вещей долгоживущий процесс быстро деградирует под нагрузкой.',
                 'difficulty' => 4,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Что выдают эндпоинты /health и /ready плагина status в RoadRunner?',
-                'answer' => '/health отвечает «жив ли сам сервер RoadRunner» — это liveness-проба, по которой Kubernetes понимает, что под надо перезапустить. /ready проверяет «есть ли хотя бы один свободный PHP-воркер, готовый принять запрос» — это readiness-проба, она убирает под из балансировщика, пока пул занят или ещё прогревается. Оба эндпоинта обычно подключают как probes в Kubernetes или как healthcheck в LB.',
+                'answer' => '**Плагин `status`** в `RoadRunner` даёт два HTTP-эндпоинта для проб Kubernetes / LB:
+
+| Endpoint | Что проверяет | Какая probe в K8s |
+|---|---|---|
+| **`/health`** | **Жив ли сам сервер `RoadRunner`** (процесс отвечает) | **`livenessProbe`** |
+| **`/ready`** | **Есть ли хотя бы один свободный PHP-воркер**, готовый принять запрос | **`readinessProbe`** |
+
+**Семантика:**
+
+- **`/health` → 200** — RR alive. Если падает на 500/timeout — K8s решает, что под мёртв, и **перезапускает** его.
+- **`/ready` → 200** — есть свободный воркер. Если 503 — pod **исключается из балансировки** (но не перезапускается). Возвращается в балансировку, когда воркеры освободятся.
+
+**Зачем оба, а не один:**
+
+- **Только `/health`** → во время прогрева воркеров (15 секунд после старта) балансировщик уже шлёт трафик → запросы ждут / падают.
+- **Только `/ready`** → если воркеры залипли в deadlock, под не перезапускается, а просто отключается → трафик мигрирует на остальные поды, но в кластере накапливаются мёртвые.
+
+**Конфигурация в `.rr.yaml`:**
+
+```yaml
+status:
+  address: 127.0.0.1:2114  # отдельный порт для probes
+```
+
+**Параметры probes в Kubernetes:**
+
+- `livenessProbe.initialDelaySeconds: 10` — дать RR подняться.
+- `readinessProbe.periodSeconds: 5` — частая проверка готовности.
+- **`failureThreshold`** — сколько провалов до отметки «not ready»/«dead».
+
+**Расширения:** `/jobs` — статус Jobs-пула, `/workers` — состояние конкретных PHP-воркеров (RAM, jobs done).',
                 'difficulty' => 4,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Как RoadRunner интегрируется с Temporal?',
-                'answer' => 'Temporal — это движок оркестрации stateful и долгоживущих workflow, и RoadRunner является его основным PHP-воркером. PHP-разработчик пишет workflow и activity в виде обычных PHP-классов, а RoadRunner обеспечивает связь с сервером Temporal по протоколу Goridge: получает задания, вызывает методы воркфлоу, возвращает результаты. Это позволяет делать сложную распределённую логику с retry и таймерами на стандартном PHP.',
+                'answer' => '**`Temporal`** — open-source движок оркестрации **stateful и долгоживущих workflow**: распределённые саги, retry с backoff, таймеры на дни/недели, гарантированное выполнение.
+
+**Архитектура:**
+
+- **Temporal Server** (Go) — хранит состояние workflow, диспатчит задачи.
+- **`RoadRunner` + `temporal-php`** — **основной PHP-runtime** для Temporal workflow.
+- **PHP-разработчик** пишет workflow и activity как обычные PHP-классы.
+
+**Разделение обязанностей:**
+
+| Слой | Что делает |
+|---|---|
+| **Temporal Server** | Хранит state, очередь задач, таймеры, history |
+| **RoadRunner** | Держит PHP-воркеры живыми, связь по `Goridge` |
+| **PHP Workflow** | Декларативное описание шагов (long-running) |
+| **PHP Activity** | Атомарные единицы работы (отправить email, списать с карты) |
+
+**Что даёт по сравнению с Laravel Queue:**
+
+- **Гарантия выполнения** — workflow либо доходит до конца, либо завершается с явным `failed`-статусом; никаких «потерянных» job-ов после crash воркера.
+- **State machine** — переменные внутри workflow сохраняются в Temporal между шагами; продолжение через дни/недели **без БД-таблицы для прогресса**.
+- **Distributed retry** — встроенный exponential backoff с настройкой per activity.
+- **Timers** — `Workflow::timer(\'P30D\')` — пауза на 30 дней без воркера в памяти.
+- **Versioning** — изменения логики workflow без поломки уже бегущих экземпляров.
+
+**Типичные сценарии:**
+
+- **Onboarding пользователя** на 7 дней с цепочкой триггеров.
+- **Saga для платежей** через 3 внешних провайдера с компенсациями.
+- **Долгие ETL** с retry на каждом шаге.
+- **Подписочный billing** с timer-ами и pro-rata.
+
+**Запуск:** `php artisan temporal:make-worker`, `./rr serve` — воркер регистрируется на `task queue` и принимает workflow/activity tasks от Temporal Server.',
                 'difficulty' => 4,
                 'topic' => 'laravel.octane_horizon',
             ],
             [
                 'category' => 'Laravel',
                 'question' => 'Почему в Octane/RoadRunner опасно держать состояние, специфичное для запроса, в синглтонах сервис-контейнера?',
-                'answer' => 'Синглтоны и статические свойства живут весь жизненный цикл воркера, то есть переживают тысячи запросов. Если положить в синглтон текущего пользователя, request-scoped репозиторий или открытое соединение, эти данные утекут в следующие запросы — другому пользователю отдастся чужой контекст. Поэтому request-scoped сервисы регистрируют как scoped (Octane сбрасывает их между запросами) или явно ребиндят на каждый запрос.',
+                'answer' => '**Главный анти-паттерн долгоживущего PHP** — request-scoped state в singleton-е.
+
+**Жизненные циклы биндингов:**
+
+| Тип | FPM | Octane/RR |
+|---|---|---|
+| **`bind()`** (transient) | Новый инстанс на каждый `resolve` | То же |
+| **`singleton()`** | Один на запрос (запрос = процесс) | **Один на ВСЁ время жизни воркера** (тысячи запросов) |
+| **`scoped()`** (L8+) | То же, что singleton | **Один на запрос** — Octane сбрасывает между запросами |
+
+**Что ломается, если положить request-данные в `singleton`:**
+
+- **`Auth::user()`** в singleton-сервисе → запрос N+1 видит юзера из запроса N.
+- **`TenantContext`** на singleton → клиент A видит данные клиента B.
+- **Открытое БД-соединение** конкретно «под запрос» → утекают prepared statements, утрачивается изоляция транзакций.
+- **Request-scoped кеш** (`OncePerRequest` маркер) → данные переживают и протекают.
+
+**Почему это критично:**
+
+- Это **не «случайная утечка»**, а **гарантированный** баг через несколько запросов на одном воркере.
+- В тестах **не воспроизводится** — там обычно один request на test case.
+- В проде **видно по жалобам пользователей** на «чужие данные», иногда через дни.
+
+**Как правильно:**
+
+| Что нужно | Чем зарегистрировать |
+|---|---|
+| Глобальный сервис без state (логгер, mailer, HTTP-клиент) | **`singleton()`** — нормально |
+| Сервис с **request-scoped state** | **`scoped()`** — Octane сбрасывает |
+| Чистая функция/фабрика | **`bind()`** — каждый раз новый |
+
+**Что Octane сбрасывает между запросами автоматически:**
+
+- `scoped`-биндинги.
+- Уже подкачанные `request`, `response`, `session`, `cookie` (через `FlushTemporaryContainerInstances` listener).
+- Uploaded files.
+
+**Что НЕ сбрасывает (нужно руками в `RequestTerminated`):**
+
+- **Статические свойства** ваших классов.
+- **Закешированные значения** в фасадах (`Config::set` живёт до конца воркера).
+- Свой singleton-state — нужно явно сбрасывать или мигрировать на `scoped`.',
                 'difficulty' => 4,
                 'topic' => 'laravel.octane_horizon',
             ],

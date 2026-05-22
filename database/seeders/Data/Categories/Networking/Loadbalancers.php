@@ -92,14 +92,70 @@ Sticky оправдан только для **WebSocket/SSE** или legacy-пр
             [
                 'category' => 'Сети',
                 'question' => 'Что такое заголовки X-Forwarded-For, X-Real-IP и почему их не стоит слепо доверять?',
-                'answer' => 'Когда между клиентом и сервером стоят прокси/балансировщики, TCP src_ip в приложении — это IP последнего прокси, не реальный клиент. Чтобы прокинуть оригинальный IP, прокси добавляет специальные заголовки: 1) X-Forwarded-For (XFF) — список IP через запятую: «client_ip, proxy1_ip, proxy2_ip». Каждый прокси на пути ДОБАВЛЯЕТ к нему свой known src_ip. Самый левый — оригинальный клиент. 2) X-Real-IP — обычно только один IP (тот, что прокси считает клиентским). 3) Forwarded (RFC 7239, новый стандарт) — структурированный «Forwarded: for=192.0.2.43;proto=https;by=10.0.0.1». Поддерживается хуже legacy XFF. Главная проблема: заголовки можно ПОДДЕЛАТЬ. Любой клиент может прислать X-Forwarded-For: 1.2.3.4 в обычном HTTP-запросе — и наивный код запишет это в логи/rate-limit/audit как «реальный IP». Правила безопасности: 1) Доверяйте XFF только если перед вами есть ИЗВЕСТНЫЙ доверенный прокси (CDN, LB) — конфигурируйте список trusted_proxies (в Laravel — App\\Http\\Middleware\\TrustProxies, в Symfony — Request::setTrustedProxies, в nginx — set_real_ip_from + real_ip_header). 2) Доверенный прокси ДОЛЖЕН перезаписывать или валидировать XFF (Cloudflare добавляет CF-Connecting-IP, который нельзя подделать снизу). 3) Берите крайний правый IP из XFF, начиная с известного untrusted (Mozilla\'s docs: «leftmost is from least trusted source»; для определения «настоящего клиента» — справа налево скиппайте свои прокси). 4) Никогда не используйте сырой XFF для бизнес-логики без trust chain.',
+                'answer' => 'Когда между клиентом и сервером стоят прокси/балансировщики, **TCP `src_ip` в приложении — это IP последнего прокси, не реальный клиент**. Чтобы прокинуть оригинальный IP, прокси добавляет специальные заголовки.
+
+**Заголовки:**
+
+| Заголовок | Формат | Стандарт |
+|---|---|---|
+| **`X-Forwarded-For`** (XFF) | `client_ip, proxy1_ip, proxy2_ip` | de-facto, легаси |
+| **`X-Real-IP`** | один IP (тот, что прокси считает клиентским) | de-facto |
+| **`Forwarded`** | `Forwarded: for=192.0.2.43;proto=https;by=10.0.0.1` | RFC 7239 |
+| **`CF-Connecting-IP`** (Cloudflare) | один IP | проприетарный |
+
+Каждый прокси на пути **добавляет** к `XFF` свой `src_ip`. **Самый левый** — оригинальный клиент.
+
+**Главная проблема — заголовки можно ПОДДЕЛАТЬ.** Любой клиент может прислать `X-Forwarded-For: 1.2.3.4` в обычном HTTP-запросе — и наивный код запишет это в логи/rate-limit/audit как «реальный IP».
+
+**Правила безопасности:**
+
+1. **Доверяйте `XFF` только если перед вами есть известный доверенный прокси.** Конфигурируйте `trusted_proxies`:
+    - **Laravel** — `App\\Http\\Middleware\\TrustProxies`.
+    - **Symfony** — `Request::setTrustedProxies()`.
+    - **nginx** — `set_real_ip_from` + `real_ip_header`.
+2. **Доверенный прокси должен перезаписывать или валидировать `XFF`.** Cloudflare добавляет **`CF-Connecting-IP`**, который нельзя подделать снизу.
+3. **Парсинг справа налево:** скиппайте свои прокси с конца, первый «чужой» IP — настоящий клиент.
+4. **Никогда не используйте сырой `XFF`** для бизнес-логики без trust chain.',
+                'code_example' => "# nginx: доверять только своему фронту\nset_real_ip_from 10.0.0.0/8;\nreal_ip_header X-Forwarded-For;\nreal_ip_recursive on;\n\n# Laravel App\\Http\\Middleware\\TrustProxies\n# protected \$proxies = ['10.0.0.0/8'];\n# protected \$headers = Request::HEADER_X_FORWARDED_FOR\n#     | Request::HEADER_X_FORWARDED_PROTO;",
+                'code_language' => 'nginx',
                 'difficulty' => 4,
                 'topic' => 'networking.loadbalancers',
             ],
             [
                 'category' => 'Сети',
                 'question' => 'Что такое CDN и как он реально работает (с anycast, edge cache, origin)?',
-                'answer' => 'CDN (Content Delivery Network) — географически распределённая сеть edge-серверов, которая отдаёт контент пользователю с ближайшей точки. Архитектура: 1) Origin — ваш сервер с настоящими данными (S3 bucket, EC2, on-prem). 2) Edge / PoP (Point of Presence) — точки CDN в разных городах (Cloudflare 300+ PoP, AWS CloudFront 600+ edge locations). 3) Маршрутизация клиентов: anycast IP — один и тот же IP анонсируется из всех PoP одновременно через BGP, и пакет клиента автоматически попадает в ближайший по BGP-метрикам PoP. Альтернатива — GeoDNS, где DNS отдаёт разный IP в зависимости от IP резолвера. Anycast надёжнее (если PoP падает, BGP переключает на следующий). Что делает edge: 1) Кэширует ответы origin по Cache-Control / правилам CDN (HTML, JS, CSS, картинки, видео). 2) Терминирует TLS близко к пользователю — TCP/TLS handshake идут до edge (1-5ms), а не до origin (100ms+). Это драматически снижает latency, особенно для HTTPS. 3) Сжатие, image optimization, минификация на лету. 4) WAF, DDoS-защита, rate limit. 5) Edge-compute (Cloudflare Workers, Lambda@Edge, Vercel Edge) — JS/WASM код выполняется в каждом PoP перед origin. 6) Кэш-инвалидация — purge by URL/tag/zone, обычно мгновенный. На примере запроса /style.css: клиент → ближайший edge (anycast) → проверка local cache. Hit → отдаёт сразу. Miss → запрос на origin (часто через приватную backbone CDN), кэширует, отдаёт клиенту. Все следующие запросы из этого региона — hit. Главные провайдеры: Cloudflare, AWS CloudFront, Fastly, Akamai, Bunny.net.',
+                'answer' => '**`CDN`** (Content Delivery Network) — географически распределённая сеть edge-серверов, отдающая контент пользователю с **ближайшей точки**.
+
+**Архитектура:**
+
+- **`Origin`** — ваш сервер с настоящими данными (`S3 bucket`, `EC2`, on-prem).
+- **`Edge` / `PoP`** (Point of Presence) — точки CDN в городах. Cloudflare ~300+ PoP, AWS CloudFront 600+ edge locations.
+
+**Маршрутизация клиентов:**
+
+| Способ | Как работает | Плюсы / минусы |
+|---|---|---|
+| **`Anycast`** | один IP анонсируется из **всех PoP** через `BGP`, пакет идёт в ближайший по метрикам | надёжно: PoP упал — `BGP` переключит |
+| **`GeoDNS`** | `DNS` отдаёт разный IP в зависимости от IP резолвера | проще, но **`EDNS Client Subnet`** для точности |
+
+**Что делает edge:**
+
+1. **Кэширует** ответы origin по `Cache-Control` / правилам CDN (HTML, JS, CSS, картинки, видео).
+2. **Терминирует TLS** близко к пользователю — TCP/TLS handshake идут до edge (1-5ms), а не до origin (100ms+). Драматически снижает latency для HTTPS.
+3. **Сжатие**, image optimization, минификация на лету.
+4. **`WAF`**, DDoS-защита, rate limit.
+5. **Edge-compute** (`Cloudflare Workers`, `Lambda@Edge`, `Vercel Edge`) — JS/WASM в каждом PoP перед origin.
+6. **Кэш-инвалидация** — purge by URL/tag/zone, обычно мгновенный.
+
+**Поток запроса `/style.css`:**
+
+1. Клиент → ближайший edge (anycast).
+2. **Проверка local cache.**
+3. **Hit** → отдаёт сразу.
+4. **Miss** → запрос на origin (часто через приватную **backbone CDN**), кэширует, отдаёт клиенту.
+5. Все следующие запросы из этого региона — **hit**.
+
+**Главные провайдеры:** `Cloudflare`, `AWS CloudFront`, `Fastly`, `Akamai`, `Bunny.net`.',
                 'difficulty' => 4,
                 'topic' => 'networking.loadbalancers',
             ],

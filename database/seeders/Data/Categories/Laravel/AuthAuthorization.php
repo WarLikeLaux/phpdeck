@@ -50,15 +50,82 @@ Auth::guard(\'api\')->check();
             [
                 'category' => 'Laravel',
                 'question' => 'В чём разница между Sanctum и Passport?',
-                'answer' => 'Sanctum - простой и лёгкий пакет: API-токены (как GitHub) + SPA-аутентификация через сессии и cookies. Подходит для большинства SPA и мобильных приложений. Passport - полноценный OAuth2 сервер: авторизация сторонних приложений, grant types, refresh tokens. Использовать только если реально нужен OAuth2.',
-                'code_example' => '// Sanctum
-$token = $user->createToken(\'mobile\')->plainTextToken;
+                'answer' => '**Sanctum** и **Passport** — два официальных пакета Laravel для **API-аутентификации**, но решают **разные задачи**.
 
-// в маршрутах
-Route::middleware(\'auth:sanctum\')->get(\'/me\', fn(Request $r) => $r->user());
+**Sanctum (`laravel/sanctum`) — лёгкий и простой:**
 
-// клиент
-fetch(\'/api/me\', { headers: { Authorization: `Bearer ${token}` } });',
+- **API-токены** в стиле GitHub Personal Access Tokens (Bearer-токен в БД).
+- **SPA-аутентификация** через **сессии и cookies** (тот же домен).
+- **Mobile-токены** для нативных приложений.
+- Token abilities (≈ простые scopes).
+- **Без OAuth2-flow** — никаких refresh tokens, authorization codes, client_credentials.
+
+**Passport (`laravel/passport`) — полноценный OAuth2-сервер:**
+
+- **OAuth2 grant types**: Authorization Code (с PKCE), Client Credentials, Personal Access, Password (deprecated).
+- **Refresh tokens** для долгоживущих сессий.
+- **Сторонние приложения** запрашивают доступ к вашему API от имени юзера (как Google/Facebook login).
+- JWT-токены (опционально).
+- Гораздо сложнее в настройке и обслуживании.
+
+**Сравнение:**
+
+| Параметр | **Sanctum** | **Passport** |
+|---|---|---|
+| Стандарт | Свой простой | **OAuth2 RFC 6749** |
+| Размер таблиц | 1 (`personal_access_tokens`) | 5+ (`oauth_clients`, `oauth_auth_codes`, `oauth_access_tokens`, ...) |
+| Refresh tokens | Нет | **Да** |
+| Сторонние приложения | Нет | **Да** |
+| SPA на том же домене | **Да** (cookie + session) | Нет (только Bearer) |
+| Мобильные | **Да** (Bearer) | Да |
+| 2FA / PKCE | Нет | **Да** |
+| Сложность | **Низкая** | Высокая |
+
+**Когда что брать:**
+
+- **Sanctum** — **в 95% случаев**. SPA + мобильное приложение, простой API для своего фронта.
+- **Passport** — только если **реально** нужен OAuth2: вы строите public API, где сторонние компании пишут клиентов под ваш сервис.
+
+**Правило:** **не брать Passport «на вырост»** — миграция Passport→Sanctum проще, чем наоборот.',
+                'code_example' => '<?php
+// === Sanctum ===
+// php artisan install:api  (Laravel 11) или composer require laravel/sanctum
+// php artisan migrate
+
+// 1) Mobile token
+\$token = \$user->createToken("mobile", ["read", "write"])->plainTextToken;
+
+// 2) Защита маршрута
+Route::middleware("auth:sanctum")->get("/api/me", fn (Request \$r) =>
+    \$r->user()
+);
+
+// 3) Проверка ability
+if (\$request->user()->tokenCan("delete-posts")) { /* ... */ }
+
+// 4) Revoke
+\$user->tokens()->delete();              // все токены
+\$user->currentAccessToken()->delete();   // только текущий
+
+// Клиент - Bearer
+fetch("/api/me", {
+    headers: { Authorization: `Bearer \${token}` }
+});
+
+// === Passport (OAuth2) ===
+// composer require laravel/passport
+// php artisan passport:install
+
+// Создать OAuth-клиент для стороннего приложения
+// php artisan passport:client  (interactive)
+
+// Защита - тот же middleware-синтаксис, другой driver
+Route::middleware("auth:api")->get("/api/user", ...);
+
+// В config/auth.php
+"guards" => [
+    "api" => ["driver" => "passport", "provider" => "users"],
+],',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.auth_authorization',
@@ -150,7 +217,51 @@ Gate::after(function (User $user, string $ability, ?bool $result) {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое уязвимость IDOR и как её предотвращать в Laravel?',
-                'answer' => 'IDOR (Insecure Direct Object Reference) - атака, при которой авторизованный пользователь меняет идентификатор в URL/теле запроса (/orders/5 → /orders/6, или body { "user_id": 7 }) и получает доступ к чужой сущности. Уязвимость возникает, когда контроллер находит модель только по первичному ключу, не проверяя ВЛАДЕНИЕ. Ловушка: route model binding (Order $order) сам по себе не защищает - он лишь делает Order::findOrFail($id), не зная про текущего пользователя. Три способа защиты, по возрастанию надёжности: 1) Policy + $this->authorize() в контроллере - явная проверка владения на уровне домена, легко тестировать, видно в логах. 2) Scoped query через отношение текущего пользователя: Auth::user()->orders()->findOrFail($id) - SQL-запрос изначально содержит WHERE user_id = ?, просто невозможно достать чужое. 3) Scoped implicit binding через Route::scopeBindings() (или метод scopeBindings() на конкретном роуте) - заставляет Laravel при /users/{user}/orders/{order} проверять, что order принадлежит user. Также: для multi-tenant приложений заворачивайте всё в Global Scope с tenant_id, и тестируйте политики через actingAs($otherUser)->getJson("/orders/{$ownOrder->id}")->assertForbidden(). Никогда не доверяйте $request->input("user_id") в клиентских действиях - всегда брать $request->user()->id. Исключение - админские/системные эндпоинты, где назначение чужого user_id легитимно: там input("user_id") можно принимать, но Policy сначала проверяет, что текущий user - админ с нужной ролью, а сам user_id валидируется на существование.',
+                'answer' => '**IDOR (Insecure Direct Object Reference)** — атака, при которой авторизованный пользователь **меняет идентификатор** в URL/теле запроса и получает доступ к **чужой сущности**.
+
+**Примеры атаки:**
+
+- `/orders/5` → **`/orders/6`** (чужой заказ).
+- POST body `{ "user_id": 7 }` → действие выполнится от имени чужого юзера.
+- `/files/abc` → **`/files/xyz`** (чужой документ).
+
+**Почему возникает:** контроллер находит модель **только по первичному ключу**, не проверяя **ВЛАДЕНИЕ**.
+
+**КРИТИЧНАЯ ЛОВУШКА — Route Model Binding не защищает:**
+
+- `public function show(Order $order)` под капотом делает **`Order::findOrFail($id)`** — **ничего** не знает про текущего пользователя.
+- Это **самая частая** дыра в Laravel-приложениях.
+
+**Три способа защиты, по возрастанию надёжности:**
+
+| Способ | Что делает | Когда применять |
+|---|---|---|
+| **1. Policy + `$this->authorize()`** | Явная проверка владения на уровне домена, видна в логах | По умолчанию для всех CRUD |
+| **2. Scoped query через relation** | `auth()->user()->orders()->findOrFail($id)` — SQL уже содержит `WHERE user_id = ?` | Когда модель **всегда** принадлежит юзеру |
+| **3. Scoped implicit binding** | `Route::scopeBindings()` заставляет Laravel проверять связь между parent и child | Nested routes `/users/{user}/orders/{order}` |
+
+**Дополнительные правила:**
+
+- **Никогда** не доверяйте `$request->input("user_id")` в **клиентских** действиях — всегда брать `$request->user()->id`.
+- **Multi-tenant** приложения — оборачивайте всё в **Global Scope с `tenant_id`**.
+- **Тестируйте** политики через `actingAs($otherUser)->getJson("/orders/{$ownOrder->id}")->assertForbidden()`.
+
+**Исключение — админские/системные эндпоинты:**
+
+- Назначение чужого `user_id` легитимно (админ создаёт юзера, импорт).
+- Policy сначала проверяет, что **текущий user — админ** с нужной ролью.
+- Сам `user_id` валидируется на существование через `exists:users,id`.
+
+**Тест на IDOR должен быть в каждом проекте:**
+
+```php
+$ownOrder = Order::factory()->for($user)->create();
+$otherOrder = Order::factory()->create(); // чужой
+
+$this->actingAs($user)
+    ->getJson("/orders/{$otherOrder->id}")
+    ->assertForbidden(); // или 404 если не хочется палить существование
+```',
                 'code_example' => '<?php
 // УЯЗВИМО: route model binding без проверки владения
 public function show(Order $order) {

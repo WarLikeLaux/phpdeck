@@ -74,7 +74,36 @@ Route::middleware([\'auth\', \'verified\', \'subscribed\'])->group(function () {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое terminate middleware?',
-                'answer' => 'Terminate middleware - middleware с методом terminate(), который Laravel вызывает ПОСЛЕ формирования и отправки ответа. Подходит для ЛЁГКОЙ постобработки: запись access-логов, метрики, лёгкая аналитика, очистка request-scoped ресурсов. Сам метод вызывается всегда, но реальный выигрыш по latency для клиента есть только на тех SAPI, что умеют закрыть HTTP-ответ до завершения процесса: FastCGI/PHP-FPM через fastcgi_finish_request(), а на Octane-стеке RoadRunner/Swoole/FrankenPHP - за счёт самой архитектуры долгоживущего воркера, где ответ улетает в сокет и только потом исполняется terminate(). На встроенном dev-сервере, в CLI-SAPI и в Apache mod_php (prefork) клиент будет ждать завершения terminate() - там нет fastcgi_finish_request(). ВАЖНО: terminate - НЕ замена очередям. Тяжёлые операции (внешние HTTP-вызовы платёжному шлюзу, отправка почты, генерация PDF, долгая аналитика) в любом случае держат воркер занятым и снижают throughput пула - блокируют процесс под следующим запросом независимо от SAPI; для них нужен queue/job. Также terminate не запустится, если процесс убили kill -9 / OOM / сегфолтом до его вызова - не гарантия доставки.',
+                'answer' => '**Terminate middleware** — middleware с методом **`terminate($request, $response)`**, который Laravel вызывает **ПОСЛЕ формирования и отправки ответа** клиенту.
+
+**Подходит для лёгкой постобработки:**
+
+- Запись **access-логов**.
+- **Метрики** (HTTP duration, status codes).
+- Лёгкая **аналитика**.
+- **Очистка** request-scoped ресурсов.
+
+**Когда клиент реально не ждёт `terminate()` — зависит от SAPI:**
+
+| SAPI | Клиент ждёт `terminate`? | Механизм |
+|---|---|---|
+| **PHP-FPM / FastCGI** | **Нет** | `fastcgi_finish_request()` — ответ улетел, процесс продолжает работать |
+| **Octane (RoadRunner / Swoole / FrankenPHP)** | **Нет** | Долгоживущий воркер: ответ в сокет, потом `terminate` |
+| **Apache mod_php (prefork)** | **Да** | Нет механизма «закрыть response» |
+| **PHP встроенный dev-сервер** | **Да** | То же |
+| **CLI-SAPI** (artisan) | N/A | Нет HTTP-ответа |
+
+**КРИТИЧНО — `terminate` НЕ замена очередям:**
+
+- Тяжёлые операции (внешние HTTP к Stripe, отправка почты, генерация PDF, долгая аналитика) **держат воркер занятым** — снижают throughput пула, блокируют процесс под следующим запросом.
+- Для тяжёлой работы нужен **queue/job**, а не `terminate`.
+
+**Гарантии доставки:**
+
+- `terminate` **не запустится**, если процесс убили `kill -9` / OOM / сегфолтом до его вызова.
+- Это **не гарантия доставки** — критичный аудит-лог пишите **до** ответа.
+
+**Подключение:** middleware с методом `terminate` достаточно зарегистрировать обычным способом — Laravel сам найдёт метод через рефлексию и вызовет.',
                 'code_example' => 'class LogRequestMiddleware {
     public function handle($request, Closure $next) {
         return $next($request);
@@ -91,7 +120,43 @@ Route::middleware([\'auth\', \'verified\', \'subscribed\'])->group(function () {
             [
                 'category' => 'Laravel',
                 'question' => 'Как реализовать rate limiting в Laravel?',
-                'answer' => 'Через middleware throttle. Можно по умолчанию (60 запросов в минуту), кастомный лимит, по группам. Сложные правила задаются через RateLimiter::for() в провайдере. ВАЖНО про Laravel 11: в нём RouteServiceProvider удалён из дефолтного скелета - регистрация лимитеров перенесена в AppServiceProvider::boot() (или в bootstrap/app.php через withRouting). В Laravel 10 и старше лимитеры жили в RouteServiceProvider::configureRateLimiting(). Если вы апгрейдитесь, эти регистрации нужно переехать самостоятельно. Также в Laravel 11+ доступен perSecond() (раньше был только perMinute/perHour/perDay).',
+                'answer' => '**Rate limiting** реализуется через middleware **`throttle`** + именованные лимитеры в `RateLimiter::for()`.
+
+**Два формата записи middleware:**
+
+| Формат | Что значит |
+|---|---|
+| **`throttle:60,1`** | 60 запросов в 1 минуту на ключ (по умолчанию `auth_id` / IP) |
+| **`throttle:api`** | Именованный limiter из `RateLimiter::for("api", ...)` |
+
+**Где регистрировать лимитеры:**
+
+| Версия | Файл |
+|---|---|
+| **Laravel 11+** | **`AppServiceProvider::boot()`** (RouteServiceProvider удалён из скелета) |
+| **Laravel 10 и старше** | **`RouteServiceProvider::configureRateLimiting()`** |
+
+**При апгрейде на L11 — лимитеры нужно перенести вручную.**
+
+**Доступные методы `Limit`:**
+
+| Метод | Доступно с |
+|---|---|
+| **`Limit::perSecond(2)`** | **Laravel 11+** (для burst-защиты login/OTP) |
+| **`Limit::perMinute(60)`** | Всегда |
+| **`Limit::perHour(1000)`** | Всегда |
+| **`Limit::perDay(10000)`** | Всегда |
+| **`Limit::none()`** | Без лимита (whitelist) |
+
+**Ключи (через `->by(...)`):**
+
+- **`auth_id`** — лимит на пользователя.
+- **`ip`** — лимит на IP (для гостей).
+- **`header`** — лимит на API-key через `$request->header("X-API-Key")`.
+
+**Заголовки ответа:** `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` при `429 Too Many Requests`.
+
+**Подводный камень за балансером:** `$request->ip()` вернёт **IP балансера**, не клиента. Нужен **`TrustProxies`** middleware (в L11 — настраивается в `bootstrap/app.php`), иначе один IP уронит всех.',
                 'code_example' => 'Route::middleware(\'throttle:60,1\')->group(...);
 
 // Кастомный
@@ -109,7 +174,44 @@ Route::middleware(\'throttle:api\')->group(...);',
             [
                 'category' => 'Laravel',
                 'question' => 'Как работает rate limiting в Laravel и почему предпочтителен Redis-драйвер?',
-                'answer' => 'RateLimiter работает поверх cache-store. Под капотом и Redis, и database драйвер используют атомарные операции (Redis - INCR/EXPIRE, database - инкремент через UPDATE и cache-locks), так что at-the-protocol-level гонок не должно быть в обоих. Тем не менее Redis на проде предпочтительнее по двум причинам: (1) производительность - всё в RAM, INCR/EXPIRE - O(1), нагрузка на БД не растёт от каждого запроса; (2) TTL автоматически обслуживается Redis-сервером (просроченные ключи удаляются), тогда как для database-драйвера протухшие записи висят в таблице cache, пока их не удалит cache:prune-stale-tags / cron. На больших RPS database-драйвер ещё и забивает binlog/WAL бессмысленными апдейтами счётчиков. RateLimiter::for() в AppServiceProvider определяет лимит, throttle:apiName применяет; ключ задаётся через by() (user_id, ip, header). Также с Laravel 11+ доступен perSecond() для тонкого ограничения burst-трафика.',
+                'answer' => '**`RateLimiter`** работает **поверх cache-store**. Под капотом и Redis, и database драйвер используют атомарные операции:
+
+- **Redis** — `INCR` + `EXPIRE` (O(1)).
+- **Database** — инкремент через `UPDATE` + cache-locks.
+
+**At-the-protocol-level гонок не должно быть в обоих.** Тем не менее **Redis на проде предпочтительнее** по двум причинам:
+
+**1) Производительность:**
+
+- Всё в **RAM**, `INCR/EXPIRE` — O(1) операции.
+- Нагрузка на БД **не растёт** от каждого HTTP-запроса.
+- Database-драйвер на больших RPS забивает **binlog/WAL** бессмысленными апдейтами счётчиков.
+
+**2) TTL автоматически обслуживается Redis-сервером:**
+
+- Просроченные ключи **удаляются** Redis-ом сам собой.
+- Database-драйвер: протухшие записи **висят в `cache`**, пока их не удалит `cache:prune-stale-tags` / cron.
+
+**Сравнение драйверов для rate limiting:**
+
+| Параметр | **Redis** | **Database** | **File** |
+|---|---|---|---|
+| Скорость | O(1) RAM | UPDATE + lock | I/O диск |
+| Auto-cleanup TTL | **Да** | Нет, нужен prune | Нет |
+| Распределённость | Да | Да | **Нет** (только локально) |
+| Production | **Дефолт** | Только small projects | Нет |
+
+**Как переключить:**
+
+- **`.env`** — `CACHE_STORE=redis` (Laravel 11) или `CACHE_DRIVER=redis` (старше).
+- **`config/cache.php`** — `default` → `redis`.
+
+**Сценарии:**
+
+- **`Limit::perSecond(2)`** (Laravel 11+) — тонкое ограничение **burst-трафика** на login/OTP.
+- **`->by($request->user()->id)`** — лимит на пользователя.
+- **`->by($request->ip())`** — лимит для гостей.
+- **`->response(fn () => response()->json([...], 429))`** — кастомный ответ при превышении.',
                 'code_example' => '<?php
 // AppServiceProvider::boot() (Laravel 11+)
 RateLimiter::for("api", fn (Request $r) =>
@@ -135,7 +237,36 @@ CACHE_STORE=database // dev/small projects',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое $middlewarePriority и почему StartSession должен выполниться до VerifyCsrfToken / Authenticate?',
-                'answer' => 'Когда middleware регистрируются как глобальные ИЛИ как часть группы (web/api), Laravel выстраивает их в стек в порядке регистрации - но для НЕКОТОРЫХ middleware важен жёсткий взаимный порядок, который не должен зависеть от того, как их добавили в Kernel. Для этого есть свойство $middlewarePriority в HttpKernel (Laravel 10 и ниже) или $middleware->priority(...) в bootstrap/app.php (Laravel 11+) - массив классов, задающий "правильный" взаимный порядок этих конкретных middleware. Если несколько из них активны на маршруте, Laravel пересортирует их именно по этому списку, а не по порядку добавления. Классические зависимости. 1) StartSession ДО ShareErrorsFromSession, AuthenticateSession, VerifyCsrfToken: чтобы во всех последующих был доступ к $request->session(); CSRF-токен проверяется по значению из сессии, без StartSession токена просто нет. 2) AddQueuedCookiesToResponse и EncryptCookies должны идти между терминальной обработкой и ответом, чтобы зашифровать поставленные ниже куки. 3) Authenticate ПОСЛЕ StartSession и SubstituteBindings - чтобы guard сессионный смог достать user, а route-binding ($user в типизированном параметре) уже разрезолвили модель. Что бывает при поломке порядка: VerifyCsrfToken до StartSession - токен всегда null/несовпадает, все POST дают 419; Authenticate до SubstituteBindings - $request->user() ещё не доступен в момент инжекта policy. Проверить применённый порядок: php artisan route:list -v или dump через middleware-дебаггер.',
+                'answer' => 'Когда middleware регистрируются как **глобальные** или как **часть группы** (`web`/`api`), Laravel выстраивает их в стек в **порядке регистрации**. Но для **некоторых** middleware важен **жёсткий взаимный порядок**, не зависящий от того, как их добавили в Kernel.
+
+**Где задаётся приоритет:**
+
+| Версия | Где |
+|---|---|
+| **Laravel 10 и ниже** | **`$middlewarePriority`** в `app/Http/Kernel.php` |
+| **Laravel 11+** | **`$middleware->priority([...])`** в `bootstrap/app.php` |
+
+Если несколько priority-middleware активны на маршруте, Laravel **пересортирует их именно по этому списку**, а не по порядку добавления.
+
+**Классические зависимости порядка:**
+
+| Что должно идти раньше | Что после | Почему |
+|---|---|---|
+| **`StartSession`** | `ShareErrorsFromSession`, `AuthenticateSession`, `VerifyCsrfToken` | Чтобы в последующих был доступ к `$request->session()`. CSRF-токен **проверяется по значению из сессии** — без StartSession токена просто нет |
+| **`EncryptCookies`** | `AddQueuedCookiesToResponse` | Зашифровать куки **перед** ответом |
+| **`SubstituteBindings`** | `Authenticate`, `Authorize` | Route-binding (`Post $post`) должен быть разрезолвлен **до** policy-check |
+| **`StartSession`** | `Authenticate` | Сессионный guard читает user из сессии |
+
+**Что ломается при неправильном порядке:**
+
+- **`VerifyCsrfToken` до `StartSession`** → токен всегда `null` / не совпадает → **все POST дают `419 PAGE EXPIRED`**.
+- **`Authenticate` до `SubstituteBindings`** → **`$request->user()` ещё не доступен** в момент инжекта policy.
+- **`AddQueuedCookies` после рендера ответа** → «cookie не приходит».
+
+**Как проверить применённый порядок:**
+
+- **`php artisan route:list -v`** — покажет middleware-стек каждого роута.
+- В отладке — dump через простой middleware-дебаггер, выводящий список класс-имён.',
                 'code_example' => '<?php
 // Laravel 10 и ниже - app/Http/Kernel.php
 class Kernel extends HttpKernel {

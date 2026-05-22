@@ -199,25 +199,108 @@ $user->roles()->sync([1, 2, 3]);',
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое pivot model и зачем он нужен в belongsToMany?',
-                'answer' => 'Базовый pivot - это просто строка-связка. Когда на ней нужны дополнительные поля (role, joined_at), методы или события, объявляют отдельную модель, наследующую Pivot, и подключают её через using(MembershipPivot::class). Это позволяет иметь withPivot, withTimestamps, accessors и события created/updated на самой связке. Для many-to-many полиморфных используется MorphPivot.',
-                'code_example' => 'class Membership extends Pivot {
-    protected $casts = [\'joined_at\' => \'datetime\'];
+                'answer' => '**Базовый pivot** — это просто строка в промежуточной таблице (`role_user` с `user_id`/`role_id`). Доступ через `$user->roles->first()->pivot->...` — на pivot живёт **базовый класс `Pivot`** (наследник `Model`).
 
+**Когда нужна своя pivot model:**
+
+| Что хочется | На базовом `Pivot` | На своей `Membership extends Pivot` |
+|---|---|---|
+| Доступ к доп. полям | `->withPivot(\'role\', \'joined_at\')` + `$pivot->role` | То же |
+| **`$casts`** на pivot-поля | Нельзя | **Да** — `protected $casts = [\'joined_at\' => \'datetime\']` |
+| **Методы на pivot** | Нельзя | **Да** — `$pivot->isOwner()`, `$pivot->isActive()` |
+| **События** (`created`, `updated`, `saving`) | Нельзя | **Да** — Observer на pivot |
+| **Связи с ДРУГИМИ моделями** от pivot | Нельзя | **Да** — `$pivot->approver` |
+| **Mutators/Accessors** | Нельзя | **Да** |
+
+**Подключение — `->using(Membership::class)`:**
+
+- На обеих сторонах `belongsToMany` рекомендуется указать `->using()` для консистентности.
+- **`Membership`** наследует `Illuminate\\Database\\Eloquent\\Relations\\Pivot`.
+- Для **полиморфных** many-to-many (`morphToMany`) — наследовать `MorphPivot`.
+
+**Что меняется при `using()`:**
+
+- На pivot теперь **есть события** — Observer/`booted()` на `Membership`.
+- `$casts`, `$dates`, `$fillable` работают как на обычной модели.
+- Можно делать **`belongsTo`** от pivot — `Membership::approver()` (кто одобрил).
+
+**Подводные камни:**
+
+- **Pivot не имеет автоматического `id`** — нужно явно `$table->id()` в миграции и переопределить `public $incrementing = true;` на pivot-модели.
+- **`withTimestamps()`** — обязательно, если хочешь `created_at`/`updated_at` на pivot.
+- **Events не срабатывают на `attach`/`sync`** через bulk — те же грабли, что с `Model::where(...)->update(...)`. Если нужны события — `Membership::create([...])` руками.
+- **Кастомные методы pivot** требуют **загрузки pivot-данных** — без `withPivot([...])` или **`->as(\'membership\')`** их не будет в результирующем запросе.
+- **`->as(\'membership\')`** — переименовать `$pivot` в `$membership` для читаемости: `$user->teams->first()->membership->isOwner()`.',
+                'code_example' => '<?php
+// === 1. Pivot модель с casts, методами и событиями ===
+use Illuminate\\Database\\Eloquent\\Relations\\Pivot;
+
+class Membership extends Pivot {
+    protected $table = \'memberships\';
+
+    // pivot хочет id - чтобы Observer/events работали с конкретной строкой
+    public $incrementing = true;
+
+    protected $casts = [
+        \'joined_at\'  => \'datetime\',
+        \'expires_at\' => \'datetime\',
+        \'role\'       => MembershipRole::class, // enum
+    ];
+
+    // методы на связке
     public function isOwner(): bool {
-        return $this->role === \'owner\';
+        return $this->role === MembershipRole::Owner;
+    }
+    public function isExpired(): bool {
+        return $this->expires_at?->isPast() ?? false;
+    }
+
+    // связь pivot с ДРУГОЙ моделью - кто одобрил вступление
+    public function approver() {
+        return $this->belongsTo(User::class, \'approved_by\');
+    }
+
+    // события - Observer прямо на pivot
+    protected static function booted(): void {
+        static::created(function (Membership $m) {
+            event(new UserJoinedTeam($m));
+        });
     }
 }
 
+// === 2. Подключение ===
 class User extends Model {
     public function teams() {
         return $this->belongsToMany(Team::class)
             ->using(Membership::class)
-            ->withPivot([\'role\', \'joined_at\'])
-            ->withTimestamps();
+            ->withPivot([\'role\', \'joined_at\', \'expires_at\', \'approved_by\'])
+            ->withTimestamps()
+            ->as(\'membership\'); // переименуем pivot для читаемости
     }
 }
 
-$user->teams->first()->pivot->isOwner();',
+class Team extends Model {
+    public function users() {
+        return $this->belongsToMany(User::class)
+            ->using(Membership::class)
+            ->withPivot([\'role\', \'joined_at\', \'expires_at\'])
+            ->withTimestamps()
+            ->as(\'membership\');
+    }
+}
+
+// === 3. Использование ===
+$membership = $user->teams->first()->membership;
+$membership->isOwner();              // true/false
+$membership->approver->name;         // юзер, кто одобрил
+$membership->joined_at->diffForHumans();
+
+// === 4. Для полиморфных many-to-many - MorphPivot ===
+use Illuminate\\Database\\Eloquent\\Relations\\MorphPivot;
+
+class Taggable extends MorphPivot {
+    protected $casts = [\'highlighted\' => \'boolean\'];
+}',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_relations',

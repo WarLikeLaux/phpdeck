@@ -129,7 +129,28 @@ $user->delete();',
             [
                 'category' => 'Laravel',
                 'question' => 'Cast для Value Object с раскладкой в несколько колонок (price → price_amount + price_currency)?',
-                'answer' => 'Cast реализует CastsAttributes и в set() возвращает массив с несколькими ключами - Laravel запишет каждый ключ в свою колонку. В get() читаются те же колонки из $attributes по префиксу $key. Это позволяет хранить Value Object вроде Money в нескольких физических колонках, а в коде работать с ним как с одним свойством модели. В $casts ключ совпадает с префиксом колонок.',
+                'answer' => '**Задача DDD:** хранить **Value Object** (например, `Money`) **в нескольких физических колонках** (`price_amount`, `price_currency`), но в коде работать с ним как с **одним свойством модели** — `$product->price`.
+
+**Решение — custom cast c многоколоночным `set()`:**
+
+- Cast реализует **`CastsAttributes<TGet, TSet>`**.
+- В **`set()`** возвращаем **массив с несколькими ключами** — Laravel запишет каждый ключ в свою колонку.
+- В **`get()`** читаем те же колонки из **`$attributes`** по **префиксу `$key`**.
+- В `$casts` ключ — это **префикс** (`price`), а не реальная колонка.
+
+**Что под капотом:**
+
+- При **чтении** атрибута `$product->price` Laravel вызывает `MoneyCast::get($model, \'price\', null, $attributes)` — возвращаем `Money` из `$attributes[\'price_amount\']` и `$attributes[\'price_currency\']`.
+- При **записи** `$product->price = new Money(100, \'USD\')` Laravel вызывает `MoneyCast::set(...)` и сохраняет в `$attributes` обе колонки.
+- В SQL `INSERT/UPDATE` уходят **обе колонки**, а виртуального `price` нет.
+
+**Подводные камни:**
+
+- **Все участвующие колонки** должны быть в `$fillable`/`$guarded` корректно настроены.
+- **Нельзя выбрать только `select(\'price_amount\')`** — `get()` упадёт на отсутствующем `price_currency`. Решение — `Model::preventAccessingMissingAttributes()` в dev для отлова, либо защитный `?? null` в cast.
+- **Сравнение Value Object** — иммутабельность важна (`final class Money`), без сеттеров; иначе `$product->price->amount = 200` не пройдёт через `set()` cast-а и не запишется.
+- **Альтернатива в L9+** — **`Castable`** интерфейс прямо на Value Object: `Money::castUsing()` → возвращает экземпляр Cast. Получается, что Value Object **сам знает**, как себя кастить.
+- **`AsArrayObject`** / **`AsCollection`** / **`AsEnumCollection`** — встроенные multi-attribute cast-ы из коробки.',
                 'code_example' => '// Cast разворачивает ОДНО логическое поле "price" в ДВЕ физические колонки
 // price_amount (int) и price_currency (string). $key даст префикс "price".
 class MoneyCast implements CastsAttributes {
@@ -439,16 +460,100 @@ DB::transaction(function () use ($user) {
             [
                 'category' => 'Laravel',
                 'question' => 'Что такое custom cast и чем он отличается от accessor/mutator?',
-                'answer' => 'Accessor/mutator - методы getXAttribute/setXAttribute на одной модели, дублируются между моделями. Custom cast (CastsAttributes) - отдельный класс, инкапсулирует пару get/set, переиспользуется на любых моделях. Поддерживает Castable-интерфейс на value object (Money::castUsing()), что даёт чистую интеграцию с DDD. Также есть AsCollection, AsEncryptedCollection, AsArrayObject из коробки.',
+                'answer' => '**Два способа преобразовывать атрибуты модели — но с разной семантикой.**
+
+| Параметр | **Accessor/Mutator** | **Custom Cast** (`CastsAttributes`) |
+|---|---|---|
+| Где описан | Метод **на самой модели** (`name(): Attribute`) | **Отдельный класс**, подключается в `$casts` |
+| Переиспользование | Дублируется в каждой модели | Один класс → подключаем на любые модели |
+| Состояние | Привязан к одной модели | Чистый — данные приходят как аргументы |
+| Multi-attribute (one logical field → multiple columns) | **Нет** | **Да** — `set()` возвращает массив |
+| Кеширование результата | `Attribute::make()->shouldCache()` | По умолчанию кешируется в `$model->classCastCache[$key]` |
+| Связь с DDD/Value Object | Слабая | **Сильная** — `Castable` интерфейс на Value Object |
+| Параметризация | Только closure capture | `MoneyCast:USD` — `:параметр` в `$casts` |
+
+**Когда выбирать accessor/mutator:**
+
+- Просто `ucfirst($name)`, `strtolower($email)` — одноразовая логика на одной модели.
+- Composite поле без отдельного типа — `full_name = first_name . \' \' . last_name`.
+- Mutator-side эффект, привязанный к контексту модели.
+
+**Когда выбирать custom cast:**
+
+- Один и тот же тип на **5+ моделях** — `Money`, `Distance`, `Coordinates`.
+- **DDD Value Object** с собственным поведением (методы `add()`, `convert()`, etc.).
+- **Multi-attribute** (один логический атрибут → несколько колонок).
+- Нужны **параметры**: `\'price\' => MoneyCast::class . \':USD\'`.
+
+**Bonus — `Castable` на самом Value Object:**
+
+- VO реализует `Castable::castUsing()` и возвращает свой Cast-класс.
+- В `$casts` пишем просто `\'price\' => Money::class` — Laravel сам найдёт каст.
+- Получается **внутренне-замкнутый VO** — он сам знает, как сериализоваться.
+
+**Встроенные касты L9+:** `AsArrayObject`, `AsCollection`, `AsEncryptedCollection`, `AsEnumCollection`, `AsStringable`. Покрывают типовые задачи без своего кода.',
                 'code_example' => '<?php
+// === 1. Accessor/Mutator - простая логика на ОДНОЙ модели ===
+class User extends Model {
+    protected function name(): Attribute {
+        return Attribute::make(
+            get: fn ($value) => ucfirst($value),
+            set: fn ($value) => strtolower($value),
+        );
+    }
+}
+
+// === 2. Custom cast - переиспользуемая логика, multi-attribute ===
 final class MoneyCast implements CastsAttributes {
-    public function get($model, $key, $value, $attrs) {
-        return new Money((int) $attrs["{$key}_amount"], $attrs["{$key}_currency"]);
+    public function __construct(private ?string $defaultCurrency = null) {}
+
+    public function get($model, $key, $value, $attrs): Money {
+        return new Money(
+            (int)    $attrs["{$key}_amount"],
+            (string) ($attrs["{$key}_currency"] ?? $this->defaultCurrency),
+        );
     }
-    public function set($model, $key, $value, $attrs) {
-        return ["{$key}_amount" => $value->amount, "{$key}_currency" => $value->currency];
+
+    public function set($model, $key, $value, $attrs): array {
+        return [
+            "{$key}_amount"   => $value->amount,
+            "{$key}_currency" => $value->currency,
+        ];
     }
-}',
+}
+
+class Product extends Model {
+    protected $casts = [
+        "price" => MoneyCast::class . ":USD", // параметр - дефолтная валюта
+        "cost"  => MoneyCast::class,
+    ];
+}
+
+// === 3. Castable - VO сам знает свой Cast ===
+final class Money implements Castable {
+    public function __construct(public int $amount, public string $currency) {}
+
+    public static function castUsing(array $arguments): string {
+        return MoneyCast::class;
+    }
+
+    public function add(Money $other): self { /* ... */ }
+}
+
+class Order extends Model {
+    protected $casts = [
+        "total" => Money::class, // короче, VO сам решает
+    ];
+}
+
+// === 4. Встроенные касты L9+ ===
+protected $casts = [
+    "options"     => AsCollection::class,                       // Collection
+    "settings"    => AsArrayObject::class,                      // ArrayObject (изменяемый)
+    "secrets"     => AsEncryptedCollection::class,              // зашифрованный JSON
+    "permissions" => AsEnumCollection::class . ":" . Permission::class,
+    "bio"         => AsStringable::class,                       // Str-helper
+];',
                 'code_language' => 'php',
                 'difficulty' => 4,
                 'topic' => 'laravel.eloquent_basics',
@@ -456,7 +561,44 @@ final class MoneyCast implements CastsAttributes {
             [
                 'category' => 'Laravel',
                 'question' => 'Атомарность firstOrCreate и upsert: где гонки и зачем UNIQUE-индекс?',
-                'answer' => 'firstOrCreate выполняет два запроса: SELECT по атрибутам, и если не нашёл - INSERT. Между ними окно гонки: два параллельных воркера могут одновременно увидеть "нет записи" и оба сделать INSERT - в результате две строки, дубликат. Защита - UNIQUE-индекс на колонках поиска: второй INSERT упадёт с 23000/23505, и Laravel перевыполнит SELECT (в современных версиях firstOrCreate ловит QueryException и делает retry). updateOrCreate имеет ту же гонку, плюс race на самом UPDATE при параллельных вызовах - нужен либо lockForUpdate в транзакции, либо UNIQUE-индекс. upsert делает массовый INSERT ... ON DUPLICATE KEY UPDATE (MySQL) / ON CONFLICT DO UPDATE (Postgres) - атомарен на уровне БД, обходит каждую строку без N запросов и ВСЕГДА требует UNIQUE/PRIMARY KEY на колонках из uniqueBy. Правило: для импортов - upsert; для одиночных кейсов - firstOrCreate/updateOrCreate с UNIQUE-индексом для подстраховки.',
+                'answer' => 'Все три метода **похожи по API**, но имеют **разную атомарность** и разные риски race condition.
+
+| Метод | Запросов | Атомарен на уровне БД? | Защита от race |
+|---|---|---|---|
+| **`firstOrCreate`** | `SELECT` + `INSERT` | **Нет** — окно гонки между ними | **UNIQUE-индекс** + retry |
+| **`updateOrCreate`** | `SELECT` + `UPDATE`/`INSERT` | **Нет** — даже шире окно | **UNIQUE-индекс** или `lockForUpdate` |
+| **`upsert`** | Один SQL: `INSERT ... ON DUPLICATE KEY UPDATE` (MySQL) / `ON CONFLICT DO UPDATE` (PG) | **Да** | **Требует** UNIQUE/PK |
+
+**Race condition в `firstOrCreate`:**
+
+1. T1: `SELECT * FROM users WHERE email = ?` → пусто.
+2. T2: то же → пусто.
+3. T1: `INSERT INTO users (email, ...)` → ✅.
+4. T2: `INSERT INTO users (email, ...)` → **дубликат**.
+
+**Защита — UNIQUE-индекс на колонках поиска:**
+
+- Без индекса — дубликаты в БД.
+- С индексом — второй `INSERT` упадёт с **`23000`/`23505`**, Laravel ловит `QueryException` и **перевыполняет SELECT** (в современных версиях `firstOrCreate` это делает автоматически).
+
+**`updateOrCreate` — расширенная гонка:**
+
+- К окну `SELECT + INSERT` добавляется параллельный `UPDATE`.
+- Два процесса могут сделать UPDATE поверх друг друга — **lost update**.
+- Решение: либо UNIQUE + retry (как выше), либо **`lockForUpdate()` внутри `DB::transaction`**.
+
+**`upsert` — атомарность из коробки:**
+
+- Один SQL — `INSERT ... ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name`.
+- **Обязательно** UNIQUE/PK на колонках из `uniqueBy` — иначе UPDATE не сработает, БД сделает INSERT.
+- **Не триггерит** events/observers/мутаторы — обновления Scout, broadcasting нужно вручную.
+- `created_at` — только для новых строк, `updated_at` — для всех (для Eloquent-метода).
+
+**Правило выбора:**
+
+- **Одиночные кейсы** (регистрация юзера, идемпотентная подписка) — `firstOrCreate`/`updateOrCreate` + UNIQUE-индекс.
+- **Импорты, массовые операции** — `upsert` (один SQL вместо N) — но события не триггерятся.
+- **Read-modify-write в банковском стиле** — `DB::transaction` + `lockForUpdate`, не `firstOrCreate`.',
                 'code_example' => '<?php
 User::upsert(
     [["email" => "a@b", "name" => "A"], ["email" => "c@d", "name" => "C"]],
@@ -470,7 +612,52 @@ User::upsert(
             [
                 'category' => 'Laravel',
                 'question' => 'Чем ULID лучше UUID v4 в качестве первичного ключа?',
-                'answer' => 'UUID v4 - случайные 128 бит. При вставке в B-tree индекс новые ключи попадают в произвольные места дерева - страдает кеш страниц БД, индекс фрагментируется, растёт число page splits и тормозят INSERT при высокой нагрузке. ULID (Universally Unique Lexicographically Sortable Identifier) - те же 128 бит, но первые 48 бит - timestamp в миллисекундах, последние 80 - случайные. Из-за timestamp-префикса ULID лексикографически (и численно) сортируется по времени создания, поэтому новые записи идут в "правый край" B-tree, как обычный auto-increment - индекс не фрагментируется, INSERT-производительность близка к bigint PK. Бонусы: можно сортировать по PK вместо created_at, текстовое представление компактнее (26 символов против 36). Минус: примерное время создания записи утекает через ID, поэтому не использовать в публичных URL для чувствительных ресурсов. В Laravel есть HasUlids trait + helper $table->ulid() в миграциях. Альтернатива - UUID v7 (тот же подход с timestamp-префиксом, стандартизирован в RFC 9562) - в Laravel 11+ доступен через Str::uuid7().',
+                'answer' => '**Проблема `UUID v4` как PK** — 128 случайных бит. В B-tree индексе новые ключи попадают в **произвольные позиции** → проблемы:
+
+- **Page splits** — каждая вставка может расщепить страницу индекса.
+- **Cache miss** — холодные страницы вытесняют горячие из buffer pool.
+- **Фрагментация** — индекс растёт быстрее данных.
+- **INSERT-производительность падает** в 2-5x под нагрузкой против `bigint AUTO_INCREMENT`.
+
+**`ULID` (Universally Unique Lexicographically Sortable Identifier):**
+
+- Те же **128 бит**, но **первые 48** — timestamp в **миллисекундах**, последние **80** — случайные.
+- **Лексикографически сортируется по времени создания** (и численно).
+- Новые записи идут в **«правый край»** B-tree → как обычный AUTO_INCREMENT, без фрагментации.
+
+**Сравнение:**
+
+| Параметр | **`UUID v4`** | **`ULID`** | **`UUID v7`** (RFC 9562) |
+|---|---|---|---|
+| Размер | 128 бит | 128 бит | 128 бит |
+| Текст | 36 символов (с `-`) | **26 символов** (Crockford Base32) | 36 символов |
+| Сортируемость | Нет | **Да** | **Да** |
+| Совместимость с `UUID`-колонкой | Да | Нет (своя колонка `CHAR(26)`) | Да |
+| Стандарт | RFC 4122 | de-facto | **RFC 9562** (2024) |
+
+**Бонусы ULID:**
+
+- Можно **сортировать по PK** вместо `created_at` — быстрее.
+- Компактнее в URL и логах.
+- **Crockford Base32** — без неоднозначных символов (`I`/`l`, `O`/`0`).
+
+**Минусы:**
+
+- **Утечка времени создания** через ID. **Не использовать** в публичных URL для чувствительных ресурсов (медкарты, финансы).
+- Колонка типа `CHAR(26)` — не стандартная `UUID` (но `BINARY(16)` тоже можно).
+
+**В Laravel 11+:**
+
+- **`HasUlids`** trait — заменяет PK с `id` на ULID.
+- **`$table->ulid(\'id\')->primary()`** в миграциях.
+- **`Str::ulid()`** — сгенерировать.
+- **`Str::uuid7()`** — альтернатива по стандарту.
+
+**Когда выбирать что:**
+
+- **Внутренние таблицы под нагрузкой** — ULID или UUID v7.
+- **Публичные ID** (для чужих API) — UUID v4 (без утечки времени).
+- **Малая нагрузка** — любой подойдёт.',
                 'code_example' => '<?php
 use Illuminate\\Database\\Eloquent\\Concerns\\HasUlids;
 
@@ -496,7 +683,58 @@ Schema::create("orders", function (Blueprint $table) {
             [
                 'category' => 'Laravel',
                 'question' => 'Чем опасен DB::raw() и как делать безопасные подстановки в raw-выражения?',
-                'answer' => 'DB::raw() (и его обёртки selectRaw, whereRaw, orderByRaw, havingRaw) вставляет переданную строку прямо в SQL без экранирования - это окно для SQL-injection, если в строке оказались данные пользователя. Классический антипаттерн: ->whereRaw("status = \'{$request->status}\'"). Правильный способ - использовать ВТОРОЙ аргумент с массивом bindings, который проходит через PDO-плейсхолдеры (?) и экранируется драйвером БД: ->whereRaw("status = ?", [$request->status]). У selectRaw, orderByRaw, havingRaw - такой же второй аргумент. Если динамическим является имя столбца или направление сортировки (которые НЕЛЬЗЯ передать через bindings - это часть синтаксиса, а не значение), нужно жёстко валидировать вход через whitelist (in_array($column, $allowed, true)), иначе пользователь сможет передать "; DROP TABLE users;--". Безопасные альтернативы: для огромных списков чисел - whereIntegerInRaw($col, $array) (Laravel приводит каждый элемент к int через (int)$value и склеивает строку без bindings - спасает от лимита PDO в ~65k плейсхолдеров и ускоряет запрос; работает ТОЛЬКО с целыми числами и ТОЛЬКО для одиночных колонок - не подходит для составных ключей и строк, для них whereIn остаётся единственным безопасным вариантом); для динамических колонок - Schema::hasColumn() + whitelist. Также избегайте DB::statement($userInput) - там вообще нет bindings.',
+                'answer' => '**`DB::raw()`** и обёртки **`selectRaw`/`whereRaw`/`orderByRaw`/`havingRaw`/`groupByRaw`** **вставляют строку прямо в SQL без экранирования**. Если в строке оказались данные пользователя — это **SQL-injection**.
+
+**Классический антипаттерн:**
+
+```php
+->whereRaw("status = \'{$request->status}\'")
+// → status = \'\' OR 1=1; --\'
+```
+
+**Правильный способ — второй аргумент с bindings:**
+
+- Bindings проходят через **PDO-плейсхолдеры (`?`)** и экранируются драйвером БД.
+- У `selectRaw`/`whereRaw`/`orderByRaw`/`havingRaw` — **одинаковый** второй аргумент `[...]`.
+
+```php
+->whereRaw(\'status = ?\', [$request->status])
+```
+
+**Что НЕЛЬЗЯ передать через bindings:**
+
+| Что | Почему | Чем заменить |
+|---|---|---|
+| Имя колонки | Часть синтаксиса, не значение | **Whitelist** через `in_array($col, $allowed, true)` |
+| Направление сортировки | То же | Whitelist (`asc`/`desc`) |
+| Имя таблицы | То же | Whitelist |
+| Идентификатор оператора (`=`, `<>`, `LIKE`) | То же | Whitelist |
+
+**Защита для динамической сортировки:**
+
+```php
+$allowed = [\'id\', \'created_at\', \'name\'];
+$column  = in_array($req->sort, $allowed, true) ? $req->sort : \'id\';
+$dir     = $req->direction === \'desc\' ? \'desc\' : \'asc\';
+User::orderBy($column, $dir)->get();
+```
+
+**Безопасные альтернативы `whereRaw`:**
+
+- **Огромный список чисел** — `whereIntegerInRaw($col, $array)`:
+  - Laravel приводит каждый элемент к `(int)` и склеивает строку **без bindings**.
+  - Спасает от **лимита PDO ~65k плейсхолдеров**.
+  - **Только** для целых чисел и **только** одиночных колонок.
+- **Список строк/UUID** — `whereIn` + chunk: `collect($emails)->chunk(1000)->each(fn ($c) => User::whereIn(\'email\', $c->all())->get())`.
+- **Schema-aware проверка колонки** — `Schema::hasColumn(\'users\', $col)` перед использованием.
+
+**Особенно опасные методы:**
+
+- **`DB::statement($userInput)`** — нет bindings в принципе. **Никогда** не пускать туда пользовательские данные.
+- **`DB::unprepared($sql)`** — тем более.
+- **`DB::raw($value)`** **внутри** Eloquent — `User::create([\'created_at\' => DB::raw($input)])` тоже инъекция.
+
+**Правило ревью:** найди в коде любой `Raw` и проверь, что **все** интерполяции уехали во **второй аргумент**.',
                 'code_example' => '<?php
 // УЯЗВИМО - SQL-injection
 DB::table("users")
@@ -528,7 +766,53 @@ User::whereIntegerInRaw("id", $userIds)->get();',
             [
                 'category' => 'Laravel',
                 'question' => 'Почему $model->save() может ТИХО вернуть false и в коде "ничего не сохранилось"?',
-                'answer' => 'Малоизвестная боль Eloquent: save() возвращает bool. В happy-path - true (запись создана/обновлена). НО save() возвращает false БЕЗ ИСКЛЮЧЕНИЯ, если любой из listener-ов событий saving / creating / updating вернул false. Это поведение fireModelEvent: false из любого подписчика = veto, операция отменяется. Аналогично для delete() - false из deleting отменяет удаление. Симптом в проде: разработчик пишет $user->save() и не проверяет результат - объект как будто сохранился (никаких ошибок), но в БД ничего не появилось. Чаще всего ловят: Observer/listener без явного return - fireModelEvent типизирует возврат как ?bool, и null трактуется как false, отменяя операцию; явный return false для условной валидации в Observer (например, "не сохранять, если у юзера баланс отрицательный"); глобальный saving handler от какого-нибудь пакета (audit-log, activity), который не хочет писать конкретный тип записи. Решения: 1) ВСЕГДА проверять результат save()/delete() - if (!$user->save()) throw new RuntimeException(); 2) Использовать saveOrFail()/deleteOrFail() - бросают исключение при false (внутри транзакции); 3) В Observer-ах не возвращать ничего (return; явно) или return true; 4) При код-ревью observer-ов - явно проверять, что в коде нет случайного return false из логирующей логики.',
+                'answer' => '**Малоизвестная боль Eloquent:** `save()` возвращает **`bool`**. В happy-path — `true`. Но **возвращает `false` БЕЗ исключения**, если какой-то подписчик событий `saving`/`creating`/`updating`/`deleting` **вернул `false`**.
+
+**Механика — `fireModelEvent`:**
+
+- На каждом этапе lifecycle модель вызывает `fireModelEvent($event, $halt = true)`.
+- `false` из **любого** подписчика = **veto**, операция отменяется.
+- `save()` ловит этот результат и возвращает `false`.
+- **Никакого исключения** не бросается — это «нормальное» поведение по контракту.
+
+**Симптом в проде:**
+
+- Разработчик пишет `$user->save()` без проверки результата.
+- Объект «как будто сохранился» (никаких ошибок в логе), но в БД ничего нет.
+- Юзер жалуется через два дня — баг ищут полдня.
+
+**Кто чаще всего возвращает `false`:**
+
+| Источник | Пример |
+|---|---|
+| **Observer/Listener без явного `return`** | `void` метод вернёт `null`, `fireModelEvent` приведёт к `false` (зависит от версии) |
+| **Условная валидация в Observer** | `if ($u->balance < 0) return false;` — «не сохранять, если баланс отрицательный» |
+| **Глобальный listener от пакета** | `audit-log`, `activity` — отказался писать какой-то тип |
+| **Bool-возвращающие методы** | Метод модели вызвал `false` где-то по пути |
+
+**Те же грабли с `delete()`:**
+
+- `deleting` event возвращает `false` → `$model->delete()` тоже вернёт `false` молча.
+
+**Решения:**
+
+| Решение | Когда |
+|---|---|
+| **`$user->saveOrFail()`** / **`$user->deleteOrFail()`** | **Канон** — бросают `ModelNotSavedException`, оборачивают в транзакцию |
+| **`if (! $user->save()) throw ...`** | Ручная проверка — там, где `OrFail` не подходит |
+| **`Model::shouldBeStrict()`** в dev | Падает на других связанных ловушках, но не на этой конкретно |
+| **В Observer — без `return false`** | Бросать исключение (`InvalidStateException`) вместо тихого veto |
+| **`: void` тип на Observer-методах** | Гарантия, что случайный `return ...` не вернёт false |
+
+**Что не помогает:**
+
+- **`try/catch`** — нет исключения.
+- **`Model::preventSilentlyDiscardingAttributes`** — это про массовое присваивание.
+
+**Правило ревью:**
+
+- `$model->save()` без проверки результата — **code smell**.
+- Если есть Observer/listener на `saving`/`creating`/`updating`/`deleting` — проверить, что `return false` либо не используется, либо обработан вызывающей стороной.',
                 'code_example' => '<?php
 // ❌ Тихий баг
 class UserObserver {
