@@ -13,6 +13,15 @@ export const topicLabels: Record<string, string> = {
     'php.types': 'Типы',
     'php.php8_features': 'PHP 8 фичи',
     'php.composer_autoload': 'Composer и автозагрузка',
+    'php.std_lib': 'Стандартная библиотека (SPL)',
+    'php.runtime': 'Runtime: GC, OPcache, JIT',
+    'php.files_streams': 'Файлы и потоки',
+    'php.sessions': 'Сессии',
+    'php.security': 'Безопасность',
+    'php.psr': 'PSR-стандарты',
+    'php.algorithms': 'Алгоритмы',
+    'php.symfony': 'Symfony-компоненты',
+    'php.testing': 'Тестирование',
     'php.basic_qa': 'Краткие Q/A',
     'php.cloze': 'Cloze',
     'php.type_in': 'Type-in',
@@ -36,6 +45,7 @@ export const topicLabels: Record<string, string> = {
     'oop.event_sourcing_cqrs': 'Event Sourcing, CQRS',
     'oop.anemic_vs_rich': 'Anemic vs Rich Domain',
     'oop.coupling_cohesion': 'Coupling/Cohesion',
+    'oop.clean_code': 'Чистый код',
     'oop.misc': 'Дополнительные',
     'oop.basic_qa': 'Краткие Q/A',
     'oop.cloze': 'Cloze',
@@ -114,6 +124,7 @@ export const topicLabels: Record<string, string> = {
     'database.postgresql': 'PostgreSQL',
     'database.mysql': 'MySQL',
     'database.nosql': 'NoSQL',
+    'database.elasticsearch': 'Elasticsearch',
     'database.distributed': 'Распределённые БД',
     'database.infrastructure_backup': 'Pooling, WAL, бэкапы',
     'database.partitioning': 'Партиционирование',
@@ -132,6 +143,31 @@ export const topicLabels: Record<string, string> = {
     'system_design.performance': 'Производительность',
     'system_design.devops': 'DevOps',
     'system_design.design_tasks': 'System Design задачи',
+    'system_design.git': 'Git',
+    'system_design.tools': 'Shell-инструменты',
+
+    // Networking
+    'networking.basics': 'Основы сетей',
+    'networking.transport': 'TCP/UDP',
+    'networking.tls': 'TLS/HTTPS',
+    'networking.http': 'HTTP',
+    'networking.dns': 'DNS',
+    'networking.loadbalancers': 'Балансировщики',
+    'networking.realtime': 'Realtime (WebSocket, SSE)',
+
+    // Security
+    'security.owasp': 'OWASP Top 10',
+    'security.auth': 'Аутентификация и авторизация',
+    'security.crypto': 'Криптография',
+    'security.tokens': 'Токены (JWT, OAuth)',
+    'security.secrets': 'Секреты и конфигурация',
+    'security.web_attacks': 'Веб-атаки (XSS, CSRF, SQLi)',
+
+    // Testing
+    'testing.basics': 'Основы тестирования',
+    'testing.doubles': 'Test doubles (mock/stub)',
+    'testing.practice': 'Практики тестирования',
+    'testing.tools': 'Инструменты (PHPUnit, Pest)',
 };
 
 export function topicLabel(slug: string | null | undefined): string | null {
