@@ -506,6 +506,334 @@ final class SiteController {
                 'difficulty' => 5,
                 'topic' => 'yii2.di',
             ],
+            [
+                'category' => 'Yii2',
+                'question' => 'Как внедрить слой репозиториев поверх ActiveRecord в Yii2?',
+                'answer' => 'Идея — **не вызывать `User::find()` из сервисов**, а спрятать всю работу с БД за **интерфейсом репозитория**, реализацию подменять через DI.
+
+**Шаги:**
+
+1. **Интерфейс** в `app/domain/` — методы по бизнес-смыслу: `findActiveById($id)`, `save(User $u)`. Без `ActiveQuery` в сигнатуре.
+2. **Реализация** в `app/infrastructure/` — внутри использует `User::find()` / `$ar->save()`. Только она знает про ActiveRecord.
+3. **Биндинг** в `config/web.php` → `container.singletons`: `интерфейс => класс`.
+4. **Type-hint в сервисах** — `public function __construct(private UserRepository $users) {}`.
+
+**Что это даёт:**
+
+- **Сервисы и контроллеры не знают про AR** — связаны только с интерфейсом.
+- В **тестах** подменяем на in-memory реализацию через `Yii::$container->set()`.
+- Если завтра нужен **Redis-кэш** поверх БД или переход на DAO — меняется только класс-реализация.
+
+**Подводный камень:** не возвращайте сам `ActiveRecord` из репозитория наружу — иначе абстракция течёт. Лучше — Entity / DTO / value-объект.',
+                'code_example' => '<?php
+// app/domain/UserRepository.php
+namespace app\\domain;
+
+interface UserRepository
+{
+    public function findActiveById(int $id): ?User;
+    public function save(User $user): void;
+}
+
+// app/infrastructure/ArUserRepository.php
+namespace app\\infrastructure;
+
+use app\\domain\\UserRepository;
+use app\\models\\UserAr;  // ActiveRecord
+
+class ArUserRepository implements UserRepository
+{
+    public function findActiveById(int $id): ?\\app\\domain\\User
+    {
+        $ar = UserAr::find()->where([\'id\' => $id, \'status\' => 10])->one();
+        return $ar ? new \\app\\domain\\User($ar->id, $ar->email) : null;
+    }
+
+    public function save(\\app\\domain\\User $user): void
+    {
+        $ar = UserAr::findOne($user->id) ?? new UserAr();
+        $ar->email = $user->email;
+        $ar->save(false);
+    }
+}
+
+// config/web.php
+return [
+    \'container\' => [
+        \'singletons\' => [
+            \'app\\domain\\UserRepository\' => \'app\\infrastructure\\ArUserRepository\',
+        ],
+    ],
+];
+
+// app/services/RegisterUser.php — чистый use-case
+class RegisterUser
+{
+    public function __construct(private \\app\\domain\\UserRepository $users) {}
+
+    public function handle(string $email): void
+    {
+        $this->users->save(new \\app\\domain\\User(0, $email));
+    }
+}',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'yii2.di',
+            ],
+            [
+                'category' => 'Yii2',
+                'question' => 'Зачем DTO между слоями в Yii2-приложении?',
+                'answer' => '**DTO (Data Transfer Object)** — простой immutable-объект без поведения, который **переносит данные между слоями**: контроллер → сервис → репозиторий.
+
+**Проблема без DTO в Yii2:**
+
+- Контроллер передаёт **`$_POST`-массив** в сервис → сервис не знает, какие поля придут.
+- Или передают **`ActiveRecord`** прямо в сервис → сервис привязан к БД-модели и валидации формы.
+- Или **`FormModel`** проникает в доменный слой → доменная логика зависит от Yii-валидации.
+
+**Что даёт DTO:**
+
+- **Явный контракт** — у метода `RegisterUser::handle(RegisterUserDto $dto)` сразу видно, какие поля нужны.
+- **Иммутабельность** — `readonly` свойства, нельзя случайно поменять после валидации.
+- **Изоляция** — сервис не зависит от HTTP-формы и не зависит от AR.
+- **Удобно тестировать** — собрать DTO руками проще, чем мокать `Yii::$app->request`.
+
+**Где собирать DTO:**
+
+- В **контроллере** — из `FormModel` или валидированного `$request->post()`.
+- Из **CLI-команды** — те же поля, но без HTTP.
+
+**Что не DTO:** AR-модель (имеет поведение `save()`), `FormModel` (имеет правила валидации).',
+                'code_example' => '<?php
+// app/dto/RegisterUserDto.php
+namespace app\\dto;
+
+final class RegisterUserDto
+{
+    public function __construct(
+        public readonly string $email,
+        public readonly string $password,
+        public readonly ?string $referralCode = null,
+    ) {}
+}
+
+// app/forms/RegisterForm.php — Yii FormModel: только HTTP-валидация
+use yii\\base\\Model;
+
+class RegisterForm extends Model
+{
+    public string $email = \'\';
+    public string $password = \'\';
+    public ?string $referralCode = null;
+
+    public function rules(): array
+    {
+        return [
+            [[\'email\', \'password\'], \'required\'],
+            [\'email\', \'email\'],
+            [\'password\', \'string\', \'min\' => 8],
+        ];
+    }
+
+    public function toDto(): \\app\\dto\\RegisterUserDto
+    {
+        return new \\app\\dto\\RegisterUserDto($this->email, $this->password, $this->referralCode);
+    }
+}
+
+// Контроллер
+public function actionRegister(\\app\\services\\RegisterUser $service)
+{
+    $form = new RegisterForm();
+    if ($form->load(Yii::$app->request->post()) && $form->validate()) {
+        $service->handle($form->toDto());  // дальше идёт чистый DTO
+        return $this->redirect([\'site/index\']);
+    }
+    return $this->render(\'register\', [\'form\' => $form]);
+}
+
+// Сервис — не знает про Yii, request, AR
+class RegisterUser
+{
+    public function __construct(private \\app\\domain\\UserRepository $users) {}
+
+    public function handle(\\app\\dto\\RegisterUserDto $dto): void
+    {
+        // бизнес-логика
+    }
+}',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'yii2.di',
+            ],
+            [
+                'category' => 'Yii2',
+                'question' => 'Как уменьшить зависимость кода от Yii::$app (service locator) в Yii2?',
+                'answer' => 'Обращение к `Yii::$app->db`, `Yii::$app->mailer`, `Yii::$app->user` из бизнес-логики — **скрытая зависимость**, которая ломает тесты и переиспользование.
+
+**Шаги по уходу от Yii::$app:**
+
+- **Type-hint в конструкторе** вместо `Yii::$app->mailer` → `public function __construct(private MailerInterface $mailer) {}`.
+- **Регистрировать абстракции** в `container.singletons` — `MailerInterface => SmtpMailer`.
+- **Action injection** в контроллерах — Yii сам резолвит параметры action-метода.
+- **Адаптеры** для встроенных компонентов — обернуть `Yii::$app->user` в `CurrentUser`-интерфейс, реализация дергает service locator только внутри.
+- **Конфигурацию читать через параметр**, не через `Yii::$app->params[...]` — передавать значения в конструктор сервиса из `container.definitions`.
+
+**Что остаётся через Yii::$app:**
+
+- **Контроллеры, views, виджеты** — рамочный код Yii2, тут отказ от service locator не окупается.
+- **Bootstrap-классы** — единственное место, где это нормально.
+
+**Польза:**
+
+- Сервис **тестируется** без поднятия `Yii::$app` — достаточно собрать моки и передать в конструктор.
+- При переезде на Yii3 (там нет `Yii::$app`) такой код **переносится почти без правок**.',
+                'code_example' => '<?php
+// ❌ Плохо: скрытая зависимость от Yii::$app
+class OrderService
+{
+    public function place(int $userId): void
+    {
+        $user = \\Yii::$app->user->identity;
+        \\Yii::$app->db->createCommand()->insert(\'orders\', [...])->execute();
+        \\Yii::$app->mailer->compose()->setTo($user->email)->send();
+    }
+}
+
+// ✅ Хорошо: всё через DI
+interface CurrentUser { public function id(): int; public function email(): string; }
+interface MailerInterface { public function sendOrderConfirmation(string $to): void; }
+interface OrderRepository { public function create(int $userId): void; }
+
+class OrderService
+{
+    public function __construct(
+        private CurrentUser $currentUser,
+        private MailerInterface $mailer,
+        private OrderRepository $orders,
+    ) {}
+
+    public function place(): void
+    {
+        $this->orders->create($this->currentUser->id());
+        $this->mailer->sendOrderConfirmation($this->currentUser->email());
+    }
+}
+
+// config/web.php
+return [
+    \'container\' => [
+        \'singletons\' => [
+            CurrentUser::class       => YiiCurrentUserAdapter::class,
+            MailerInterface::class   => SmtpMailer::class,
+            OrderRepository::class   => ArOrderRepository::class,
+        ],
+    ],
+];
+
+// Adapter — единственное место, где остаётся Yii::$app
+class YiiCurrentUserAdapter implements CurrentUser
+{
+    public function id(): int       { return \\Yii::$app->user->id; }
+    public function email(): string { return \\Yii::$app->user->identity->email; }
+}
+
+// Action injection в контроллере
+public function actionPlace(OrderService $service)
+{
+    $service->place();
+    return $this->redirect([\'order/list\']);
+}',
+                'code_language' => 'php',
+                'difficulty' => 3,
+                'topic' => 'yii2.di',
+            ],
+            [
+                'category' => 'Yii2',
+                'question' => 'Где централизованно регистрировать DI-биндинги в Yii2: bootstrap-классы и config[container]?',
+                'answer' => 'Yii2 даёт **три места**, где регистрируют биндинги интерфейсов и сервисов. Выбор зависит от того, нужна ли логика при регистрации.
+
+| Место | Когда применять |
+| --- | --- |
+| **`config/web.php` → `container.definitions / singletons`** | Простой биндинг `интерфейс => класс` или `=> [\'class\' => ..., \'param\' => ...]`. **Дефолт для всего.** |
+| **Bootstrap-класс** (`bootstrap` секция конфига) | Нужна **логика**: ветвление по env, чтение из `.env`, регистрация по списку из БД. |
+| **Модуль (`init()`)** | Биндинги, которые **актуальны только внутри модуля** (`admin`, `api`). |
+
+**Как работает bootstrap:**
+
+- В `config/web.php` есть массив **`bootstrap`** — классы, реализующие `BootstrapInterface`.
+- Метод **`bootstrap($app)`** вызывается **до обработки запроса**.
+- Внутри регистрируют биндинги через `Yii::$container->set()` / `setSingleton()`.
+
+**Правила:**
+
+- **Конфиг — приоритет**: декларативная регистрация очевиднее, проще аудит.
+- **Bootstrap — только когда нужна логика**: иначе раздувается «магия».
+- **Не регистрировать в коде сервисов** (`Yii::$container->set()` внутри контроллера) — это скрывает зависимости и портит тесты.',
+                'code_example' => '<?php
+// 1) Декларативно — config/web.php
+return [
+    \'bootstrap\' => [\'log\', \\app\\bootstrap\\AppBootstrap::class],
+
+    \'container\' => [
+        \'singletons\' => [
+            \\app\\domain\\UserRepository::class => \\app\\infrastructure\\ArUserRepository::class,
+            \\app\\domain\\Clock::class          => \\app\\infrastructure\\SystemClock::class,
+
+            // С параметрами
+            \\app\\domain\\MailerInterface::class => [
+                \'class\'  => \\app\\infrastructure\\SmtpMailer::class,
+                \'apiKey\' => getenv(\'SMTP_KEY\'),
+            ],
+        ],
+    ],
+];
+
+// 2) С логикой — bootstrap-класс
+namespace app\\bootstrap;
+
+use yii\\base\\BootstrapInterface;
+
+class AppBootstrap implements BootstrapInterface
+{
+    public function bootstrap($app): void
+    {
+        // Разные реализации по окружению
+        if (YII_ENV_PROD) {
+            \\Yii::$container->setSingleton(
+                \\app\\domain\\PaymentGateway::class,
+                \\app\\infrastructure\\StripeGateway::class
+            );
+        } else {
+            \\Yii::$container->setSingleton(
+                \\app\\domain\\PaymentGateway::class,
+                \\app\\infrastructure\\FakeGateway::class
+            );
+        }
+
+        // Регистрация по списку
+        foreach ([\\app\\listeners\\SendWelcomeEmail::class] as $listener) {
+            \\Yii::$container->setSingleton($listener);
+        }
+    }
+}
+
+// 3) Модульный биндинг — modules/admin/Module.php
+class Module extends \\yii\\base\\Module
+{
+    public function init()
+    {
+        parent::init();
+        \\Yii::$container->setSingleton(
+            \\app\\admin\\AuditLog::class,
+            \\app\\admin\\DbAuditLog::class
+        );
+    }
+}',
+                'code_language' => 'php',
+                'difficulty' => 2,
+                'topic' => 'yii2.di',
+            ],
         ];
     }
 }

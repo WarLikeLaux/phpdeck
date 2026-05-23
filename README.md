@@ -14,7 +14,7 @@
 [![Inertia](https://img.shields.io/badge/Inertia-3.0-9553E9?logo=inertia&logoColor=white)](https://inertiajs.com)
 [![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Tests](https://img.shields.io/badge/tests-81%20passing-22c55e?logo=pest&logoColor=white)](#)
-[![Cards](https://img.shields.io/badge/cards-1776-9553E9)](#)
+[![Cards](https://img.shields.io/badge/cards-1780-9553E9)](#)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 </div>
@@ -25,7 +25,7 @@
 
 Готовиться к PHP-собесам по «прочитай 100 вопросов и ответов» неэффективно — глаза скользят, мозг не закрепляет. **phpdeck** заставляет тебя реально вытаскивать ответ: то по памяти, то выбором, то заполнением пропусков, то сборкой кода из блоков. Карточка считается выученной, только когда ты ответил правильно в **трёх разных режимах** — это убивает иллюзию «я это знаю», которая возникает когда видишь ответ глазами.
 
-В колоде **1776 вопросов** по 152 топикам — от junior-базы до middle/senior собеседований. Прогресс свой — много пользователей не мешают друг другу.
+В колоде **1780 вопросов** по 152 топикам — от junior-базы до middle/senior собеседований. Прогресс свой — много пользователей не мешают друг другу.
 
 ## Что внутри
 
@@ -53,12 +53,12 @@
 
 ## Колода
 
-1776 карточек по 152 топикам, из них ~500 на уровне «base» (difficulty 1-2) — ровная подготовка от junior-фундамента до middle/senior нюансов:
+1780 карточек по 152 топикам, из них ~500 на уровне «base» (difficulty 1-2) — ровная подготовка от junior-фундамента до middle/senior нюансов:
 
 | Категория | Карточек | Топиков |
 |---|---|---|
 | PHP | 380 | 26 |
-| Yii2 | 285 | 32 |
+| Yii2 | 289 | 32 |
 | Laravel | 279 | 27 |
 | Базы данных | 190 | 17 |
 | ООП | 180 | 22 |
