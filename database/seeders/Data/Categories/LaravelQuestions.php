@@ -16,6 +16,7 @@ use Database\Seeders\Data\Categories\Laravel\EloquentBasics;
 use Database\Seeders\Data\Categories\Laravel\EloquentRelations;
 use Database\Seeders\Data\Categories\Laravel\EventsListeners;
 use Database\Seeders\Data\Categories\Laravel\InertiaFrontend;
+use Database\Seeders\Data\Categories\Laravel\LegacyMigration;
 use Database\Seeders\Data\Categories\Laravel\MailNotifications;
 use Database\Seeders\Data\Categories\Laravel\Middleware;
 use Database\Seeders\Data\Categories\Laravel\MigrationsSeeders;
@@ -60,6 +61,7 @@ class LaravelQuestions
             Artisan::all(),
             Testing::all(),
             ApiResources::all(),
+            LegacyMigration::all(),
             Collections::all(),
             BasicQa::all(),
             Cloze::all(),

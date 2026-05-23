@@ -74,6 +74,7 @@ export const topicLabels: Record<string, string> = {
     'laravel.inertia_frontend': 'Inertia и фронтенд',
     'laravel.octane_horizon': 'Octane и Horizon',
     'laravel.collections': 'Коллекции',
+    'laravel.legacy_migration': 'Legacy и миграция Yii2 → Laravel',
     'laravel.misc': 'Дополнительные',
     'laravel.basic_qa': 'Краткие Q/A',
     'laravel.cloze': 'Cloze',
