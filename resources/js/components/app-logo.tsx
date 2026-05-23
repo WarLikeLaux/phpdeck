@@ -10,7 +10,7 @@ export default function AppLogo() {
                 />
             </div>
             <div className="ml-1 grid flex-1 text-left">
-                <span className="truncate text-base leading-tight font-bold bg-gradient-to-br from-pink-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent">
+                <span className="truncate bg-gradient-to-br from-pink-400 via-fuchsia-400 to-violet-400 bg-clip-text text-base leading-tight font-bold text-transparent">
                     phpdeck
                 </span>
             </div>

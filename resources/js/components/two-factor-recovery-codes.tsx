@@ -61,8 +61,8 @@ export default function TwoFactorRecoveryCodes({
                 </CardTitle>
                 <CardDescription>
                     Коды восстановления позволяют вернуть доступ к аккаунту,
-                    если вы потеряете устройство для 2FA. Храните их в
-                    надёжном менеджере паролей.
+                    если вы потеряете устройство для 2FA. Храните их в надёжном
+                    менеджере паролей.
                 </CardDescription>
             </CardHeader>
             <CardContent>

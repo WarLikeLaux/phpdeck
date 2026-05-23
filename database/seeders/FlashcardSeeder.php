@@ -4,12 +4,12 @@ namespace Database\Seeders;
 
 use App\Models\Flashcard;
 use Database\Seeders\Data\Categories\DatabaseQuestions;
+use Database\Seeders\Data\Categories\DevopsQuestions;
 use Database\Seeders\Data\Categories\LaravelQuestions;
 use Database\Seeders\Data\Categories\NetworkingQuestions;
 use Database\Seeders\Data\Categories\OopQuestions;
 use Database\Seeders\Data\Categories\PhpQuestions;
 use Database\Seeders\Data\Categories\SecurityQuestions;
-use Database\Seeders\Data\Categories\DevopsQuestions;
 use Database\Seeders\Data\Categories\SystemDesignQuestions;
 use Database\Seeders\Data\Categories\TestingQuestions;
 use Database\Seeders\Data\Categories\Yii2Questions;

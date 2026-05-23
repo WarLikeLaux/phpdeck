@@ -40,7 +40,13 @@ export default function AuthSimpleLayout({
                     </Link>
 
                     <div className="relative z-10 flex w-full items-center justify-center">
-                        <div className="absolute inset-0 -z-10 blur-3xl opacity-60" style={{ background: 'radial-gradient(circle at center, rgba(236,72,153,0.35), transparent 60%)' }} />
+                        <div
+                            className="absolute inset-0 -z-10 opacity-60 blur-3xl"
+                            style={{
+                                background:
+                                    'radial-gradient(circle at center, rgba(236,72,153,0.35), transparent 60%)',
+                            }}
+                        />
                         <img
                             src="/hero.png"
                             alt="phpdeck"
@@ -48,7 +54,7 @@ export default function AuthSimpleLayout({
                         />
                     </div>
 
-                    <div className="z-10 whitespace-nowrap text-xl font-medium text-white/80">
+                    <div className="z-10 text-xl font-medium whitespace-nowrap text-white/80">
                         Карточки для подготовки к собеседованиям по PHP-стеку.
                     </div>
                 </div>
@@ -61,7 +67,7 @@ export default function AuthSimpleLayout({
                             href={home()}
                             className="mb-8 flex justify-center lg:hidden"
                         >
-                            <span className="text-3xl font-bold tracking-tight bg-gradient-to-br from-pink-400 via-fuchsia-400 to-violet-400 bg-clip-text text-transparent">
+                            <span className="bg-gradient-to-br from-pink-400 via-fuchsia-400 to-violet-400 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
                                 phpdeck
                             </span>
                         </Link>

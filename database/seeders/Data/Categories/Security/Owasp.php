@@ -235,12 +235,12 @@ public function verifyReset(Request \$r) {
 - отслеживание `CVE`-фидов / security advisories на GitHub;
 - регулярные **мажорные** апгрейды (не «застряли на Laravel 6 навсегда»);
 - отказ от **заброшенных** пакетов (последний коммит 5 лет назад).',
-                'code_example' => "# Проверить известные CVE в composer.lock
+                'code_example' => '# Проверить известные CVE в composer.lock
 composer audit
 
 # В npm
 npm audit
-npm audit fix",
+npm audit fix',
                 'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'security.owasp',

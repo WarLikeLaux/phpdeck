@@ -32,20 +32,20 @@ class Tokens
 - только `HTTPS`;
 - куки — `HttpOnly` + `Secure`;
 - **не** клади в URL и не светись в логах.',
-                'code_example' => "# 1. Логин — отдаём токен в обмен на пароль
+                'code_example' => '# 1. Логин — отдаём токен в обмен на пароль
 POST /api/login
-{ \"email\": \"a@b.test\", \"password\": \"secret\" }
-→ 200 { \"token\": \"1|aBcD3fGh5jKlMnOpQ...\" }
+{ "email": "a@b.test", "password": "secret" }
+→ 200 { "token": "1|aBcD3fGh5jKlMnOpQ..." }
 
 # 2. Дальше каждый запрос — с токеном, пароль больше не шлём
 GET /api/me
 Authorization: Bearer 1|aBcD3fGh5jKlMnOpQ...
-→ 200 { \"id\": 42, \"email\": \"a@b.test\" }
+→ 200 { "id": 42, "email": "a@b.test" }
 
 # 3. Logout — просим сервер забыть/инвалидировать токен
 POST /api/logout
 Authorization: Bearer 1|aBcD3fGh5jKlMnOpQ...
-→ 204",
+→ 204',
                 'code_language' => 'http',
                 'difficulty' => 1,
                 'topic' => 'security.tokens',
@@ -70,13 +70,13 @@ Authorization: Bearer 1|aBcD3fGh5jKlMnOpQ...
 **`signature`** — `HMAC` или `RSA`-подпись по первым двум частям с секретом/приватным ключом. Сервер при получении проверяет подпись и `exp` — и **доверяет** payload.
 
 **ВАЖНО**: payload только **закодирован** `base64url`, **НЕ зашифрован** — содержимое читает любой, у кого есть токен. Не клади туда секреты.',
-                'code_example' => "// Пример JWT — три base64url-части через точку
+                'code_example' => '// Пример JWT — три base64url-части через точку
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0MiIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzE2MDAwMDAwLCJleHAiOjE3MTYwMDM2MDB9.SflKxw...
 
 // Декодируется так:
-header  = {\"alg\":\"HS256\",\"typ\":\"JWT\"}
-payload = {\"sub\":\"42\",\"role\":\"user\",\"iat\":1716000000,\"exp\":1716003600}
-sig     = HMAC-SHA256(base64url(header) + \".\" + base64url(payload), secret)",
+header  = {"alg":"HS256","typ":"JWT"}
+payload = {"sub":"42","role":"user","iat":1716000000,"exp":1716003600}
+sig     = HMAC-SHA256(base64url(header) + "." + base64url(payload), secret)',
                 'code_language' => 'http',
                 'difficulty' => 2,
                 'topic' => 'security.tokens',
@@ -131,7 +131,7 @@ sig     = HMAC-SHA256(base64url(header) + \".\" + base64url(payload), secret)",
 - редко уходит по сети — только на `/auth/refresh`.
 
 **На сервере** `refresh` обычно хранится с привязкой к `user_id`. Logout = **удалить запись** → юзер выйдет, как только истечёт текущий `access`.',
-                'code_example' => "# 1. Запрос на API с просроченным access — 401
+                'code_example' => '# 1. Запрос на API с просроченным access — 401
 GET /api/me
 Authorization: Bearer eyJ...expired
 → 401 Unauthorized
@@ -139,12 +139,12 @@ Authorization: Bearer eyJ...expired
 # 2. Клиент молча обменивает refresh на новый access
 POST /auth/refresh
 Cookie: refresh_token=long-random-string
-→ 200 { \"access_token\": \"eyJ...new\", \"expires_in\": 900 }
+→ 200 { "access_token": "eyJ...new", "expires_in": 900 }
 
 # 3. Повторяем оригинальный запрос с новым access
 GET /api/me
 Authorization: Bearer eyJ...new
-→ 200 { \"id\": 42, \"email\": \"...\" }",
+→ 200 { "id": 42, "email": "..." }',
                 'code_language' => 'http',
                 'difficulty' => 2,
                 'topic' => 'security.tokens',

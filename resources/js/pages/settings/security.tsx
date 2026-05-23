@@ -161,8 +161,8 @@ export default function Security({
                             <p className="text-sm text-muted-foreground">
                                 При входе будет запрашиваться защищённый
                                 одноразовый код, который можно получить в
-                                приложении-аутентификаторе с поддержкой TOTP
-                                на вашем телефоне.
+                                приложении-аутентификаторе с поддержкой TOTP на
+                                вашем телефоне.
                             </p>
 
                             <div className="relative inline">

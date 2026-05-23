@@ -386,8 +386,8 @@ function EmptyState({ stats }: { stats: Stats }) {
                     <>
                         <CardTitle>Нет карточек по фильтрам</CardTitle>
                         <CardDescription>
-                            Сбрось фильтры или загрузи карточки сидером
-                            (php artisan db:seed).
+                            Сбрось фильтры или загрузи карточки сидером (php
+                            artisan db:seed).
                         </CardDescription>
                         <Button asChild variant="outline">
                             <Link href={learn.show().url}>Сбросить</Link>

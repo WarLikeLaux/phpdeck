@@ -250,7 +250,7 @@ function KpiCard({
         <Card className={cn('overflow-hidden bg-gradient-to-br', accent)}>
             <CardContent className="flex flex-col gap-2 p-3 sm:p-4">
                 <div className="flex items-center justify-between gap-1">
-                    <span className="text-[11px] tracking-wide text-muted-foreground uppercase truncate">
+                    <span className="truncate text-[11px] tracking-wide text-muted-foreground uppercase">
                         {label}
                     </span>
                     <span className="shrink-0">{icon}</span>
@@ -321,7 +321,7 @@ function DailyChart({
                         </div>
                         <span
                             className={cn(
-                                'text-[10px] text-muted-foreground tabular-nums sm:text-xs sm:inline',
+                                'text-[10px] text-muted-foreground tabular-nums sm:inline sm:text-xs',
                                 showLabelMobile ? 'inline' : 'hidden',
                             )}
                         >

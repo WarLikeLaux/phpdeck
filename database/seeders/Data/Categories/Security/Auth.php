@@ -192,7 +192,7 @@ if (login_succeeded(\$user)) {
 4. **Бэкенд** клиента меняет `code` на `access_token` (и опционально `refresh_token`) через серверный `POST /token` с `client_secret`.
 
 **PKCE** (для SPA и мобильных): `client_secret` нельзя хранить на клиенте, поэтому вместо него используется одноразовый `code_verifier` + его SHA256-хеш `code_challenge`. Перехват `code` без `code_verifier` бесполезен.',
-                'code_example' => "# 1. Редирект пользователя к провайдеру
+                'code_example' => '# 1. Редирект пользователя к провайдеру
 GET https://accounts.google.com/o/oauth2/v2/auth?
     client_id=APP_ID
     &redirect_uri=https://app.test/callback
@@ -209,7 +209,7 @@ POST https://oauth2.googleapis.com/token
   &client_id=APP_ID
   &client_secret=APP_SECRET
   &redirect_uri=https://app.test/callback
-  &grant_type=authorization_code",
+  &grant_type=authorization_code',
                 'code_language' => 'http',
                 'difficulty' => 2,
                 'topic' => 'security.auth',

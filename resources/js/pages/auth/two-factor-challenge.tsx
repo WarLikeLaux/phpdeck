@@ -32,8 +32,7 @@ export default function TwoFactorChallenge() {
 
         return {
             title: 'Код аутентификации',
-            description:
-                'Введите код из приложения-аутентификатора.',
+            description: 'Введите код из приложения-аутентификатора.',
             toggleText: 'войти с помощью кода восстановления',
         };
     }, [showRecoveryInput]);

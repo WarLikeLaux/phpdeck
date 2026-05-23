@@ -26,7 +26,7 @@ class Secrets
 3. На проде серьёзных систем — **секрет-менеджер**: `HashiCorp Vault`, `AWS Secrets Manager`, `GCP Secret Manager`, `Doppler`. Выдаёт секреты по запросу с аудитом и ротацией.
 
 В Laravel секреты читаются через `env()` **только в config-файлах**, а в коде приложения — `config(\'services.stripe.secret\')` (после `config:cache` `env()` вернёт `null`).',
-                'code_example' => "# .env (НЕ коммитим, в .gitignore)
+                'code_example' => '# .env (НЕ коммитим, в .gitignore)
 DB_PASSWORD=real-secret-password
 STRIPE_SECRET=sk_live_abc123xyz
 JWT_SECRET=base64:Mn9k...
@@ -34,7 +34,7 @@ JWT_SECRET=base64:Mn9k...
 # .env.example (коммитим — только ключи, без значений)
 DB_PASSWORD=
 STRIPE_SECRET=
-JWT_SECRET=",
+JWT_SECRET=',
                 'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'security.secrets',
@@ -53,7 +53,7 @@ JWT_SECRET=",
 
 - просто `git rm` **не помогает** — секрет остаётся в истории всех предыдущих коммитов;
 - если репо публичный, считай, что секрет **уже у атакующих** — боты сканируют GitHub в реальном времени и подбирают утёкшие ключи за минуты.',
-                'code_example' => "# Шаг 1 — РОТИРОВАТЬ секрет в провайдере (Stripe, AWS, БД и т.п.)
+                'code_example' => '# Шаг 1 — РОТИРОВАТЬ секрет в провайдере (Stripe, AWS, БД и т.п.)
 
 # Шаг 2 — выпилить файл из всей истории
 git filter-repo --path .env --invert-paths
@@ -62,7 +62,7 @@ bfg --delete-files .env
 
 # Шаг 3 — force push (всем нужен свежий clone)
 git push --force-with-lease --all
-git push --force-with-lease --tags",
+git push --force-with-lease --tags',
                 'code_language' => 'bash',
                 'difficulty' => 2,
                 'topic' => 'security.secrets',
@@ -85,7 +85,7 @@ git push --force-with-lease --tags",
 4. Заполнить остальные значения руками.
 
 В Laravel `.env` читается на старте. В **config-файлах** — `env(\'DB_PASSWORD\')`, в коде приложения — `config(\'database.connections.mysql.password\')`. После `php artisan config:cache` `env()` возвращает `null` — поэтому только через `config()`.',
-                'code_example' => "# .env (НЕ коммитим — в .gitignore по умолчанию)
+                'code_example' => '# .env (НЕ коммитим — в .gitignore по умолчанию)
 APP_KEY=base64:r4nd0mGenerated...
 DB_PASSWORD=real-prod-password
 STRIPE_SECRET=sk_live_abc123
@@ -98,7 +98,7 @@ STRIPE_SECRET=
 # Поток для нового разработчика:
 cp .env.example .env
 php artisan key:generate   # сгенерирует APP_KEY
-# дальше руками заполняет DB_PASSWORD и т.п.",
+# дальше руками заполняет DB_PASSWORD и т.п.',
                 'code_language' => 'bash',
                 'difficulty' => 1,
                 'topic' => 'security.secrets',

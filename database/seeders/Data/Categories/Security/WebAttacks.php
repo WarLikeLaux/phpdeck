@@ -468,11 +468,11 @@ return Storage::disk('s3')->temporaryUrl(\$path, now()->addMinutes(10));",
 - `Strict-Transport-Security` (`HSTS`) — браузер запоминает «к этому домену только по HTTPS», игнорирует `http://`;
 - кука с флагом `Secure` — не уйдёт по HTTP;
 - `certificate pinning` в мобильных приложениях — приложение доверяет только конкретному сертификату/CA.',
-                'code_example' => "# HSTS — браузер на год запомнит, что example.com только через HTTPS
+                'code_example' => '# HSTS — браузер на год запомнит, что example.com только через HTTPS
 Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
 # Куки только по HTTPS
-Set-Cookie: session=abc; Secure; HttpOnly; SameSite=Lax",
+Set-Cookie: session=abc; Secure; HttpOnly; SameSite=Lax',
                 'code_language' => 'http',
                 'difficulty' => 2,
                 'topic' => 'security.web_attacks',

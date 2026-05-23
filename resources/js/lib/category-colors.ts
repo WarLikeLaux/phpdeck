@@ -16,7 +16,7 @@ const palette: Record<string, CategoryStyle> = {
         badge: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-300',
         dot: 'bg-cyan-500',
     },
-    'ООП': {
+    ООП: {
         badge: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
         dot: 'bg-amber-500',
     },
@@ -28,19 +28,19 @@ const palette: Record<string, CategoryStyle> = {
         badge: 'border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-300',
         dot: 'bg-violet-500',
     },
-    'Сети': {
+    Сети: {
         badge: 'border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-300',
         dot: 'bg-sky-500',
     },
-    'Безопасность': {
+    Безопасность: {
         badge: 'border-orange-500/30 bg-orange-500/10 text-orange-600 dark:text-orange-300',
         dot: 'bg-orange-500',
     },
-    'Тестирование': {
+    Тестирование: {
         badge: 'border-teal-500/30 bg-teal-500/10 text-teal-600 dark:text-teal-300',
         dot: 'bg-teal-500',
     },
-    'DevOps': {
+    DevOps: {
         badge: 'border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-300',
         dot: 'bg-blue-500',
     },
