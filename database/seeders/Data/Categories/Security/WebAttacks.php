@@ -459,22 +459,116 @@ return Storage::disk('s3')->temporaryUrl(\$path, now()->addMinutes(10));",
 По **HTTP** всё видно в открытом виде: пароли, куки, токены.
 
 **HTTPS защищает**:
-
 - `TLS` **шифрует** трафик;
 - **сертификат**, подписанный доверенным `CA`, подтверждает, что ты говоришь именно с `example.com`, а не с прокси.
 
 **Дополнительные меры**:
-
 - `Strict-Transport-Security` (`HSTS`) — браузер запоминает «к этому домену только по HTTPS», игнорирует `http://`;
 - кука с флагом `Secure` — не уйдёт по HTTP;
 - `certificate pinning` в мобильных приложениях — приложение доверяет только конкретному сертификату/CA.',
                 'code_example' => '# HSTS — браузер на год запомнит, что example.com только через HTTPS
 Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
-# Куки только по HTTPS
+# Kuки только по HTTPS
 Set-Cookie: session=abc; Secure; HttpOnly; SameSite=Lax',
                 'code_language' => 'http',
                 'difficulty' => 2,
+                'topic' => 'security.web_attacks',
+            ],
+            [
+                'category' => 'Безопасность',
+                'question' => 'Что такое CORS простыми словами?',
+                'answer' => '**CORS** (Cross-Origin Resource Sharing) — **механизм браузера**, контролирующий, может ли **cross-origin JS читать ответ** другого `origin`.
+
+**Контекст — Same-Origin Policy (SOP):** браузер по умолчанию **запрещает** сайту `example.com` через `fetch`/`XHR` читать ответ от `api.other.com`. `origin` = `схема + хост + порт`.
+
+`CORS` — это **способ для сервера явно разрешить** определённым origin-ам читать ответ через заголовки.
+
+**Заголовки на сервере:**
+- `Access-Control-Allow-Origin: https://example.com` — кому разрешено (или `*` для публичных API без credentials)
+- `Access-Control-Allow-Methods: GET, POST, PUT, DELETE`
+- `Access-Control-Allow-Headers: Content-Type, Authorization`
+- `Access-Control-Allow-Credentials: true` — разрешить отправку cookie (тогда `Allow-Origin` НЕ может быть `*`)
+- `Access-Control-Max-Age: 86400` — кэш preflight ответа в браузере
+
+**Preflight (`OPTIONS`)** — браузер шлёт **перед** «сложным» запросом (методы кроме `GET`/`POST`/`HEAD`, `Authorization`, кастомные заголовки, `Content-Type: application/json`):
+```
+OPTIONS /api/users HTTP/1.1
+Origin: https://example.com
+Access-Control-Request-Method: PUT
+Access-Control-Request-Headers: Authorization
+```
+Сервер отвечает заголовками — браузер либо разрешает доступ к данным, либо режет его.
+
+**ВАЖНО — что CORS НЕ делает:**
+- **НЕ защита от XSS** — XSS лечится экранированием, `CSP`, `HttpOnly`
+- **НЕ защита от CSRF** — CSRF лечится токенами + `SameSite`-cookie
+- **НЕ защита сервера** — `curl`/Postman игнорируют CORS, это ограничение **только для браузера**
+- НЕ запрещает сам запрос — запрос **уйдёт** на сервер и выполнится, браузер просто **не отдаст ответ JS-коду**
+
+**Типичные ошибки:** `*` + `Allow-Credentials: true` (браузер отбросит), забыли `OPTIONS` в роутах → `405` на preflight.',
+                'code_example' => '# Сервер на preflight (OPTIONS)
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://example.com
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE
+Access-Control-Allow-Headers: Content-Type, Authorization
+Access-Control-Allow-Credentials: true
+Access-Control-Max-Age: 86400
+
+# В Laravel — config/cors.php
+# "paths" => ["api/*"],
+# "allowed_origins" => ["https://example.com"],
+# "allowed_methods" => ["*"],
+# "supports_credentials" => true,',
+                'code_language' => 'bash',
+                'difficulty' => 3,
+                'topic' => 'security.web_attacks',
+            ],
+            [
+                'category' => 'Безопасность',
+                'question' => 'Как работает CORS preflight и когда он отправляется?',
+                'answer' => '**Preflight** — браузер шлёт **`OPTIONS`-запрос перед** «непростым» (non-simple) cross-origin запросом, чтобы убедиться, что сервер его разрешает. Это **спецификация Fetch**, выполняется браузером автоматически.
+
+**Когда preflight ОТПРАВЛЯЕТСЯ (non-simple):**
+- Методы: **`PUT`**, **`DELETE`**, **`PATCH`**, `CONNECT`, `TRACE`
+- Кастомные заголовки: **`Authorization`**, `X-CSRF-TOKEN`, `X-Custom-*`
+- `Content-Type` **вне** простого списка: `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain` (например, `application/json` требует preflight!)
+- Использование `ReadableStream`/`fetch` с upload progress
+
+**Когда preflight НЕ нужен (simple request):**
+- `GET`, `HEAD`, `POST`
+- Заголовки только из CORS-safelist: `Accept`, `Accept-Language`, `Content-Language`, `Content-Type` из списка выше
+- Без `ReadableStream` в теле
+
+**Preflight-запрос:**
+```
+OPTIONS /api/users HTTP/1.1
+Origin: https://app.example.com
+Access-Control-Request-Method: PUT
+Access-Control-Request-Headers: Authorization, Content-Type
+```
+
+**Ответ сервера:**
+```
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: https://app.example.com
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE
+Access-Control-Allow-Headers: Authorization, Content-Type
+Access-Control-Allow-Credentials: true
+Access-Control-Max-Age: 86400
+```
+
+**`Access-Control-Max-Age`** — кэш preflight-ответа в браузере (в секундах). `86400` = сутки. Без него браузер шлёт `OPTIONS` **перед каждым** запросом — это заметная задержка на сетевой запрос.
+
+**Типовые ошибки:**
+- **`Allow-Origin: *` + `Allow-Credentials: true`** — браузер **откатит** ответ. С credentials нужен **конкретный origin**
+- **Забыть `OPTIONS` в роутах фреймворка** → **`405 Method Not Allowed`** на preflight, основной запрос не уйдёт
+- **Echo `Origin` без whitelist** — `Allow-Origin: <любой origin>` = `*` с credentials, дыра безопасности
+- **Заголовок не указан в `Allow-Headers`** — браузер режет, ошибка в DevTools
+- **Не настроен CORS на балансировщике/Nginx** при отдаче статики или обработке ошибок (например, nginx отдаёт `502` без CORS заголовков → в JS видна только CORS-ошибка).
+
+**В Laravel:** `config/cors.php` (пакет `fruitcake/laravel-cors` встроен) — `paths`, `allowed_origins`, `allowed_methods`, `supports_credentials`, `max_age`.',
+                'difficulty' => 4,
                 'topic' => 'security.web_attacks',
             ],
         ];
