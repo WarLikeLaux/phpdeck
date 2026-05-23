@@ -40,6 +40,10 @@ const palette: Record<string, CategoryStyle> = {
         badge: 'border-teal-500/30 bg-teal-500/10 text-teal-600 dark:text-teal-300',
         dot: 'bg-teal-500',
     },
+    'DevOps': {
+        badge: 'border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-300',
+        dot: 'bg-blue-500',
+    },
 };
 
 const fallback: CategoryStyle = {

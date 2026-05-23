@@ -9,6 +9,7 @@ use Database\Seeders\Data\Categories\NetworkingQuestions;
 use Database\Seeders\Data\Categories\OopQuestions;
 use Database\Seeders\Data\Categories\PhpQuestions;
 use Database\Seeders\Data\Categories\SecurityQuestions;
+use Database\Seeders\Data\Categories\DevopsQuestions;
 use Database\Seeders\Data\Categories\SystemDesignQuestions;
 use Database\Seeders\Data\Categories\TestingQuestions;
 use Database\Seeders\Data\Categories\Yii2Questions;
@@ -28,6 +29,7 @@ class FlashcardSeeder extends Seeder
             ...NetworkingQuestions::all(),
             ...SecurityQuestions::all(),
             ...TestingQuestions::all(),
+            ...DevopsQuestions::all(),
         ];
 
         $seenSlugs = [];

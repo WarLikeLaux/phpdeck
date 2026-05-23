@@ -283,7 +283,7 @@ tasks:
     desc: Перепаковать сидеры в repomix-<category>.md по категориям (для NotebookLM)
     cmds:
       - |
-        for pair in php=Php oop=Oop laravel=Laravel yii2=Yii2 database=Database system-design=SystemDesign networking=Networking security=Security testing=Testing; do
+        for pair in php=Php oop=Oop laravel=Laravel yii2=Yii2 database=Database system-design=SystemDesign networking=Networking security=Security testing=Testing devops=Devops; do
           out=${pair%=*}
           src=${pair#*=}
           echo "→ repomix-$out.md ($src)"
@@ -297,3 +297,4 @@ tasks:
             --no-security-check >/dev/null
         done
         ls -lh repomix-*.md
+

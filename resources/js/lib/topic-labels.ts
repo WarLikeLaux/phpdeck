@@ -141,10 +141,13 @@ export const topicLabels: Record<string, string> = {
     'system_design.api': 'API',
     'system_design.security': 'Безопасность',
     'system_design.performance': 'Производительность',
-    'system_design.devops': 'DevOps',
     'system_design.design_tasks': 'System Design задачи',
-    'system_design.git': 'Git',
-    'system_design.tools': 'Shell-инструменты',
+
+    // DevOps
+    'devops.basics': 'DevOps',
+    'devops.git': 'Git',
+    'devops.tools': 'Shell-инструменты',
+
 
     // Networking
     'networking.basics': 'Основы сетей',

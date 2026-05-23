@@ -6,13 +6,10 @@ use Database\Seeders\Data\Categories\SystemDesign\Api;
 use Database\Seeders\Data\Categories\SystemDesign\Architecture;
 use Database\Seeders\Data\Categories\SystemDesign\Caching;
 use Database\Seeders\Data\Categories\SystemDesign\DesignTasks;
-use Database\Seeders\Data\Categories\SystemDesign\Devops;
 use Database\Seeders\Data\Categories\SystemDesign\Distributed;
-use Database\Seeders\Data\Categories\SystemDesign\Git;
 use Database\Seeders\Data\Categories\SystemDesign\MessagingQueues;
 use Database\Seeders\Data\Categories\SystemDesign\Performance;
 use Database\Seeders\Data\Categories\SystemDesign\Security;
-use Database\Seeders\Data\Categories\SystemDesign\Tools;
 
 class SystemDesignQuestions
 {
@@ -26,13 +23,10 @@ class SystemDesignQuestions
             Architecture::all(),
             Caching::all(),
             DesignTasks::all(),
-            Devops::all(),
             Distributed::all(),
-            Git::all(),
             MessagingQueues::all(),
             Performance::all(),
             Security::all(),
-            Tools::all(),
         );
     }
 }
