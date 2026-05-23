@@ -5,6 +5,7 @@ namespace Database\Seeders\Data\Categories;
 use Database\Seeders\Data\Categories\SystemDesign\Api;
 use Database\Seeders\Data\Categories\SystemDesign\Architecture;
 use Database\Seeders\Data\Categories\SystemDesign\Caching;
+use Database\Seeders\Data\Categories\SystemDesign\CrmEcommerce;
 use Database\Seeders\Data\Categories\SystemDesign\DesignTasks;
 use Database\Seeders\Data\Categories\SystemDesign\Distributed;
 use Database\Seeders\Data\Categories\SystemDesign\MessagingQueues;
@@ -27,6 +28,7 @@ class SystemDesignQuestions
             MessagingQueues::all(),
             Performance::all(),
             Security::all(),
+            CrmEcommerce::all(),
         );
     }
 }

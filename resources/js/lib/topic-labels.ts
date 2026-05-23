@@ -117,6 +117,7 @@ export const topicLabels: Record<string, string> = {
     'yii2.testing': 'Тестирование (Codeception)',
     'yii2.refactoring': 'Рефакторинг и переход к Laravel',
     'yii2.debug_scenarios': 'Debug-сценарии (find the bug)',
+    'yii2.frontend_js': 'JS в Yii2 (PJAX, fetch, основы)',
     'yii2.misc': 'Дополнительные',
 
     // Database — Работа с данными и хранилищами
@@ -150,6 +151,7 @@ export const topicLabels: Record<string, string> = {
     'system_design.security': 'Безопасность',
     'system_design.performance': 'Производительность',
     'system_design.design_tasks': 'System Design задачи',
+    'system_design.crm_ecommerce': 'CRM, e-commerce, интеграции',
 
     // DevOps
     'devops.basics': 'DevOps',

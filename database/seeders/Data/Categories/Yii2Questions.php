@@ -19,6 +19,7 @@ use Database\Seeders\Data\Categories\Yii2\Di;
 use Database\Seeders\Data\Categories\Yii2\Errors;
 use Database\Seeders\Data\Categories\Yii2\Events;
 use Database\Seeders\Data\Categories\Yii2\Filters;
+use Database\Seeders\Data\Categories\Yii2\FrontendJs;
 use Database\Seeders\Data\Categories\Yii2\Gii;
 use Database\Seeders\Data\Categories\Yii2\I18n;
 use Database\Seeders\Data\Categories\Yii2\Logging;
@@ -78,6 +79,7 @@ class Yii2Questions
             Testing::all(),
             Refactoring::all(),
             DebugScenarios::all(),
+            FrontendJs::all(),
             Misc::all(),
         );
     }
