@@ -2116,6 +2116,107 @@ volumes:
                 'difficulty' => 4,
                 'topic' => 'devops.basics',
             ],
+            [
+                'category' => 'DevOps',
+                'question' => 'Как устроен graceful shutdown для PHP-FPM воркеров при деплое, и какие параметры на это влияют?',
+                'answer' => '**Graceful shutdown** (плавный останов) PHP-FPM гарантирует, что при перезапуске сервиса или деплое воркеры доработают текущие HTTP-запросы клиентов до конца, а не оборвут их посередине.
+
+**Как устроен процесс:**
+
+1. Во время деплоя отправляется сигнал **`SIGUSR2`** главному процессу (master) PHP-FPM (например, через `systemctl reload php-fpm`).
+2. Master-процесс прекращает назначать новые входящие запросы воркерам и отправляет им сигнал завершения.
+3. Воркеры дописывают текущий запрос, после чего безопасно завершаются. Master запускает новые воркеры с обновлённым кодом и конфигами.
+
+**Критический параметр в `php-fpm.conf`:**
+
+- **`process_control_timeout`** — максимальное время ожидания завершения воркера.
+  > [!WARNING]
+  > По умолчанию этот параметр равен **`0`** (выключен). Это значит, что при любом релоаде/перезапуске FPM мгновенно убивает все активные воркеры, возвращая клиентам `502 Bad Gateway`!
+  > На продакшене обязательно ставить значение в диапазоне от **`10s`** до **`30s`** (в зависимости от максимального времени выполнения ваших скриптов).
+
+**Связь с Kubernetes / systemd:**
+
+1. **`terminationGracePeriodSeconds`** в k8s pod spec должен быть **больше**, чем `process_control_timeout` + время остановки Nginx. Если k8s прибьёт контейнер с FPM по `SIGKILL` раньше времени, плавный останов прервётся.
+2. **Readiness Probe / Lifecycle hooks**: Перед релоадом пода нужно убрать его из балансировщика (Nginx/Ingress), используя `preStop` hook с небольшой паузой (`sleep 5`), чтобы новые запросы перестали идти на этот под.',
+                'code_example' => '; /etc/php/8.3/fpm/php-fpm.conf
+; Время ожидания завершения воркеров перед принудительным убийством
+process_control_timeout = 10s
+
+# Kubernetes pod spec: даем поды время на отключение от балансировщика и доработку запросов
+spec:
+  terminationGracePeriodSeconds: 30
+  containers:
+  - name: php-fpm
+    lifecycle:
+      preStop:
+        exec:
+          command: ["/bin/sh", "-c", "sleep 15"]',
+                'code_language' => 'ini',
+                'difficulty' => 4,
+                'topic' => 'devops.basics',
+            ],
+            [
+                'category' => 'DevOps',
+                'question' => 'Каковы ключевые параметры оптимизации OPcache для production-окружения, и к каким компромиссам они ведут?',
+                'answer' => '**OPcache** компилирует PHP-скрипты в байт-код (opcode) и кэширует их в разделяемой памяти (shared memory), избавляя от необходимости парсить файлы при каждом запросе.
+
+**Оптимальные настройки для Production в `php.ini`:**
+
+1. **`opcache.enable=1`** и **`opcache.enable_cli=1`** — включает кэширование (включая консольные команды, очереди и воркеры Laravel).
+2. **`opcache.validate_timestamps=0`** (Критично для prod!)
+   > [!IMPORTANT]
+   > Отключает проверку изменений PHP-файлов на диске. Это экономит огромное количество дискового I/O (системные вызовы `stat`). Но это означает, что **изменения кода не вступят в силу до тех пор, пока PHP-FPM не будет перезапущен** (`systemctl reload php-fpm`).
+3. **`opcache.memory_consumption`** — объём разделяемой памяти. Для Laravel-приложений рекомендуется от **`256MB`** до **`512MB`**, чтобы избежать вытеснения кэша.
+4. **`opcache.max_accelerated_files`** — максимальное количество файлов в кэше. Число должно быть из фиксированного набора простых чисел (например, `16229`, `32531`, `65407`). Должно быть **больше**, чем общее количество файлов в вашем проекте (включая всю папку `vendor/`). Рекомендуется ставить **`32531`**.
+5. **`opcache.interned_strings_buffer`** — память под повторяющиеся строки (имена классов, методов, ключи массивов). По умолчанию 8MB, на Laravel стоит поднять до **`16`** или **`32`** MB.
+6. **`opcache.save_comments=1`** — сохраняет doc-комментарии.
+   > [!CAUTION]
+   > Отключение ломает работу аннотаций, Doctrine ORM, а также Laravel API Resources и DTO на PHP 8, использующих атрибуты/reflection. Оставляйте включённым.
+7. **`opcache.preload`** — предзагрузка байт-кода при старте PHP-FPM. Повышает производительность на 5-10%, но требует написания preload-скрипта и полной перезагрузки FPM при любом обновлении кода.',
+                'code_example' => '; Рекомендуемые настройки OPcache для production в php.ini
+opcache.enable=1
+opcache.enable_cli=1
+opcache.memory_consumption=256
+opcache.interned_strings_buffer=16
+opcache.max_accelerated_files=32531
+opcache.validate_timestamps=0
+opcache.save_comments=1
+opcache.fast_shutdown=1',
+                'code_language' => 'ini',
+                'difficulty' => 3,
+                'topic' => 'devops.basics',
+            ],
+            [
+                'category' => 'DevOps',
+                'question' => 'В чём заключается проблема realpath_cache при атомарном деплое через симлинки, и как её решать в связке Nginx + PHP-FPM?',
+                'answer' => '**Атомарный деплой через симлинки** — популярный паттерн (Capistrano, Deployer). Код релиза качается в `/var/www/releases/release-N`, а текущий продакшн указывает на симлинк `/var/www/current`, который переключается на новый релиз одной командой.
+
+**В чём проблема с PHP-FPM:**
+
+PHP кэширует физические пути к файлам через внутренний механизм **`realpath_cache`** (настраивается параметрами `realpath_cache_size` и `realpath_cache_ttl`).
+Когда симлинк `/var/www/current` перенаправляется на `/var/www/releases/release-N+1`, воркеры PHP-FPM продолжают разрешать пути по старому физическому адресу из-за закэшированного `realpath`. Это приводит к:
+1. Запуску старого кода вместо нового.
+2. Ошибкам типа «Class not found» или фатальным сбоям из-за частичного кэширования путей (часть файлов берётся из нового релиза, часть из старого).
+
+**Способы решения:**
+
+1. **Использование `$realpath_root` в конфигурации Nginx (Рекомендуется)**:
+   Вместо передачи стандартного пути к симлинку, Nginx сам резолвит симлинк в реальный путь и передаёт его PHP-FPM в переменной `SCRIPT_FILENAME`. Благодаря этому PHP-FPM сразу работает с физическим путём конкретного релиза, минуя кэш симлинка.
+2. **Перезагрузка PHP-FPM после переключения симлинка**:
+   Вызов `systemctl reload php-fpm` (сигнал `SIGUSR2`) полностью сбрасывает состояние воркеров, очищая как `realpath_cache`, так и `OPcache` (актуально при `opcache.validate_timestamps=0`).
+3. **Очистка кэша через функции**:
+   Вызовы `clearstatcache(true)` (для очистки realpath-кэша) или сброс через специализированные утилиты типа `cachetool`. Но это сложнее настроить в CLI, так как у CLI и FPM-процессов изолированные кэши.',
+                'code_example' => '# Конфигурация Nginx fastcgi_params
+fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+
+# ВМЕСТО fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+# Используем $realpath_root, чтобы передавать физический путь релиза:
+fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+fastcgi_param DOCUMENT_ROOT $realpath_root;',
+                'code_language' => 'nginx',
+                'difficulty' => 4,
+                'topic' => 'devops.basics',
+            ],
         ];
     }
 }
