@@ -160,6 +160,7 @@ export const topicLabels: Record<string, string> = {
     // Security
     'security.owasp': 'OWASP Top 10',
     'security.auth': 'Аутентификация и авторизация',
+    'security.sessions': 'Сессии и cookies',
     'security.crypto': 'Криптография',
     'security.tokens': 'Токены (JWT, OAuth)',
     'security.secrets': 'Секреты и конфигурация',

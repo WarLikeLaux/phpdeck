@@ -143,44 +143,6 @@ echo password_hash('qwerty', PASSWORD_BCRYPT);
             ],
             [
                 'category' => 'Безопасность',
-                'question' => 'Что такое сессия простыми словами с точки зрения безопасности?',
-                'answer' => 'Способ сохранить «**кто вошёл**» между HTTP-запросами без повторной отправки логина/пароля.
-
-**Как устроено**:
-
-- сервер генерирует длинный случайный `session_id`, кладёт его в куку;
-- сами данные сессии хранятся **на сервере** (`file`/`redis`/`db`);
-- с каждым запросом кука приходит — по id находим запись.
-
-**Кража куки = полный доступ к аккаунту**, поэтому обязательны три флага:
-
-- `HttpOnly` — JS не прочитает, защита от **XSS**;
-- `Secure` — только по `HTTPS`, защита от перехвата;
-- `SameSite=Lax`/`Strict` — браузер не пошлёт куку с чужого домена, защита от **CSRF**.
-
-**Дополнительно**:
-
-- `session_regenerate_id(true)` сразу после логина — защита от **session fixation**;
-- инвалидация записи **на сервере** при logout (стирание куки на клиенте не убивает сессию).',
-                'code_example' => "<?php
-// Установка флагов через session.cookie_* в php.ini
-// или ini_set до session_start():
-ini_set('session.cookie_httponly', '1');
-ini_set('session.cookie_secure',   '1');
-ini_set('session.cookie_samesite', 'Lax');
-session_start();
-
-// Регенерация ID после логина — защита от session fixation
-if (login_succeeded(\$user)) {
-    session_regenerate_id(true);
-    \$_SESSION['user_id'] = \$user->id;
-}",
-                'code_language' => 'php',
-                'difficulty' => 2,
-                'topic' => 'security.auth',
-            ],
-            [
-                'category' => 'Безопасность',
                 'question' => 'Что такое OAuth2 и Authorization Code flow простыми словами?',
                 'answer' => '**OAuth2** — протокол **делегирования доступа**: пользователь разрешает приложению (`client`) часть своих данных у провайдера (`Google`/`GitHub`), **не отдавая ему пароль**.
 
@@ -212,6 +174,110 @@ POST https://oauth2.googleapis.com/token
   &grant_type=authorization_code',
                 'code_language' => 'http',
                 'difficulty' => 2,
+                'topic' => 'security.auth',
+            ],
+            [
+                'category' => 'Безопасность',
+                'question' => 'Что такое OIDC и чем он отличается от OAuth2 простыми словами?',
+                'answer' => '**OIDC (OpenID Connect)** — тонкий **слой аутентификации поверх OAuth2**. OAuth2 говорит «**этому приложению можно**», OIDC ещё и подтверждает «**вот кто это такой**».
+
+**Главное различие:**
+
+- **OAuth2** — про **авторизацию доступа** (делегирование). Сервер вернёт `access_token` — «этот клиент имеет право читать твой gmail». Кто пользователь и зашёл ли он на самом деле — OAuth2 формально не отвечает.
+- **OIDC** — про **аутентификацию** (вход). Помимо `access_token` сервер возвращает **`id_token`** — подписанный JWT с инфо о пользователе (`sub`, `email`, `name`, `iat`, `exp`).
+
+**Как включить OIDC:**
+
+- Добавить `scope=openid` в `/authorize`. Без `openid` это просто OAuth2.
+- Опционально — `profile`, `email`, `address`, `phone` для дополнительных claim-ов.
+
+**Что даёт практически:**
+
+- Кнопка «Войти через Google/Apple/Microsoft» — это OIDC, не голый OAuth2.
+- Сервер сам проверяет подпись `id_token` — не нужно лишний запрос на `/userinfo`.
+- Стандарт **discovery**: `https://provider/.well-known/openid-configuration` отдаёт URLs и публичные ключи для проверки подписи.',
+                'code_example' => '# OAuth2 (только авторизация ресурса)
+GET /authorize?client_id=APP&scope=email&response_type=code&...
+
+# OIDC (вход = openid scope обязателен)
+GET /authorize?client_id=APP&scope=openid%20email&response_type=code&...
+
+# В ответ /token бэкенд получает оба токена:
+{
+  "access_token": "ya29...",       # для запросов к API провайдера
+  "id_token":     "eyJhbGciOi...",  # JWT с данными о юзере — для нас
+  "expires_in":   3600
+}
+
+# id_token (header.payload.signature) — пример payload:
+{
+  "iss": "https://accounts.google.com",
+  "sub": "1234567890",       # стабильный ID пользователя у провайдера
+  "email": "user@example.com",
+  "email_verified": true,
+  "name": "Иван",
+  "iat": 1700000000,
+  "exp": 1700003600,
+  "aud": "APP_ID"            # должен совпасть с нашим client_id
+}',
+                'code_language' => 'http',
+                'difficulty' => 2,
+                'topic' => 'security.auth',
+            ],
+            [
+                'category' => 'Безопасность',
+                'question' => 'Что такое id_token в OIDC и чем он отличается от access_token?',
+                'answer' => 'В OIDC сервер возвращает **два разных токена**, и важно их не путать.
+
+| Признак | `access_token` | `id_token` |
+| --- | --- | --- |
+| **Зачем** | доступ к API провайдера от имени юзера | подтверждение «вот кто этот юзер» |
+| **Формат** | непрозрачная строка или JWT (как решит провайдер) | **всегда JWT** (по спецификации OIDC) |
+| **Кому адресован (`aud`)** | API-ресурсу | **нашему клиенту** (`client_id`) |
+| **Кто читает payload** | сервер ресурса | **наш бэкенд** — извлекает `sub`, `email` для логина |
+| **Проверка** | передаём в `Authorization: Bearer` к API | **локально**: подпись по публичному ключу провайдера + `iss`, `aud`, `exp` |
+
+**Шаги проверки `id_token`:**
+
+1. Скачать публичные ключи провайдера с **`/.well-known/openid-configuration → jwks_uri`** (кэшировать).
+2. Проверить подпись по `kid` из заголовка JWT.
+3. Сверить `iss` (issuer) — это точно наш провайдер?
+4. Сверить `aud` — наш `client_id`?
+5. Сверить `exp` — не истёк?
+6. Опционально — `nonce`, который мы отправляли в `/authorize`.
+
+**Что хранить у себя:** обычно `sub` (стабильный ID юзера у провайдера) + email. По `sub` находим/создаём локального пользователя.',
+                'code_example' => '<?php
+// Псевдокод проверки id_token (на проде — firebase/php-jwt или web-token/jwt-framework)
+
+$jwt = $tokenResponse[\'id_token\'];
+[$h64, $p64, $s64] = explode(\'.\', $jwt);
+
+$header = json_decode(base64_decode(strtr($h64, \'-_\', \'+/\')), true);
+$payload = json_decode(base64_decode(strtr($p64, \'-_\', \'+/\')), true);
+
+// 1. Достать публичный ключ по kid из jwks
+$jwks = json_decode(file_get_contents(\'https://provider/.well-known/jwks.json\'), true);
+$key  = findKeyByKid($jwks, $header[\'kid\']);
+
+// 2. Проверить подпись
+if (!verifySignature("$h64.$p64", $s64, $key, $header[\'alg\'])) {
+    throw new \\RuntimeException(\'bad signature\');
+}
+
+// 3. Бизнес-проверки
+if ($payload[\'iss\']   !== \'https://accounts.google.com\') abort(401);
+if ($payload[\'aud\']   !== getenv(\'GOOGLE_CLIENT_ID\'))    abort(401);
+if ($payload[\'exp\']   <  time())                          abort(401);
+
+// 4. Логиним по sub
+$user = User::firstOrCreate(
+    [\'oidc_sub\' => $payload[\'sub\']],
+    [\'email\' => $payload[\'email\']]
+);
+Auth::login($user);',
+                'code_language' => 'php',
+                'difficulty' => 3,
                 'topic' => 'security.auth',
             ],
             [

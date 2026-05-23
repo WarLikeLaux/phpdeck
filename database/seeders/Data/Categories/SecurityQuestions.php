@@ -6,6 +6,7 @@ use Database\Seeders\Data\Categories\Security\Auth;
 use Database\Seeders\Data\Categories\Security\Crypto;
 use Database\Seeders\Data\Categories\Security\Owasp;
 use Database\Seeders\Data\Categories\Security\Secrets;
+use Database\Seeders\Data\Categories\Security\Sessions;
 use Database\Seeders\Data\Categories\Security\Tokens;
 use Database\Seeders\Data\Categories\Security\WebAttacks;
 
@@ -20,6 +21,7 @@ class SecurityQuestions
             Owasp::all(),
             WebAttacks::all(),
             Auth::all(),
+            Sessions::all(),
             Tokens::all(),
             Crypto::all(),
             Secrets::all(),
