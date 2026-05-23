@@ -11,6 +11,7 @@ use Database\Seeders\Data\Categories\Laravel\CacheSession;
 use Database\Seeders\Data\Categories\Laravel\Cloze;
 use Database\Seeders\Data\Categories\Laravel\Collections;
 use Database\Seeders\Data\Categories\Laravel\Controllers;
+use Database\Seeders\Data\Categories\Laravel\DebugScenarios;
 use Database\Seeders\Data\Categories\Laravel\EloquentAdvanced;
 use Database\Seeders\Data\Categories\Laravel\EloquentBasics;
 use Database\Seeders\Data\Categories\Laravel\EloquentRelations;
@@ -62,6 +63,7 @@ class LaravelQuestions
             Testing::all(),
             ApiResources::all(),
             LegacyMigration::all(),
+            DebugScenarios::all(),
             Collections::all(),
             BasicQa::all(),
             Cloze::all(),

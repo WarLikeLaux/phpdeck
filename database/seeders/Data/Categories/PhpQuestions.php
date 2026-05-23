@@ -9,6 +9,7 @@ use Database\Seeders\Data\Categories\Php\BasicQa;
 use Database\Seeders\Data\Categories\Php\BasicSyntax;
 use Database\Seeders\Data\Categories\Php\Closures;
 use Database\Seeders\Data\Categories\Php\Cloze;
+use Database\Seeders\Data\Categories\Php\CodeTraps;
 use Database\Seeders\Data\Categories\Php\ComposerAutoload;
 use Database\Seeders\Data\Categories\Php\Exceptions;
 use Database\Seeders\Data\Categories\Php\FilesStreams;
@@ -44,6 +45,7 @@ class PhpQuestions
             BasicSyntax::all(),
             Closures::all(),
             Cloze::all(),
+            CodeTraps::all(),
             ComposerAutoload::all(),
             Exceptions::all(),
             FilesStreams::all(),
