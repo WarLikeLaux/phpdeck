@@ -157,6 +157,7 @@ export const topicLabels: Record<string, string> = {
     'devops.basics': 'DevOps',
     'devops.git': 'Git',
     'devops.tools': 'Shell-инструменты',
+    'devops.code_review': 'Code review',
 
     // Networking
     'networking.basics': 'Основы сетей',
