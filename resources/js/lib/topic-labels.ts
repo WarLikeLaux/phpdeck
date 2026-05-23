@@ -115,6 +115,8 @@ export const topicLabels: Record<string, string> = {
     'yii2.console': 'Консольные команды',
     'yii2.gii': 'Gii',
     'yii2.testing': 'Тестирование (Codeception)',
+    'yii2.refactoring': 'Рефакторинг и переход к Laravel',
+    'yii2.debug_scenarios': 'Debug-сценарии (find the bug)',
     'yii2.misc': 'Дополнительные',
 
     // Database — Работа с данными и хранилищами

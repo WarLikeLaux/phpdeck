@@ -14,6 +14,7 @@ use Database\Seeders\Data\Categories\Yii2\Components;
 use Database\Seeders\Data\Categories\Yii2\Console;
 use Database\Seeders\Data\Categories\Yii2\Controllers;
 use Database\Seeders\Data\Categories\Yii2\DataProvider;
+use Database\Seeders\Data\Categories\Yii2\DebugScenarios;
 use Database\Seeders\Data\Categories\Yii2\Di;
 use Database\Seeders\Data\Categories\Yii2\Errors;
 use Database\Seeders\Data\Categories\Yii2\Events;
@@ -26,6 +27,7 @@ use Database\Seeders\Data\Categories\Yii2\Migrations;
 use Database\Seeders\Data\Categories\Yii2\Misc;
 use Database\Seeders\Data\Categories\Yii2\Modules;
 use Database\Seeders\Data\Categories\Yii2\QueryBuilder;
+use Database\Seeders\Data\Categories\Yii2\Refactoring;
 use Database\Seeders\Data\Categories\Yii2\Relations;
 use Database\Seeders\Data\Categories\Yii2\Requests;
 use Database\Seeders\Data\Categories\Yii2\Rest;
@@ -74,6 +76,8 @@ class Yii2Questions
             Console::all(),
             Gii::all(),
             Testing::all(),
+            Refactoring::all(),
+            DebugScenarios::all(),
             Misc::all(),
         );
     }
