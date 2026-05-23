@@ -41,63 +41,7 @@ $stmt->execute();',
                 'difficulty' => 2,
                 'topic' => 'database.basic_qa',
             ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Зачем нужен первичный ключ простыми словами?',
-                'answer' => '**Первичный ключ (PRIMARY KEY)** — это колонка (или набор колонок), по которой каждую строку можно **однозначно отличить** от других. Без PK нельзя сказать «обнови вот **эту** строку» — БД не поймёт какую.
 
-Свойства:
-- значения всегда **уникальные**;
-- **не могут быть `NULL`**;
-- на таблицу **только один** `PRIMARY KEY` (но он может быть **составным** — из нескольких колонок);
-- под PK автоматически создаётся **индекс**, поиск по нему очень быстрый.
-
-Обычно это `id` с **автоинкрементом** (`BIGSERIAL`/`AUTO_INCREMENT`) или **UUID**.',
-                'code_example' => '-- Один числовой PK (самый частый случай)
-CREATE TABLE users (
-    id BIGSERIAL PRIMARY KEY,
-    email VARCHAR(255) NOT NULL
-);
-
--- Составной PK: уникальна пара (order_id, product_id)
-CREATE TABLE order_items (
-    order_id BIGINT,
-    product_id BIGINT,
-    quantity INT,
-    PRIMARY KEY (order_id, product_id)
-);',
-                'code_language' => 'sql',
-                'difficulty' => 1,
-                'topic' => 'database.basic_qa',
-            ],
-            [
-                'category' => 'Базы данных',
-                'question' => 'Зачем нужен внешний ключ простыми словами?',
-                'answer' => '**Внешний ключ (FOREIGN KEY)** связывает таблицы и не даёт создавать **«висячие» ссылки**. `orders.user_id` ссылается на `users.id` — БД сама проверяет целостность:
-- **не даст вставить** заказ для несуществующего юзера;
-- **не даст удалить** юзера, у которого есть заказы (по умолчанию).
-
-Поведение при удалении родителя настраивается через `ON DELETE`:
-- `CASCADE` — удалить связанные заказы вслед за юзером;
-- `SET NULL` — оставить заказ, обнулить `user_id`;
-- `RESTRICT` / `NO ACTION` — запретить удаление, если есть заказы.
-
-То же самое есть и для `ON UPDATE`.',
-                'code_example' => 'CREATE TABLE orders (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL,
-    total DECIMAL(10, 2),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-        ON DELETE CASCADE
-);
-
--- Попытка вставить заказ несуществующему юзеру упадёт
-INSERT INTO orders (user_id, total) VALUES (9999, 100);
--- ERROR: foreign key violation',
-                'code_language' => 'sql',
-                'difficulty' => 1,
-                'topic' => 'database.basic_qa',
-            ],
             [
                 'category' => 'Базы данных',
                 'question' => 'Что такое SQL?',

@@ -463,7 +463,7 @@ GET /products/_search
             ],
             [
                 'category' => 'Базы данных',
-                'question' => 'Что значит eventual consistency у Elasticsearch на практике?',
+                'question' => 'Как устроен refresh-процесс в Elasticsearch и почему он делает базу near-realtime (NRT)?',
                 'answer' => 'ES — **near-realtime** (NRT), а **не realtime**. Документ становится **виден в поиске не сразу**.
 
 **Что происходит при `INSERT` (`POST /index/_doc`):**
