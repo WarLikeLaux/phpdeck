@@ -114,20 +114,23 @@ export const topicLabels: Record<string, string> = {
     'yii2.testing': 'Тестирование (Codeception)',
     'yii2.misc': 'Дополнительные',
 
-    // Database
+    // Database — Работа с данными и хранилищами
+    //   Базовый SQL
     'database.basic_concepts': 'Базовые понятия',
     'database.sql_basics': 'SQL базовый',
     'database.normalization': 'Нормализация',
-    'database.transactions_acid': 'Транзакции и ACID',
     'database.indexes': 'Индексы',
+    'database.transactions_acid': 'Транзакции и ACID',
     'database.optimization': 'Оптимизация запросов',
-    'database.postgresql': 'PostgreSQL',
     'database.mysql': 'MySQL',
+    'database.postgresql': 'PostgreSQL',
+    'database.infrastructure_backup': 'Pooling, WAL, бэкапы',
+    //   Распределённые БД и хранилища
+    'database.partitioning': 'Партиционирование',
+    'database.distributed': 'Репликация и шардирование',
     'database.nosql': 'NoSQL',
     'database.elasticsearch': 'Elasticsearch',
-    'database.distributed': 'Распределённые БД',
-    'database.infrastructure_backup': 'Pooling, WAL, бэкапы',
-    'database.partitioning': 'Партиционирование',
+    //   Прочее (режимы)
     'database.basic_qa': 'Краткие Q/A',
     'database.cloze': 'Cloze',
     'database.type_in': 'Type-in',

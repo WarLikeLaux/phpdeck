@@ -28,23 +28,26 @@ class DatabaseQuestions
     public static function all(): array
     {
         return array_merge(
-            Assemble::all(),
+            // ── Базовый SQL ────────────────────────────────────────────
             BasicConcepts::all(),
+            SqlBasics::all(),
+            Normalization::all(),
+            Indexes::all(),
+            TransactionsAcid::all(),
+            Optimization::all(),
+            Mysql::all(),
+            Postgresql::all(),
+            InfrastructureBackup::all(),
+            // ── Распределённые БД и хранилища ─────────────────────────
+            Partitioning::all(),
+            Distributed::all(),
+            Nosql::all(),
+            Elasticsearch::all(),
+            // ── Режимы ────────────────────────────────────────────────
             BasicQa::all(),
             Cloze::all(),
-            Distributed::all(),
-            Elasticsearch::all(),
-            Indexes::all(),
-            InfrastructureBackup::all(),
-            Mysql::all(),
-            Normalization::all(),
-            Nosql::all(),
-            Optimization::all(),
-            Partitioning::all(),
-            Postgresql::all(),
-            SqlBasics::all(),
-            TransactionsAcid::all(),
             TypeIn::all(),
+            Assemble::all(),
         );
     }
 }
