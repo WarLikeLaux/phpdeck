@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Flashcard;
+use Database\Seeders\Data\Categories\CodeReviewQuestions;
 use Database\Seeders\Data\Categories\DatabaseQuestions;
 use Database\Seeders\Data\Categories\DevopsQuestions;
 use Database\Seeders\Data\Categories\LaravelQuestions;
@@ -30,6 +31,7 @@ class FlashcardSeeder extends Seeder
             ...SecurityQuestions::all(),
             ...TestingQuestions::all(),
             ...DevopsQuestions::all(),
+            ...CodeReviewQuestions::all(),
         ];
 
         $seenSlugs = [];

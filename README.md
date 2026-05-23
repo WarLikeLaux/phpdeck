@@ -14,7 +14,7 @@
 [![Inertia](https://img.shields.io/badge/Inertia-3.0-9553E9?logo=inertia&logoColor=white)](https://inertiajs.com)
 [![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Tests](https://img.shields.io/badge/tests-81%20passing-22c55e?logo=pest&logoColor=white)](#)
-[![Cards](https://img.shields.io/badge/cards-1844-9553E9)](#)
+[![Cards](https://img.shields.io/badge/cards-1852-9553E9)](#)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 </div>
@@ -25,7 +25,7 @@
 
 Готовиться к PHP-собесам по «прочитай 100 вопросов и ответов» неэффективно — глаза скользят, мозг не закрепляет. **phpdeck** заставляет тебя реально вытаскивать ответ: то по памяти, то выбором, то заполнением пропусков, то сборкой кода из блоков. Карточка считается выученной, только когда ты ответил правильно в **трёх разных режимах** — это убивает иллюзию «я это знаю», которая возникает когда видишь ответ глазами.
 
-В колоде **1844 вопроса** по 161 топику — от junior-базы до middle/senior собеседований. Прогресс свой — много пользователей не мешают друг другу.
+В колоде **1852 вопроса** по 162 топикам — от junior-базы до middle/senior собеседований. Прогресс свой — много пользователей не мешают друг другу.
 
 ## Что внутри
 
@@ -53,7 +53,7 @@
 
 ## Колода
 
-1844 карточки по 161 топику, из них ~500 на уровне «base» (difficulty 1-2) — ровная подготовка от junior-фундамента до middle/senior нюансов:
+1852 карточки по 162 топикам, из них ~500 на уровне «base» (difficulty 1-2) — ровная подготовка от junior-фундамента до middle/senior нюансов:
 
 | Категория | Карточек | Топиков |
 |---|---|---|
@@ -64,11 +64,12 @@
 | ООП | 180 | 22 |
 | Архитектура систем | 168 | 9 |
 | Сети | 101 | 7 |
-| DevOps | 109 | 4 |
+| DevOps | 100 | 3 |
 | Безопасность | 62 | 7 |
 | Тестирование | 48 | 4 |
+| Код-ревью | 17 | 2 |
 
-Карточки добавляются **строго через сидеры** — UI только учит. Это сделано осознанно: контент рецензируется через PR-ы, а не накручивается на лету. Структура: `database/seeders/Data/Categories/{Php,Oop,Laravel,Yii2,Database,SystemDesign,Devops,Networking,Security,Testing}/<Topic>.php`.
+Карточки добавляются **строго через сидеры** — UI только учит. Это сделано осознанно: контент рецензируется через PR-ы, а не накручивается на лету. Структура: `database/seeders/Data/Categories/{Php,Oop,Laravel,Yii2,Database,SystemDesign,Devops,Networking,Security,Testing,CodeReview}/<Topic>.php`.
 
 Сидер **идемпотентен**: каждая карточка имеет стабильный `slug` (sha256 от `category|question`), при повторном запуске `task seed` или `task deploy` карточки сверяются по slug — новые добавляются, изменённые ответы обновляются, удалённые из сидеров вычищаются, прогресс пользователей не теряется.
 
